@@ -1,0 +1,162 @@
+package net.thunderbird.feature.navigation.drawer.dropdown.ui
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
+import app.k9mail.core.ui.compose.designsystem.atom.DividerHorizontal
+import app.k9mail.core.ui.compose.designsystem.atom.Surface
+import net.thunderbird.core.ui.compose.common.modifier.testTagAsResourceId
+import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.navigation.drawer.dropdown.domain.entity.DisplayAccount
+import net.thunderbird.feature.navigation.drawer.dropdown.domain.entity.UnifiedDisplayAccount
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.DrawerContract.Event
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.DrawerContract.State
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.account.AccountList
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.account.AccountView
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.common.DRAWER_WIDTH
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.common.getAdditionalWidth
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.folder.FolderList
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.setting.AccountSettingList
+import net.thunderbird.feature.navigation.drawer.dropdown.ui.setting.FolderSettingList
+
+private const val ANIMATION_DURATION_MS = 200
+
+@Composable
+internal fun DrawerContent(
+    state: State,
+    onEvent: (Event) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val additionalWidth = getAdditionalWidth()
+
+    Surface(
+        modifier = modifier
+            .width(DRAWER_WIDTH + additionalWidth)
+            .fillMaxHeight()
+            .testTagAsResourceId("DrawerContent"),
+        color = MainTheme.colors.surfaceContainerLow,
+    ) {
+        val selectedAccount = state.accounts.firstOrNull { it.id == state.selectedAccountId }
+
+        Column(
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
+            selectedAccount?.let {
+                AccountView(
+                    account = selectedAccount,
+                    onClick = { onEvent(Event.OnAccountSelectorClick) },
+                    onAvatarClick = { onEvent(Event.OnAccountViewClick(selectedAccount)) },
+                    showAccountSelection = state.showAccountSelection,
+                )
+
+                DividerHorizontal()
+            }
+            AnimatedContent(
+                targetState = state.showAccountSelection,
+                label = "AccountSelectorVisibility",
+                transitionSpec = {
+                    val animationSpec = tween<IntOffset>(durationMillis = ANIMATION_DURATION_MS)
+                    if (targetState) {
+                        slideInVertically(animationSpec = animationSpec) { -it } togetherWith
+                            slideOutVertically(animationSpec = animationSpec) { it }
+                    } else {
+                        slideInVertically(animationSpec = animationSpec) { it } togetherWith
+                            slideOutVertically(animationSpec = animationSpec) { -it }
+                    }
+                },
+            ) { targetState ->
+                if (targetState) {
+                    AccountContent(
+                        state = state,
+                        onEvent = onEvent,
+                        selectedAccount = selectedAccount,
+                    )
+                } else {
+                    FolderContent(
+                        state = state,
+                        onEvent = onEvent,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountContent(
+    state: State,
+    onEvent: (Event) -> Unit,
+    selectedAccount: DisplayAccount?,
+) {
+    Surface(
+        color = MainTheme.colors.surfaceContainerLow,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            AccountList(
+                accounts = state.accounts,
+                selectedAccount = selectedAccount,
+                onAccountClick = { onEvent(Event.OnAccountClick(it)) },
+                showStarredCount = state.config.showStarredCount,
+                modifier = Modifier.weight(1f),
+            )
+            DividerHorizontal()
+            AccountSettingList(
+                onAddAccountClick = { onEvent(Event.OnAddAccountClick) },
+                onSyncAllAccountsClick = { onEvent(Event.OnSyncAllAccounts) },
+                onSettingsClick = { onEvent(Event.OnSettingsClick) },
+                onTasksClick = { onEvent(Event.OnTasksClick) },
+                isLoading = state.isLoading,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FolderContent(
+    state: State,
+    onEvent: (Event) -> Unit,
+) {
+    val isUnifiedAccount = state.accounts.firstOrNull { it.id == state.selectedAccountId } is UnifiedDisplayAccount
+
+    Surface(
+        color = MainTheme.colors.surfaceContainerLow,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            FolderList(
+                isExpandedInitial = state.config.expandAllFolder,
+                rootFolder = state.rootFolder,
+                selectedFolder = state.selectedFolder,
+                onFolderClick = { folder ->
+                    onEvent(Event.OnFolderClick(folder))
+                },
+                showStarredCount = state.config.showStarredCount,
+                modifier = Modifier.weight(1f),
+            )
+            DividerHorizontal()
+            FolderSettingList(
+                onSyncAccountClick = { onEvent(Event.OnSyncAccount) },
+                onManageFoldersClick = { onEvent(Event.OnManageFoldersClick) },
+                onSyncAllAccountsClick = { onEvent(Event.OnSyncAllAccounts) },
+                onSettingsClick = { onEvent(Event.OnSettingsClick) },
+                isUnifiedAccount = isUnifiedAccount,
+                isLoading = state.isLoading,
+            )
+        }
+    }
+}
