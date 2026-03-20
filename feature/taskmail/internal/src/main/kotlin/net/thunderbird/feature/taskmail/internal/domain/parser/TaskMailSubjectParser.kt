@@ -65,6 +65,7 @@ internal class TaskMailSubjectParser {
     private companion object {
         val replyPrefixes = listOf(
             "Re:",
+            "AW:",
             "FW:",
             "Fwd:",
             "\u56de\u590d:",

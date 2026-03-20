@@ -1,6 +1,19 @@
 # TaskMail Android 改造计划（v0.1）
 
-更新日期：2026-03-14
+更新日期：2026-03-16
+
+> 2026-03-16 说明：
+>
+> 本文件现在应被视为历史性的改造/收口计划参考。
+>
+> 当前真相源已经收口到：
+>
+> - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+> - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+> - `docs/TASKMAIL-MAIL-RULES.md`
+> - older superseded Android next-development planning notes that have since been removed
+>
+> 本文件保留“为什么当时需要收口”的背景，但不应单独用于描述当前已实现能力面。
 
 ## 1. 文档目的
 
@@ -26,13 +39,15 @@
 
 ### 2.2 当前最大问题
 
-当前最大问题不是“移动端没有基础”，而是**文档状态存在错位**：
+本计划编写时的最大问题不是“移动端没有基础”，而是**文档状态存在错位**：
 
 - `TASKMAIL-ANDROID-CURRENT-STATUS.md` 仍将系统描述为 **Phase 1.5 的 debug-only 原型**
 - `TASKMAIL-ANDROID-PHASE2.md` 将正式入口、FeatureLauncher、Drawer 接线视为下一阶段目标
 - `TASKMAIL-ANDROID-PHASE3.md` 又将 formal launcher routing、formal drawer entry、reply composer、real sender integration 视为已实现并可 build
 
-这说明 Android 端当前处于一种 **代码已前进，但基线文档未完全收口** 的状态。
+这说明 Android 端当时处于一种 **代码已前进，但基线文档未完全收口** 的状态。
+
+注：这一错位已经在 2026-03-16 的文档对齐中集中收口。
 
 ### 2.3 关键判断
 
@@ -53,14 +68,14 @@
 - **正式可进入**
 - **读取稳定**
 - **交互边界清晰**
-- **协议与 mail_task_manager 对齐**
+- **协议与 mail_based_task_manager 对齐**
 - **具备后续扩展能力**
 
 ### 3.2 这一轮改造的具体目标
 
 本轮改造只追求四件事：
 
-1. **统一 Android 当前基线**
+1. **统一 Android 当前基线**（已在 2026-03-16 文档对齐中完成）
 2. **冻结正式入口与宿主结构**
 3. **冻结首期交互范围**
 4. **让 Android 成为 mail-thread / task-session 的薄控制面**
@@ -74,7 +89,7 @@
 - 不做 Android 侧“新建任务”完整入口
 - 不做完整传统邮件编辑器替代
 - 不做富文本 / Markdown 渲染
-- 不做附件发送与多媒体回复
+- 不做更复杂的多媒体协议扩展；当前已落地的 reply attachments 维持现有边界，不继续膨胀
 - 不做搜索 / 筛选 / 通知 / 后台轮询
 - 不做独立于邮件协议之外的 Android 私有协议
 - 不在 Android 端复制一套 task manager / state machine
@@ -86,7 +101,7 @@
 
 ### 5.1 Android 是控制面，不是协议所有者
 
-协议的唯一权威应保持在 mail_task_manager / mail rules / shared state model 一侧。  
+协议的唯一权威应保持在 `mail_based_task_manager` / mail rules / shared state model 一侧。
 Android 只负责：
 
 - 展示状态
@@ -257,8 +272,10 @@ Android 只消费稳定的 read model，并按协议输出有限动作。
 ### 支持动作
 
 1. **Plain-text reply**
-2. **单题 quick action**
-3. **`/status`**
+2. **reply attachments**
+3. **单题 quick action**
+4. **多题结构化 `Answers:` 回复**
+5. **`/status`**
 
 ### 明确不支持
 
@@ -268,7 +285,6 @@ Android 只消费稳定的 read model，并按协议输出有限动作。
 - `/kill`
 - 多题 one-tap 乱选
 - 新任务创建
-- 附件回复
 - 富文本 compose
 
 ### 具体要求
@@ -280,7 +296,7 @@ Android 只消费稳定的 read model，并按协议输出有限动作。
 
 ### 退出条件
 
-- session detail 中的 reply / status / single-question choice 可以稳定使用
+- session detail 中的 reply / reply attachments / status / single-question choice / structured multi-question answer 可以稳定使用
 - 不会意外 fork 新 thread
 - 不会因 UI 方便而偏离协议
 
@@ -290,7 +306,7 @@ Android 只消费稳定的 read model，并按协议输出有限动作。
 
 ### 目标
 
-让 Android 与 mail_task_manager 的多题协议保持兼容，但不抢跑做复杂 UI。
+让 Android 与 mail_based_task_manager 的多题协议保持兼容，但不抢跑做复杂 UI。
 
 ### 原因
 
@@ -316,11 +332,10 @@ Android read side 先支持：
 
 #### D2 再做写兼容
 
-只在 mail_task_manager 侧多题协议稳定后，Android 再补：
+只在 `mail_based_task_manager` 侧多题协议稳定后，Android 再决定是否继续补：
 
-- 结构化 answers 模板填充
-- 多题 answer body 组装
-- partial answers 的重新编辑与继续发送
+- 更复杂的结构化 answers 模板填充
+- partial answers 编辑与恢复
 
 #### D3 暂不做复杂表单
 
@@ -373,13 +388,13 @@ Android read side 先支持：
 4. 多题协议至少达到 read-compatible
 5. 设备烟测通过
 6. repo 级质量任务通过
-7. 与 mail_task_manager 的协议没有明显分叉
+7. 与 `mail_based_task_manager` 的协议没有明显分叉
 
 ---
 
-## 8. 与 mail_task_manager 的依赖边界
+## 8. 与 `mail_based_task_manager` 的依赖边界
 
-Android 端的改造，不应脱离 mail_task_manager 侧的改造独立进行。
+Android 端的改造，不应脱离 `mail_based_task_manager` 侧的改造独立进行。
 
 ### Android 依赖 mail 侧先收口的部分
 
@@ -404,7 +419,7 @@ Android 端可以先推进到：
 - **host stabilized**
 - **read stable**
 - **single-question interaction stable**
-- **multi-question read-compatible**
+- **multi-question protocol-compatible**
 
 但不应在 mail 侧协议未定时，抢先做复杂多题编辑 UI。
 
@@ -424,7 +439,7 @@ Android 端可以先推进到：
 
 ## 9.2 调整
 
-- 统一当前状态文档
+- 保持当前状态文档与 PC 侧 canonical 协议同步
 - 冻结正式宿主与 route
 - 收窄首期交互面
 - 把多题协议视为正式约束，而不是后补需求
@@ -509,4 +524,3 @@ Android 端当前并不需要推倒重来。
 一句话概括：
 
 > Android TaskMail 应被推进为一个依附共享邮件协议的稳定移动控制面，而不是一个自己发明协议和状态机的第二平台。
-

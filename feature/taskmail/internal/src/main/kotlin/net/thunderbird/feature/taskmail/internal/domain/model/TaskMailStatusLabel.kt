@@ -10,6 +10,7 @@ internal enum class TaskMailStatusLabel(
     Status("[STATUS]"),
     Killed("[KILLED]"),
     Question("[QUESTION]"),
+    Paused("[PAUSED]"),
     ;
 
     companion object {

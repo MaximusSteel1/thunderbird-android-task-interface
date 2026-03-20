@@ -8,4 +8,5 @@ internal data class TaskMailEnvelope(
     val inReplyTo: String? = null,
     val references: List<String> = emptyList(),
     val plainTextBody: String,
+    val htmlBody: String? = null,
 )

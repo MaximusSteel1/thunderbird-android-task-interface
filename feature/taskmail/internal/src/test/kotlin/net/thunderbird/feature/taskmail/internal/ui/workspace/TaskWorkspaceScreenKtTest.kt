@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.ui.workspace
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import assertk.assertThat
@@ -33,6 +34,96 @@ class TaskWorkspaceScreenKtTest {
         }
 
         composeTestRule.onNodeWithText("No TaskMail sessions yet").assertIsDisplayed()
+        composeTestRule.onNodeWithText("New task").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Project list").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should dispatch project list clicked when top bar action is pressed`() {
+        var projectListClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskWorkspaceContent(
+                    state = TaskWorkspaceContract.State(),
+                    onEvent = { event ->
+                        if (event == TaskWorkspaceContract.Event.ProjectListClicked) {
+                            projectListClicked = true
+                        }
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("Project list").performClick()
+
+        assertThat(projectListClicked).isEqualTo(true)
+    }
+
+    @Test
+    fun `content should dispatch new task clicked when top bar action is pressed`() {
+        var newTaskClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskWorkspaceContent(
+                    state = TaskWorkspaceContract.State(),
+                    onEvent = { event ->
+                        if (event == TaskWorkspaceContract.Event.NewTaskClicked) {
+                            newTaskClicked = true
+                        }
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("New task").performClick()
+
+        assertThat(newTaskClicked).isEqualTo(true)
+    }
+
+    @Test
+    fun `content should dispatch project list clicked when empty state CTA is pressed`() {
+        var projectListClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskWorkspaceContent(
+                    state = TaskWorkspaceContract.State(),
+                    onEvent = { event ->
+                        if (event == TaskWorkspaceContract.Event.ProjectListClicked) {
+                            projectListClicked = true
+                        }
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Project list").performClick()
+
+        assertThat(projectListClicked).isEqualTo(true)
+    }
+
+    @Test
+    fun `content should dispatch new task clicked when empty state CTA is pressed`() {
+        var newTaskClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskWorkspaceContent(
+                    state = TaskWorkspaceContract.State(),
+                    onEvent = { event ->
+                        if (event == TaskWorkspaceContract.Event.NewTaskClicked) {
+                            newTaskClicked = true
+                        }
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("New task").performClick()
+
+        assertThat(newTaskClicked).isEqualTo(true)
     }
 
     @Test
@@ -115,5 +206,40 @@ class TaskWorkspaceScreenKtTest {
         composeTestRule.onNodeWithText("Fallback thread session", substring = true).performClick()
 
         assertThat(clickedSessionId).isEqualTo(null)
+    }
+
+    @Test
+    fun `content should show refresh warning without hiding workspace list`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskWorkspaceContent(
+                    state = TaskWorkspaceContract.State(
+                        refreshError = "TaskMail sync did not complete.",
+                        workspaces = listOf(
+                            TaskWorkspaceItemUi(
+                                title = "android_task_manager",
+                                subtitle = "feature/taskmail",
+                                sessionCountLabel = "1 session",
+                                sessions = listOf(
+                                    TaskSessionItemUi(
+                                        sessionId = "session_001",
+                                        threadId = "thread_001",
+                                        sessionName = "Build TaskMail Phase 1",
+                                        status = "WaitingUser",
+                                        backend = "Codex",
+                                        lastSummary = "Parser layer is complete.",
+                                        pendingQuestion = true,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("TaskMail refresh failed").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).assertExists()
     }
 }

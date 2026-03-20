@@ -558,6 +558,12 @@
 
     </PreferenceScreen>
 
+    <Preference
+        android:key="taskmail_bot_mailbox_settings"
+        android:summary="@string/taskmail_bot_mailbox_settings_summary"
+        android:title="@string/taskmail_bot_mailbox_settings_title"
+        />
+
     <PreferenceScreen
         android:icon="@drawable/ic_bug_report"
         android:key="debug_preferences"

@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailRepository
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailBodyExtractor
 import net.thunderbird.feature.taskmail.internal.data.TaskMailMessage
+import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
 import org.junit.Test
 
@@ -33,7 +34,9 @@ internal class TaskMailValidationRunner {
         val jsonSource = JsonMessageSource.fromFile(jsonPath)
         val repository = DefaultTaskMailRepository(
             messageSource = jsonSource,
-            bodyExtractor = LegacyTaskMailBodyExtractor(),
+            sessionProjector = TaskMailSessionProjector(
+                bodyExtractor = LegacyTaskMailBodyExtractor(),
+            ),
         )
 
         val messages = jsonSource.getMessages()

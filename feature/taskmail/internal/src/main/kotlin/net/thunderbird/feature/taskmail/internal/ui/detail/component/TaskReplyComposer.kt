@@ -33,6 +33,7 @@ import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icons
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
+import net.thunderbird.feature.taskmail.internal.ui.detail.TaskPendingQuestionChoiceUi
 
 @Composable
 internal fun TaskReplyComposer(
@@ -278,7 +279,7 @@ private fun buildReplyAttachmentMetadataText(
 
 @Composable
 private fun QuickAnswersSection(
-    quickAnswerChoices: ImmutableList<String>,
+    quickAnswerChoices: ImmutableList<TaskPendingQuestionChoiceUi>,
     isSending: Boolean,
     onSendChoice: (String) -> Unit,
 ) {
@@ -295,9 +296,9 @@ private fun QuickAnswersSection(
     ) {
         quickAnswerChoices.forEach { choice ->
             ButtonOutlined(
-                text = choice,
-                onClick = { onSendChoice(choice) },
-                modifier = Modifier.testTag("TaskReplyComposerChoice_$choice"),
+                text = choice.label,
+                onClick = { onSendChoice(choice.value) },
+                modifier = Modifier.testTag("TaskReplyComposerChoice_${choice.value}"),
                 enabled = !isSending,
             )
         }

@@ -30,6 +30,7 @@ import kotlinx.collections.immutable.ImmutableList
 import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icon
 import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icons
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskBackendBadge
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskStatusBadge
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
@@ -42,6 +43,13 @@ internal fun TimelineMessageCard(
     onOpenAttachment: (String) -> Unit = {},
     onSaveAttachment: (String) -> Unit = {},
 ) {
+    val displaySummary = item.summary
+        ?.takeIf(String::isNotBlank)
+        ?.takeUnless { summary -> shouldHideSummary(summary = summary, plainText = item.plainText) }
+    val richDocument = item.richDocument.takeIf { item.renderMode == TaskBodyRenderMode.RichText }
+    val hasRichBody = richDocument != null
+    val hasVisibleBody = hasRichBody || item.plainText.isNotBlank()
+
     CardOutlined(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -66,7 +74,7 @@ internal fun TimelineMessageCard(
                     TaskStatusBadge(text = it)
                 } ?: TaskBackendBadge(text = item.direction)
             }
-            item.summary?.let {
+            displaySummary?.let {
                 TextBodyMedium(
                     text = it,
                     maxLines = 3,
@@ -74,25 +82,19 @@ internal fun TimelineMessageCard(
                 )
                 DividerHorizontal()
             }
-            if (item.plainText.isNotBlank()) {
-                PlainTextBody(text = item.plainText)
-            }
-            if (item.attachments.isNotEmpty()) {
-                if (item.plainText.isNotBlank()) {
-                    DividerHorizontal()
-                }
-                TimelineAttachments(
-                    attachments = item.attachments,
-                    onOpenAttachment = onOpenAttachment,
-                    onSaveAttachment = onSaveAttachment,
-                )
-            }
+            TimelineMessageContent(
+                item = item,
+                richDocument = richDocument,
+                hasVisibleBody = hasVisibleBody,
+                onOpenAttachment = onOpenAttachment,
+                onSaveAttachment = onSaveAttachment,
+            )
         }
     }
 }
 
 @Composable
-private fun TimelineAttachments(
+internal fun TimelineAttachments(
     attachments: ImmutableList<TaskTimelineAttachmentUi>,
     onOpenAttachment: (String) -> Unit,
     onSaveAttachment: (String) -> Unit,
@@ -256,4 +258,17 @@ private fun formatTimestamp(timestamp: Long): String {
     if (timestamp <= 0L) return "Unknown time"
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return formatter.format(Date(timestamp))
+}
+
+private fun shouldHideSummary(summary: String, plainText: String): Boolean {
+    val normalizedSummary = summary.normalizeForComparison()
+    val normalizedBody = plainText.normalizeForComparison()
+
+    return normalizedSummary.isNotEmpty() &&
+        normalizedBody.isNotEmpty() &&
+        (normalizedBody == normalizedSummary || normalizedBody.startsWith(normalizedSummary))
+}
+
+private fun String.normalizeForComparison(): String {
+    return replace(Regex("\\s+"), " ").trim()
 }

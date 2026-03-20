@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -18,6 +19,7 @@ import net.thunderbird.feature.debug.settings.navigation.SecretDebugSettingsNavi
 import net.thunderbird.feature.debug.settings.navigation.SecretDebugSettingsRoute
 import net.thunderbird.feature.funding.api.FundingNavigation
 import net.thunderbird.feature.taskmail.api.TaskMailNavigation
+import net.thunderbird.feature.taskmail.api.TaskMailNavigationResultKeys
 import net.thunderbird.feature.taskmail.api.TaskMailRoute
 import org.koin.compose.koinInject
 
@@ -156,6 +158,27 @@ private fun NavGraphBuilder.registerTaskMailRoutes(
         onFinish = taskMailOnFinish(
             navigate = { route -> navController.navigate(route) },
         ),
+        onRepoSelected = taskMailOnRepoSelected(
+            isReturningToExistingNewTask = {
+                navController.previousBackStackEntry
+                    ?.destination
+                    ?.hasRoute(TaskMailRoute.NewTask::class) == true
+            },
+            setSelectedRepoPathOnNewTask = { repoPath ->
+                navController.getBackStackEntry(TaskMailRoute.NewTask)
+                    .savedStateHandle
+                    .set(TaskMailNavigationResultKeys.SELECTED_REPO_PATH, repoPath)
+            },
+            popToExistingNewTask = {
+                navController.popBackStack(
+                    TaskMailRoute.NewTask,
+                    inclusive = false,
+                    saveState = false,
+                )
+            },
+            popProjectSync = navController::popBackStack,
+            openNewTask = { navController.navigate(TaskMailRoute.NewTask) },
+        ),
     )
 }
 
@@ -175,5 +198,24 @@ internal fun taskMailOnFinish(
 ): (TaskMailRoute) -> Unit {
     return { route ->
         navigate(route)
+    }
+}
+
+internal fun taskMailOnRepoSelected(
+    isReturningToExistingNewTask: () -> Boolean,
+    setSelectedRepoPathOnNewTask: (String) -> Unit,
+    popToExistingNewTask: () -> Boolean,
+    popProjectSync: () -> Boolean,
+    openNewTask: () -> Unit,
+): (String) -> Unit {
+    return { repoPath ->
+        if (isReturningToExistingNewTask()) {
+            setSelectedRepoPathOnNewTask(repoPath)
+            popToExistingNewTask()
+        } else {
+            popProjectSync()
+            openNewTask()
+            setSelectedRepoPathOnNewTask(repoPath)
+        }
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import app.k9mail.core.android.common.activity.CreateDocumentResultContract
 import net.thunderbird.core.ui.contract.mvi.observe
+import net.thunderbird.feature.taskmail.internal.ui.TaskMailForegroundRefreshLifecycleEffect
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -70,6 +71,11 @@ internal fun TaskSessionDetailScreen(
             ),
         )
     }
+
+    TaskMailForegroundRefreshLifecycleEffect(
+        onStart = { dispatch(TaskSessionDetailContract.Event.ForegroundRefreshStarted) },
+        onStop = { dispatch(TaskSessionDetailContract.Event.ForegroundRefreshStopped) },
+    )
 
     TaskSessionDetailContent(
         state = state.value,

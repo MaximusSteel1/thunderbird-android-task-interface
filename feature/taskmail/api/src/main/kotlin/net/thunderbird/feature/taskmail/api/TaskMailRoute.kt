@@ -28,6 +28,33 @@ sealed interface TaskMailRoute : Route {
         }
     }
 
+    @Serializable
+    data object NewTask : TaskMailRoute {
+        override val basePath: String = BASE_PATH
+
+        override fun route(): String = basePath
+
+        const val BASE_PATH = "$TASKMAIL_BASE_PATH/new-task"
+    }
+
+    @Serializable
+    data object ProjectSync : TaskMailRoute {
+        override val basePath: String = BASE_PATH
+
+        override fun route(): String = basePath
+
+        const val BASE_PATH = "$TASKMAIL_BASE_PATH/project-sync"
+    }
+
+    @Serializable
+    data object Settings : TaskMailRoute {
+        override val basePath: String = BASE_PATH
+
+        override fun route(): String = basePath
+
+        const val BASE_PATH = "$TASKMAIL_BASE_PATH/settings"
+    }
+
     companion object {
         const val TASKMAIL_BASE_PATH = "app://taskmail"
     }

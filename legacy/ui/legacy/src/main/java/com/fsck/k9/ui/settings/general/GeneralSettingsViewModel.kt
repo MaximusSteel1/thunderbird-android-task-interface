@@ -99,6 +99,13 @@ class GeneralSettingsViewModel(
         }
     }
 
+    fun onOpenTaskMailBotMailboxSettings(context: Context) {
+        FeatureLauncherActivity.launch(
+            context = context,
+            target = FeatureLauncherTarget.TaskMailSettings,
+        )
+    }
+
     companion object {
         const val DEFAULT_FILENAME = "k9mail-logs.txt"
         const val SNACKBAR_DURATION = 3000L

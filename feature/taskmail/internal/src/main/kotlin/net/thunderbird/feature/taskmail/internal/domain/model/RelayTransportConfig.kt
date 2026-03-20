@@ -1,0 +1,56 @@
+package net.thunderbird.feature.taskmail.internal.domain.model
+
+import java.security.MessageDigest
+
+internal data class RelayTransportConfig(
+    val enabled: Boolean = false,
+    val host: String = DEFAULT_HOST,
+    val port: Int = DEFAULT_PORT,
+    val useTls: Boolean = DEFAULT_USE_TLS,
+    val path: String = DEFAULT_PATH,
+    val transportToken: String = "",
+) {
+    fun healthUrl(): String {
+        return "${httpScheme()}://$host:$port/healthz"
+    }
+
+    fun relayUrl(): String {
+        return "${websocketScheme()}://$host:$port${normalizedPath()}"
+    }
+
+    fun isConfigured(): Boolean {
+        return host.isNotBlank() && port > 0 && transportToken.isNotBlank()
+    }
+
+    fun tokenFingerprint(): String? {
+        val token = transportToken.trim().takeIf(String::isNotBlank) ?: return null
+        val digest = MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
+        return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+            .take(TOKEN_FINGERPRINT_LENGTH)
+    }
+
+    fun normalized(): RelayTransportConfig {
+        return copy(
+            host = host.trim(),
+            path = normalizedPath(),
+            transportToken = transportToken.trim(),
+        )
+    }
+
+    private fun httpScheme(): String = if (useTls) "https" else "http"
+
+    private fun websocketScheme(): String = if (useTls) "wss" else "ws"
+
+    private fun normalizedPath(): String {
+        val trimmed = path.trim().ifEmpty { DEFAULT_PATH }
+        return if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+    }
+
+    companion object {
+        const val DEFAULT_HOST = "124.223.41.153"
+        const val DEFAULT_PORT = 8787
+        const val DEFAULT_USE_TLS = false
+        const val DEFAULT_PATH = "/relay"
+        private const val TOKEN_FINGERPRINT_LENGTH = 12
+    }
+}

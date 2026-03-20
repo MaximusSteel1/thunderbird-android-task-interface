@@ -671,7 +671,7 @@ open class MessageHomeActivity :
             openUnifiedFolder = { openUnifiedFolders() },
             openManageFolders = { launchManageFoldersScreen() },
             openSettings = { SettingsActivity.launch(this) },
-            openTasks = { FeatureLauncherActivity.launch(this, FeatureLauncherTarget.TaskMail) },
+            openTasks = { startActivity(createTaskMailDrawerIntent(this)) },
             createDrawerListener = { createDrawerListener() },
         )
     }
@@ -1701,4 +1701,8 @@ open class MessageHomeActivity :
 
 private fun Intent.hasByteArrayExtra(name: String): Boolean {
     return getByteArrayExtra(name) != null
+}
+
+internal fun createTaskMailDrawerIntent(context: Context): Intent {
+    return FeatureLauncherActivity.getIntent(context, FeatureLauncherTarget.TaskMail)
 }

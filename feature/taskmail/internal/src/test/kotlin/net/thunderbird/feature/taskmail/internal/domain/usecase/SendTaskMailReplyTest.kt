@@ -7,7 +7,7 @@ import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
-import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyKind
+import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyMode
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySender
@@ -33,7 +33,7 @@ class SendTaskMailReplyTest {
             TaskMailReplyRequest(
                 context = replyContext(),
                 body = "  keep whitespace  ",
-                kind = TaskMailReplyKind.FreeText,
+                mode = TaskMailReplyMode.ContinueSession,
             ),
         )
     }
@@ -57,7 +57,7 @@ class SendTaskMailReplyTest {
             TaskMailReplyRequest(
                 context = replyContext(),
                 body = "yes",
-                kind = TaskMailReplyKind.QuestionChoice,
+                mode = TaskMailReplyMode.AnswerSingleQuestion,
             ),
         )
     }
@@ -81,7 +81,31 @@ class SendTaskMailReplyTest {
             TaskMailReplyRequest(
                 context = replyContext(),
                 body = "Answers:\nphase2_entry_position: below",
-                kind = TaskMailReplyKind.StructuredAnswers,
+                mode = TaskMailReplyMode.AnswerMultiQuestion,
+            ),
+        )
+    }
+
+    @Test
+    fun `sendResumeSession should prepend slash resume to the draft text`() = runTest {
+        // Arrange
+        val sender = FakeTaskMailReplySender()
+        val testSubject = SendTaskMailReply(sender)
+
+        // Act
+        val result = testSubject.sendResumeSession(
+            context = replyContext(),
+            draftText = "Please continue with the cleanup.",
+        )
+
+        // Assert
+        assertThat(result).isEqualTo(TaskMailReplyResult.success())
+        assertThat(sender.requests).hasSize(1)
+        assertThat(sender.requests.single()).isEqualTo(
+            TaskMailReplyRequest(
+                context = replyContext(),
+                body = "/resume\nPlease continue with the cleanup.",
+                mode = TaskMailReplyMode.ResumeSession,
             ),
         )
     }
@@ -102,7 +126,7 @@ class SendTaskMailReplyTest {
             TaskMailReplyRequest(
                 context = replyContext(),
                 body = "/status",
-                kind = TaskMailReplyKind.StatusQuery,
+                mode = TaskMailReplyMode.StatusQuery,
             ),
         )
     }

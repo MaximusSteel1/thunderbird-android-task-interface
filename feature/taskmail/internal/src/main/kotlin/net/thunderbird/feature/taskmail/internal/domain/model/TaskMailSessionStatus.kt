@@ -4,6 +4,7 @@ internal enum class TaskMailSessionStatus {
     Queued,
     Running,
     WaitingUser,
+    Paused,
     Done,
     Failed,
     Killed,
@@ -16,6 +17,7 @@ internal enum class TaskMailSessionStatus {
                 "accepted", "queued" -> Queued
                 "running" -> Running
                 "awaiting_user_input", "question", "waiting_user", "waiting_user_input" -> WaitingUser
+                "paused" -> Paused
                 "done" -> Done
                 "failed" -> Failed
                 "killed" -> Killed

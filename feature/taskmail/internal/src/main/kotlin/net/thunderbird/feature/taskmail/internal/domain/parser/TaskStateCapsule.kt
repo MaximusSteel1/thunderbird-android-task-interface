@@ -1,6 +1,7 @@
 package net.thunderbird.feature.taskmail.internal.domain.parser
 
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 
 internal data class TaskStateCapsule(
@@ -14,5 +15,9 @@ internal data class TaskStateCapsule(
     val workdir: String? = null,
     val mode: String? = null,
     val status: TaskMailSessionStatus? = null,
+    val lifecycle: TaskMailSessionLifecycle? = null,
+    val pausedFromStatus: TaskMailSessionStatus? = null,
+    val lastActiveAt: String? = null,
+    val lastProgressAt: String? = null,
     val lastSummary: String? = null,
 )

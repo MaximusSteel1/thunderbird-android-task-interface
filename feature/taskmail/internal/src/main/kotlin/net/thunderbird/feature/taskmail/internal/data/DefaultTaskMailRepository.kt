@@ -3,9 +3,13 @@
 package net.thunderbird.feature.taskmail.internal.data
 
 import java.io.File
+import kotlin.math.abs
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailStatusLabel
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
@@ -20,14 +24,30 @@ import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsu
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskStateCapsule
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 
-@Suppress("TooManyFunctions")
 internal class DefaultTaskMailRepository(
     private val messageSource: TaskMailMessageSource,
-    private val bodyExtractor: LegacyTaskMailBodyExtractor = LegacyTaskMailBodyExtractor(),
+    private val sessionProjector: TaskMailSessionProjector = TaskMailSessionProjector(),
 ) : TaskMailRepository {
 
     override suspend fun getTaskWorkspaceSummaries(): List<TaskWorkspaceSummary> {
-        return buildSessionRecords()
+        return sessionProjector.projectWorkspaceSummaries(messageSource.getMessages())
+    }
+
+    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
+        return sessionProjector.projectSessionDetail(
+            messages = messageSource.getMessages(),
+            key = key,
+        )
+    }
+}
+
+@Suppress("TooManyFunctions")
+internal class TaskMailSessionProjector(
+    private val bodyExtractor: LegacyTaskMailBodyExtractor = LegacyTaskMailBodyExtractor(),
+    private val richTextProjector: TaskMailRichTextProjector = TaskMailRichTextProjector(),
+) {
+    fun projectWorkspaceSummaries(messages: List<TaskMailMessage>): List<TaskWorkspaceSummary> {
+        return buildSessionRecords(messages)
             .groupBy(SessionRecord::workspace)
             .values
             .map(::toWorkspaceSummary)
@@ -36,12 +56,30 @@ internal class DefaultTaskMailRepository(
             }
     }
 
-    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
-        return buildSessionRecords().firstOrNull { it.sessionKey == key }?.toDetail()
+    fun projectSessionDetail(
+        messages: List<TaskMailMessage>,
+        key: TaskSessionKey,
+    ): TaskSessionDetail? {
+        return buildSessionRecords(messages).firstOrNull { it.sessionKey == key }?.toDetail()
     }
 
-    private suspend fun buildSessionRecords(): List<SessionRecord> {
-        val physicalThreads = messageSource.getMessages()
+    fun projectSessionDetails(messages: List<TaskMailMessage>): List<TaskSessionDetail> {
+        return buildSessionRecords(messages).map { sessionRecord -> sessionRecord.toDetail() }
+    }
+
+    fun projectSessionDetails(
+        messages: List<TaskMailMessage>,
+        keys: Set<TaskSessionKey>,
+    ): List<TaskSessionDetail> {
+        if (keys.isEmpty()) return emptyList()
+
+        return buildSessionRecords(messages)
+            .filter { sessionRecord -> sessionRecord.sessionKey in keys }
+            .map { sessionRecord -> sessionRecord.toDetail() }
+    }
+
+    private fun buildSessionRecords(messages: List<TaskMailMessage>): List<SessionRecord> {
+        val physicalThreads = preferredMailboxMessages(messages)
             .groupBy { message ->
                 PhysicalThreadKey(
                     accountUuid = message.accountUuid,
@@ -59,7 +97,7 @@ internal class DefaultTaskMailRepository(
     }
 
     private fun buildLogicalThreadRecord(messages: List<TaskMailMessage>): LogicalThreadRecord? {
-        val sortedMessages = messages.sortedWith(messageComparator)
+        val sortedMessages = messages.sortedWith(TASK_MAIL_MESSAGE_COMPARATOR)
         val latestState = sortedMessages.lastMappedNotNull { it.detection.stateCapsule }
         val sessionId = latestState?.sessionId
             ?: sortedMessages.lastMappedNotNull { it.detection.parsedSubject.sessionIdFromSubject }
@@ -77,9 +115,9 @@ internal class DefaultTaskMailRepository(
     }
 
     private fun buildSessionRecord(threadRecords: List<LogicalThreadRecord>): SessionRecord? {
-        val sortedMessages = threadRecords
-            .flatMap(LogicalThreadRecord::messages)
-            .sortedWith(messageComparator)
+        val sortedMessages = dedupeMessages(
+            threadRecords.flatMap(LogicalThreadRecord::messages),
+        )
         val latestState = sortedMessages.lastMappedNotNull { it.detection.stateCapsule }
         val representative = resolveRepresentative(
             sortedMessages = sortedMessages,
@@ -88,6 +126,7 @@ internal class DefaultTaskMailRepository(
         val timeline = buildTimeline(
             messages = sortedMessages,
             bodyExtractor = bodyExtractor,
+            richTextProjector = richTextProjector,
         )
         val metadata = buildSessionRecordMetadata(
             sortedMessages = sortedMessages,
@@ -102,9 +141,13 @@ internal class DefaultTaskMailRepository(
             sessionName = metadata.sessionName,
             backend = metadata.backend,
             status = metadata.status,
+            lifecycle = metadata.lifecycle,
             repoPath = metadata.repoPath,
             workdir = metadata.workdir,
             lastSummary = metadata.lastSummary,
+            pausedFromStatus = metadata.pausedFromStatus,
+            lastActiveAt = metadata.lastActiveAt,
+            lastProgressAt = metadata.lastProgressAt,
             pendingQuestions = resolvePendingQuestions(sortedMessages),
             replyContext = buildReplyContext(sortedMessages),
             timeline = timeline,
@@ -113,6 +156,7 @@ internal class DefaultTaskMailRepository(
     }
 
     private fun toWorkspaceSummary(records: List<SessionRecord>): TaskWorkspaceSummary {
+        val primaryRecord = records.maxByOrNull(SessionRecord::lastUpdatedAt) ?: records.first()
         val sessions = records
             .sortedByDescending(SessionRecord::lastUpdatedAt)
             .map { record ->
@@ -120,21 +164,24 @@ internal class DefaultTaskMailRepository(
                     key = record.sessionKey,
                     sessionName = record.sessionName,
                     status = record.status,
+                    lifecycle = record.lifecycle,
                     backend = record.backend,
                     lastSummary = record.lastSummary,
+                    lastActiveAt = record.lastActiveAt,
+                    lastProgressAt = record.lastProgressAt,
                     lastUpdatedAt = record.lastUpdatedAt,
                     pendingQuestion = record.pendingQuestions.isNotEmpty(),
                 )
             }
 
-        val workspace = records.first().workspace
+        val workspace = primaryRecord.workspace
 
         return TaskWorkspaceSummary(
             key = workspace,
             title = workspace.workspaceId
                 ?: workspace.repoPath.takeIf { it.isNotBlank() }?.let(::deriveWorkspaceTitle)
                 ?: "Task workspace",
-            subtitle = workspace.workdir,
+            subtitle = primaryRecord.workdir,
             backendSet = records.map(SessionRecord::backend).toSet(),
             activeSessionId = sessions.firstOrNull()?.key?.sessionId,
             sessionCount = sessions.size,
@@ -149,9 +196,13 @@ internal class DefaultTaskMailRepository(
             sessionName = sessionName,
             backend = backend,
             status = status,
+            lifecycle = lifecycle,
             repoPath = repoPath,
             workdir = workdir,
             lastSummary = lastSummary,
+            pausedFromStatus = pausedFromStatus,
+            lastActiveAt = lastActiveAt,
+            lastProgressAt = lastProgressAt,
             question = pendingQuestions.lastOrNull(),
             pendingQuestions = pendingQuestions,
             replyContext = replyContext,
@@ -196,18 +247,18 @@ internal class DefaultTaskMailRepository(
         val sessionName: String,
         val backend: TaskMailBackend,
         val status: TaskMailSessionStatus,
+        val lifecycle: TaskMailSessionLifecycle?,
         val repoPath: String,
         val workdir: String?,
         val lastSummary: String?,
+        val pausedFromStatus: TaskMailSessionStatus?,
+        val lastActiveAt: String?,
+        val lastProgressAt: String?,
         val pendingQuestions: List<TaskQuestionCapsule>,
         val replyContext: TaskSessionReplyContext?,
         val timeline: List<TaskTimelineItem>,
         val lastUpdatedAt: Long,
     )
-
-    private companion object {
-        val messageComparator = compareBy<TaskMailMessage>({ it.timestamp }, { it.messageServerId })
-    }
 }
 
 private data class SessionRecordMetadata(
@@ -216,9 +267,13 @@ private data class SessionRecordMetadata(
     val sessionName: String,
     val backend: TaskMailBackend,
     val status: TaskMailSessionStatus,
+    val lifecycle: TaskMailSessionLifecycle?,
     val repoPath: String,
     val workdir: String?,
     val lastSummary: String?,
+    val pausedFromStatus: TaskMailSessionStatus?,
+    val lastActiveAt: String?,
+    val lastProgressAt: String?,
 )
 
 private fun deriveWorkspaceTitle(repoPath: String): String {
@@ -226,9 +281,10 @@ private fun deriveWorkspaceTitle(repoPath: String): String {
 }
 
 private fun resolvePendingQuestions(messages: List<TaskMailMessage>): List<TaskQuestionCapsule> {
-    return messages.lastMappedNotNull { message ->
-        message.detection.effectiveQuestionCapsules().takeIf { it.isNotEmpty() }
-    }.orEmpty()
+    return messages.lastOrNull { it.detection.isSystemMessage }
+        ?.detection
+        ?.effectiveQuestionCapsules()
+        .orEmpty()
 }
 
 private fun resolveRepresentative(
@@ -243,25 +299,42 @@ private fun resolveRepresentative(
 private fun buildTimeline(
     messages: List<TaskMailMessage>,
     bodyExtractor: LegacyTaskMailBodyExtractor,
+    richTextProjector: TaskMailRichTextProjector,
 ): List<TaskTimelineItem> {
     return messages.map { message ->
+        val timelineAttachments = message.attachments
+            .filter(TaskMessageAttachment::shouldDisplayInTaskTimeline)
+            .deduplicateForTaskTimeline()
         val plainText = extractTimelinePlainText(
             message = message,
             bodyExtractor = bodyExtractor,
         )
+        val richDocument = message.htmlBody?.let { htmlBody ->
+            richTextProjector.project(
+                html = htmlBody,
+                attachments = timelineAttachments,
+            )
+        }
+        val displaySummary = sanitizeDisplaySummary(message.detection.stateCapsule?.lastSummary)
+            ?: plainText.takeIf { it.isNotBlank() }
 
         TaskTimelineItem(
             id = "${message.accountUuid}:${message.folderId}:${message.messageServerId}",
             timestamp = message.timestamp,
             direction = message.toTimelineDirection(),
-            statusLabel = message.detection.parsedSubject.statusLabel,
-            summary = message.detection.stateCapsule?.lastSummary
-                ?: plainText.takeIf { it.isNotBlank() },
+            statusLabel = message.timelineStatusLabel(),
+            summary = displaySummary,
             body = TaskMessageBody(
-                plainText = plainText,
-                markdownCandidate = false,
+                plainTextFallback = plainText,
+                renderMode = if (richDocument != null) {
+                    TaskBodyRenderMode.RichText
+                } else {
+                    TaskBodyRenderMode.PlainTextOnly
+                },
+                richDocument = richDocument,
+                sourceHtml = message.htmlBody,
             ),
-            attachments = message.attachments,
+            attachments = timelineAttachments,
         )
     }
 }
@@ -285,12 +358,18 @@ private fun buildSessionRecordMetadata(
 ): SessionRecordMetadata {
     val sessionId = latestState?.sessionId
         ?: sortedMessages.lastMappedNotNull { it.detection.parsedSubject.sessionIdFromSubject }
+    val workspaceId = latestState?.workspaceId?.trim()?.takeIf { it.isNotBlank() }
     val repoPath = latestState?.repoPath.orEmpty()
-    val workdir = latestState?.workdir
-    val workspace = TaskWorkspaceKey(
-        workspaceId = latestState?.workspaceId,
-        repoPath = repoPath.ifBlank { representative },
-        workdir = workdir,
+    val normalizedRepoPath = normalizeWorkspacePath(repoPath)
+    val workdir = latestState?.workdir?.trim()?.takeIf { it.isNotBlank() }
+    val normalizedWorkdir = normalizeWorkspaceWorkdir(workdir)
+    val displayLastSummary = sanitizeDisplaySummary(latestState?.lastSummary)
+        ?: timeline.lastMappedNotNull(TaskTimelineItem::summary)
+    val workspace = buildWorkspaceKey(
+        workspaceId = workspaceId,
+        repoPath = normalizedRepoPath,
+        representative = representative,
+        workdir = normalizedWorkdir,
     )
 
     return SessionRecordMetadata(
@@ -309,13 +388,58 @@ private fun buildSessionRecordMetadata(
             ?: sortedMessages.lastMappedNotNull { it.detection.parsedSubject.backend }
             ?: TaskMailBackend.Codex,
         status = latestState?.status
-            ?: sortedMessages.lastMappedNotNull { it.detection.parsedSubject.statusLabel?.toSessionStatus() }
+            ?: sortedMessages.lastMappedNotNull { it.timelineStatusLabel()?.toSessionStatus() }
             ?: TaskMailSessionStatus.Unknown,
-        repoPath = repoPath.ifBlank { workspace.repoPath },
+        lifecycle = latestState?.lifecycle,
+        repoPath = repoPath.ifBlank { representative },
         workdir = workdir,
-        lastSummary = latestState?.lastSummary
-            ?: timeline.lastMappedNotNull(TaskTimelineItem::summary),
+        pausedFromStatus = latestState?.pausedFromStatus,
+        lastSummary = displayLastSummary,
+        lastActiveAt = latestState?.lastActiveAt?.trim()?.takeIf(String::isNotBlank),
+        lastProgressAt = latestState?.lastProgressAt?.trim()?.takeIf(String::isNotBlank),
     )
+}
+
+private fun buildWorkspaceKey(
+    workspaceId: String?,
+    repoPath: String?,
+    representative: String,
+    workdir: String?,
+): TaskWorkspaceKey {
+    return when {
+        repoPath != null -> TaskWorkspaceKey(
+            workspaceId = null,
+            repoPath = repoPath,
+            workdir = workdir,
+        )
+
+        workspaceId != null -> TaskWorkspaceKey(
+            workspaceId = workspaceId,
+            repoPath = workspaceId,
+            workdir = null,
+        )
+
+        else -> TaskWorkspaceKey(
+            workspaceId = null,
+            repoPath = representative,
+            workdir = null,
+        )
+    }
+}
+
+private fun normalizeWorkspacePath(path: String?): String? {
+    val normalized = path
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.replace('\\', '/')
+        ?.trimEnd('/')
+
+    return normalized?.takeIf { it.isNotBlank() }
+}
+
+private fun normalizeWorkspaceWorkdir(workdir: String?): String? {
+    return normalizeWorkspacePath(workdir)
+        ?.takeUnless { it == "." }
 }
 
 private fun resolveSessionName(
@@ -341,6 +465,10 @@ private fun TaskMailMessage.toTimelineDirection(): TaskTimelineDirection {
     }
 }
 
+private fun TaskMailMessage.timelineStatusLabel(): TaskMailStatusLabel? {
+    return detection.parsedSubject.statusLabel?.takeIf { detection.isSystemMessage }
+}
+
 private fun TaskMailDetection.effectiveQuestionCapsules(): List<TaskQuestionCapsule> {
     return if (questionCapsules.isNotEmpty()) {
         questionCapsules
@@ -358,6 +486,7 @@ private fun TaskMailStatusLabel.toSessionStatus(): TaskMailSessionStatus {
         TaskMailStatusLabel.Status -> TaskMailSessionStatus.Unknown
         TaskMailStatusLabel.Killed -> TaskMailSessionStatus.Killed
         TaskMailStatusLabel.Question -> TaskMailSessionStatus.WaitingUser
+        TaskMailStatusLabel.Paused -> TaskMailSessionStatus.Paused
     }
 }
 
@@ -376,3 +505,201 @@ private inline fun <T, R : Any> List<T>.firstMappedNotNull(transform: (T) -> R?)
 
     return null
 }
+
+private fun preferredMailboxMessages(messages: List<TaskMailMessage>): List<TaskMailMessage> {
+    val messagesByAccount = messages.groupBy(TaskMailMessage::accountUuid)
+    val botLikeAccounts = messagesByAccount
+        .takeIf { it.size > 1 }
+        ?.filterValues(::looksLikeBotMailboxAccount)
+        ?.keys
+        .orEmpty()
+    val preferredMessages = messages.takeUnless { botLikeAccounts.isNotEmpty() }
+        ?: messages.filterNot { it.accountUuid in botLikeAccounts }
+
+    // Preserve the legacy single-account fallback if every configured TaskMail account looks service-side.
+    return if (preferredMessages.isNotEmpty()) preferredMessages else messages
+}
+
+private fun looksLikeBotMailboxAccount(messages: List<TaskMailMessage>): Boolean {
+    return messages.any(TaskMailMessage::looksLikeBotMailboxTraffic)
+}
+
+private fun TaskMailMessage.looksLikeBotMailboxTraffic(): Boolean {
+    return when {
+        detection.isSystemMessage && isFromCurrentUser -> true
+        !detection.isSystemMessage && !detection.parsedSubject.isReplyLike && !isFromCurrentUser -> true
+        else -> false
+    }
+}
+
+private fun dedupeMessages(messages: List<TaskMailMessage>): List<TaskMailMessage> {
+    val deduped = mutableListOf<TaskMailMessage>()
+
+    messages.sortedWith(TASK_MAIL_MESSAGE_COMPARATOR).forEach { candidate ->
+        val existingIndex = deduped.indexOfFirst { existing ->
+            existing.isEquivalentTimelineMessage(candidate)
+        }
+
+        if (existingIndex >= 0) {
+            deduped[existingIndex] = preferredDuplicateMessage(
+                first = deduped[existingIndex],
+                second = candidate,
+            )
+        } else {
+            deduped += candidate
+        }
+    }
+
+    return deduped.sortedWith(TASK_MAIL_MESSAGE_COMPARATOR)
+}
+
+private fun TaskMailMessage.isEquivalentTimelineMessage(other: TaskMailMessage): Boolean {
+    val normalizedBody = rawBodyText.normalizeForDuplicateComparison()
+    val otherNormalizedBody = other.rawBodyText.normalizeForDuplicateComparison()
+    val matchesMessageIdentity = accountUuid == other.accountUuid &&
+        isFromCurrentUser == other.isFromCurrentUser &&
+        detection.isSystemMessage == other.detection.isSystemMessage
+    val sharesInternetMessageId = hasEquivalentInternetMessageId(other)
+    val hasComparableBodies = normalizedBody.isNotBlank() && otherNormalizedBody.isNotBlank()
+    val matchesBodyContent = normalizedBody == otherNormalizedBody ||
+        normalizedBody.startsWith(otherNormalizedBody) ||
+        otherNormalizedBody.startsWith(normalizedBody)
+    val matchesFallbackDuplicateSignals = hasEquivalentTimestamp(other) &&
+        subject.trim() == other.subject.trim() &&
+        hasComparableBodies &&
+        matchesBodyContent
+
+    return matchesMessageIdentity && (sharesInternetMessageId || matchesFallbackDuplicateSignals)
+}
+
+private fun TaskMailMessage.hasEquivalentInternetMessageId(other: TaskMailMessage): Boolean {
+    val normalizedInternetMessageId = internetMessageId.normalizeInternetMessageId()
+
+    return normalizedInternetMessageId != null &&
+        normalizedInternetMessageId == other.internetMessageId.normalizeInternetMessageId()
+}
+
+private fun TaskMailMessage.hasEquivalentTimestamp(other: TaskMailMessage): Boolean {
+    val timestampsMatchExactly = timestamp == other.timestamp
+    val isWithinDuplicateWindow = abs(timestamp - other.timestamp) <= DUPLICATE_MESSAGE_TIMESTAMP_WINDOW_MS
+    val hasRelaxedDuplicateSignal = hasEquivalentAttachmentSignature(other) || hasEquivalentTaskContext(other)
+
+    return timestampsMatchExactly || (isWithinDuplicateWindow && hasRelaxedDuplicateSignal)
+}
+
+private fun TaskMailMessage.hasEquivalentAttachmentSignature(other: TaskMailMessage): Boolean {
+    return attachments.isNotEmpty() &&
+        attachments.toDuplicateComparableAttachments() == other.attachments.toDuplicateComparableAttachments()
+}
+
+private fun TaskMailMessage.hasEquivalentTaskContext(other: TaskMailMessage): Boolean {
+    val taskId = detection.stateCapsule?.taskId
+
+    return taskId != null && taskId == other.detection.stateCapsule?.taskId
+}
+
+private fun List<TaskMessageAttachment>.toDuplicateComparableAttachments(): List<DuplicateComparableAttachment> {
+    return map { attachment ->
+        DuplicateComparableAttachment(
+            displayName = attachment.displayName,
+            contentType = attachment.contentType,
+            sizeBytes = attachment.sizeBytes,
+            isInline = attachment.isInline,
+            isImage = attachment.isImage,
+            partId = attachment.partId,
+        )
+    }
+}
+
+private fun preferredDuplicateMessage(
+    first: TaskMailMessage,
+    second: TaskMailMessage,
+): TaskMailMessage {
+    return listOf(first, second).maxWithOrNull(
+        compareBy<TaskMailMessage>(
+            { duplicateMessageScore(it) },
+            { it.messageServerId },
+        ),
+    ) ?: first
+}
+
+private fun duplicateMessageScore(message: TaskMailMessage): Int {
+    return buildList {
+        add(if (message.detection.stateCapsule != null) DUPLICATE_MESSAGE_STATE_CAPSULE_SCORE else 0)
+        add(message.attachments.size * DUPLICATE_MESSAGE_ATTACHMENT_WEIGHT)
+        add(message.rawBodyText.normalizeForDuplicateComparison().length)
+    }.sum()
+}
+
+private fun String.normalizeForDuplicateComparison(): String {
+    return replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .removeSuffix("...")
+        .removeSuffix("..")
+        .removeSuffix("\u2026")
+        .trim()
+}
+
+private fun String?.normalizeInternetMessageId(): String? {
+    return this
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.lowercase()
+}
+
+private val TASK_MAIL_MESSAGE_COMPARATOR = compareBy<TaskMailMessage>({ it.timestamp }, { it.messageServerId })
+
+private const val DUPLICATE_MESSAGE_STATE_CAPSULE_SCORE = 1_000_000
+private const val DUPLICATE_MESSAGE_ATTACHMENT_WEIGHT = 10_000
+private const val DUPLICATE_MESSAGE_TIMESTAMP_WINDOW_MS = 60_000L
+
+private fun sanitizeDisplaySummary(summary: String?): String? {
+    val normalizedSummary = summary
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?: return null
+
+    val structuredTokenMatches = DISPLAY_SUMMARY_STRUCTURED_TOKENS.count { token ->
+        normalizedSummary.contains(token, ignoreCase = true)
+    }
+
+    return normalizedSummary.takeUnless {
+        normalizedSummary.contains("---TASK-STATE-BEGIN---", ignoreCase = true) ||
+            normalizedSummary.contains("---TASK-QUESTION-BEGIN---", ignoreCase = true) ||
+            structuredTokenMatches >= DISPLAY_SUMMARY_STRUCTURED_TOKEN_THRESHOLD
+    }
+}
+
+private val DISPLAY_SUMMARY_STRUCTURED_TOKENS = listOf(
+    "Status:",
+    "Session ID:",
+    "Thread ID:",
+    "Task ID:",
+    "Backend:",
+    "Repo:",
+    "Workdir:",
+    "thread_id:",
+    "workspace_id:",
+    "session_id:",
+    "session_name:",
+    "task_id:",
+    "backend:",
+    "repo_path:",
+    "workdir:",
+    "mode:",
+    "status:",
+    "last_summary:",
+)
+
+private const val DISPLAY_SUMMARY_STRUCTURED_TOKEN_THRESHOLD = 3
+
+private data class DuplicateComparableAttachment(
+    val displayName: String,
+    val contentType: String?,
+    val sizeBytes: Long?,
+    val isInline: Boolean,
+    val isImage: Boolean,
+    val partId: Long?,
+)

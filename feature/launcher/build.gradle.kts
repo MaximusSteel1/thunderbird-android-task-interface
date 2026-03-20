@@ -5,6 +5,12 @@ plugins {
 android {
     namespace = "app.k9mail.feature.launcher"
     resourcePrefix = "launcher_"
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {

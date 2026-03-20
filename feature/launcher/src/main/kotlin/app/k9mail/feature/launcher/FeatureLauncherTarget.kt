@@ -59,4 +59,8 @@ sealed class FeatureLauncherTarget(
     data object TaskMail : FeatureLauncherTarget(
         deepLinkUri = TaskMailRoute.Workspace.route().toUri(),
     )
+
+    data object TaskMailSettings : FeatureLauncherTarget(
+        deepLinkUri = TaskMailRoute.Settings.route().toUri(),
+    )
 }

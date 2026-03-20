@@ -18,7 +18,11 @@ import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,7 +59,10 @@ class TaskSessionDetailScreenKtTest {
                                     ),
                                 ),
                             ),
-                            quickAnswerChoices = persistentListOf("yes", "no"),
+                            quickAnswerChoices = persistentListOf(
+                                TaskPendingQuestionChoiceUi(value = "yes"),
+                                TaskPendingQuestionChoiceUi(value = "no"),
+                            ),
                             timeline = persistentListOf(
                                 TaskTimelineItemUi(
                                     id = "timeline_001",
@@ -85,6 +92,56 @@ class TaskSessionDetailScreenKtTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
         composeTestRule.onNodeWithText("Parser layer is complete. Waiting for the next step.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should render rich text timeline body when rich document is available`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(
+                            timeline = persistentListOf(
+                                TaskTimelineItemUi(
+                                    id = "timeline_rich_001",
+                                    timestamp = 1L,
+                                    direction = "System",
+                                    statusLabel = "Done",
+                                    summary = "Rich projection available",
+                                    plainText = "Fallback plain text",
+                                    renderMode = TaskBodyRenderMode.RichText,
+                                    richDocument = TaskRichTextDocument(
+                                        blocks = listOf(
+                                            TaskRichTextBlock.Heading(
+                                                level = 2,
+                                                inlines = listOf(TaskRichTextInline.Text("Rendered heading")),
+                                            ),
+                                            TaskRichTextBlock.Paragraph(
+                                                inlines = listOf(
+                                                    TaskRichTextInline.Text("Rendered paragraph with "),
+                                                    TaskRichTextInline.Strong("rich text"),
+                                                    TaskRichTextInline.Text("."),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskRichTextBody"))
+
+        composeTestRule.onNodeWithText("Rendered heading").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Rendered paragraph with rich text.").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Fallback plain text").assertCountEquals(0)
     }
 
     @Test
@@ -201,6 +258,33 @@ class TaskSessionDetailScreenKtTest {
     }
 
     @Test
+    fun `content should show refresh failure without clearing detail content`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        refreshError = "Failed to refresh TaskMail session detail.",
+                        detail = replyCapableDetail(),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("TaskMail update failed"))
+
+        composeTestRule.onAllNodesWithText("TaskMail update failed").assertCountEquals(1)
+        composeTestRule.onAllNodesWithText("Failed to refresh TaskMail session detail.").assertCountEquals(1)
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
+        composeTestRule.onAllNodesWithText("Parser layer is complete. Waiting for the next step.").assertCountEquals(1)
+    }
+
+    @Test
     fun `content should render timeline attachments`() {
         composeTestRule.setContent {
             K9MailTheme2 {
@@ -244,6 +328,38 @@ class TaskSessionDetailScreenKtTest {
         composeTestRule.onNodeWithText("Inline image").assertIsDisplayed()
         composeTestRule.onNodeWithTag("TimelineAttachmentOpen:content://taskmail/result-chart").assertIsDisplayed()
         composeTestRule.onNodeWithTag("TimelineAttachmentSave:content://taskmail/result-chart").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should hide duplicate timeline summary when body already starts with it`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(
+                            timeline = persistentListOf(
+                                TaskTimelineItemUi(
+                                    id = "timeline_001",
+                                    timestamp = 1L,
+                                    direction = "System",
+                                    statusLabel = "Done",
+                                    summary = "Repeated summary line",
+                                    plainText = "Repeated summary line",
+                                ),
+                            ),
+                        ).copy(lastSummary = "Workspace summary"),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Repeated summary line"))
+
+        composeTestRule.onAllNodesWithText("Repeated summary line").assertCountEquals(1)
     }
 
     @Test
@@ -299,6 +415,84 @@ class TaskSessionDetailScreenKtTest {
         composeTestRule.onNodeWithText("final_report.md").assertIsDisplayed()
         composeTestRule.onNodeWithText("Remove").assertIsDisplayed()
         composeTestRule.onNodeWithTag("TaskReplyComposerStatusButton").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `content should render quick answer labels instead of canonical values`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(
+                            pendingQuestions = persistentListOf(
+                                TaskPendingQuestionUi(
+                                    questionId = "question_001",
+                                    questionText = "Should I proceed?",
+                                    choices = persistentListOf(
+                                        TaskPendingQuestionChoiceUi(
+                                            value = "approve",
+                                            label = "Ship it",
+                                        ),
+                                        TaskPendingQuestionChoiceUi(
+                                            value = "decline",
+                                            label = "Not yet",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            quickAnswerChoices = persistentListOf(
+                                TaskPendingQuestionChoiceUi(
+                                    value = "approve",
+                                    label = "Ship it",
+                                ),
+                                TaskPendingQuestionChoiceUi(
+                                    value = "decline",
+                                    label = "Not yet",
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Ship it"))
+
+        composeTestRule.onNodeWithText("Ship it").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Not yet").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TaskReplyComposerChoice_approve").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TaskReplyComposerChoice_decline").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should show resume and send for paused sessions`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(
+                            pendingQuestions = persistentListOf(),
+                            quickAnswerChoices = persistentListOf(),
+                            requiresResumeBeforeReply = true,
+                            replySupportingText =
+                            "This session is paused. Sending will prepend /resume before continuing.",
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Resume and send"))
+
+        composeTestRule.onNodeWithText("Resume and send").assertIsDisplayed()
     }
 
     @Test
@@ -391,11 +585,18 @@ class TaskSessionDetailScreenKtTest {
                 ),
             ),
         ),
-        quickAnswerChoices: ImmutableList<String> = persistentListOf(
-            "approve",
-            "decline",
+        quickAnswerChoices: ImmutableList<TaskPendingQuestionChoiceUi> = persistentListOf(
+            TaskPendingQuestionChoiceUi(
+                value = "approve",
+                label = "approve",
+            ),
+            TaskPendingQuestionChoiceUi(
+                value = "decline",
+                label = "decline",
+            ),
         ),
         requiresStructuredReply: Boolean = false,
+        requiresResumeBeforeReply: Boolean = false,
         structuredReplyTemplate: String? = null,
         replyLabel: String = "Reply to this task",
         replySupportingText: String = "Send a plain-text reply, attach files, or use a quick TaskMail action.",
@@ -420,6 +621,7 @@ class TaskSessionDetailScreenKtTest {
             pendingQuestions = pendingQuestions,
             quickAnswerChoices = quickAnswerChoices,
             requiresStructuredReply = requiresStructuredReply,
+            requiresResumeBeforeReply = requiresResumeBeforeReply,
             structuredReplyTemplate = structuredReplyTemplate,
             replyLabel = replyLabel,
             replySupportingText = replySupportingText,

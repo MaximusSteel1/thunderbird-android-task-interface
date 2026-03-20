@@ -63,7 +63,7 @@ internal class TaskQuestionCapsuleParser {
         val fields = linkedMapOf<String, String>()
         var currentKey: String? = null
 
-        content.lineSequence()
+        normalizeFieldBreaks(content).lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .forEach { line ->
@@ -81,6 +81,10 @@ internal class TaskQuestionCapsuleParser {
             }
 
         return fields
+    }
+
+    private fun normalizeFieldBreaks(content: String): String {
+        return content.replace(questionFieldBreakRegex, "\n")
     }
 
     private fun normalizeWhitespace(value: String): String {
@@ -115,6 +119,20 @@ internal class TaskQuestionCapsuleParser {
         val questionBlockRegex = Regex(
             pattern = "---TASK-QUESTION-BEGIN---(.*?)---TASK-QUESTION-END---",
             options = setOf(RegexOption.DOT_MATCHES_ALL),
+        )
+        private val questionFieldBreakRegex = Regex(
+            pattern = "[ \\t]+(?=(?:${
+                listOf(
+                    "question_set_id:",
+                    "question_id:",
+                    "question_type:",
+                    "required:",
+                    "question_text:",
+                    "choices:",
+                    "choice_labels:",
+                ).joinToString(separator = "|") { Regex.escape(it) }
+            }))",
+            options = setOf(RegexOption.IGNORE_CASE),
         )
         val whitespaceRegex = Regex("\\s+")
     }

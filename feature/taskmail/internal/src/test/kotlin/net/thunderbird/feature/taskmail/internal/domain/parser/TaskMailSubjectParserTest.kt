@@ -51,6 +51,26 @@ class TaskMailSubjectParserTest {
     }
 
     @Test
+    fun `parse should treat AW prefix as reply like and preserve paused token`() {
+        // Arrange
+        val subject = "AW: [PAUSED][S:session-42] [CX] Analyze floor_shear"
+
+        // Act
+        val result = testSubject.parse(subject)
+
+        // Assert
+        assertThat(result).isEqualTo(
+            TaskMailParsedSubject(
+                backend = TaskMailBackend.Codex,
+                statusLabel = TaskMailStatusLabel.Paused,
+                sessionIdFromSubject = "session-42",
+                subjectText = "Analyze floor_shear",
+                isReplyLike = true,
+            ),
+        )
+    }
+
+    @Test
     fun `parse should leave unknown subject unchanged`() {
         // Arrange
         val subject = "Weekly planning notes"

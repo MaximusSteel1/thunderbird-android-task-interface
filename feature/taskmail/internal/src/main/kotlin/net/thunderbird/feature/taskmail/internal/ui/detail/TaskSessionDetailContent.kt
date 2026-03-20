@@ -16,7 +16,9 @@ import androidx.compose.ui.unit.dp
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyLarge
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
 import app.k9mail.core.ui.compose.designsystem.molecule.ErrorView
+import app.k9mail.core.ui.compose.designsystem.molecule.PullToRefreshBox
 import app.k9mail.core.ui.compose.designsystem.organism.SubtitleTopAppBarWithBackButton
+import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.PendingQuestionCard
@@ -91,8 +93,7 @@ private fun TaskSessionDetailBody(
 
         state.detail != null -> {
             TaskSessionDetailLoadedContent(
-                detail = state.detail,
-                replyComposerState = state.toReplyComposerState(state.detail),
+                state = state,
                 onEvent = onEvent,
                 onPickAttachments = onPickAttachments,
                 onOpenTimelineAttachment = onOpenTimelineAttachment,
@@ -113,31 +114,52 @@ private fun TaskSessionDetailBody(
 
 @Composable
 private fun TaskSessionDetailLoadedContent(
-    detail: TaskSessionDetailUiState,
-    replyComposerState: TaskReplyComposerState,
+    state: TaskSessionDetailContract.State,
     onEvent: (TaskSessionDetailContract.Event) -> Unit,
     onPickAttachments: () -> Unit,
     onOpenTimelineAttachment: (String) -> Unit,
     onSaveTimelineAttachment: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("TaskSessionDetailList"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    val detail = state.detail ?: return
+    val replyComposerState = state.toReplyComposerState(detail)
+
+    PullToRefreshBox(
+        modifier = modifier.fillMaxSize(),
+        isRefreshing = state.isRefreshing,
+        onRefresh = { onEvent(TaskSessionDetailContract.Event.RefreshClicked) },
     ) {
-        overviewItems(detail = detail)
-        replyItem(
-            state = replyComposerState,
-            onEvent = onEvent,
-            onPickAttachments = onPickAttachments,
-        )
-        timelineItems(
-            timeline = detail.timeline,
-            onOpenTimelineAttachment = onOpenTimelineAttachment,
-            onSaveTimelineAttachment = onSaveTimelineAttachment,
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("TaskSessionDetailList"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            overviewItems(detail = detail)
+            refreshErrorItem(refreshError = state.refreshError)
+            replyItem(
+                state = replyComposerState,
+                onEvent = onEvent,
+                onPickAttachments = onPickAttachments,
+            )
+            timelineItems(
+                timeline = detail.timeline,
+                onOpenTimelineAttachment = onOpenTimelineAttachment,
+                onSaveTimelineAttachment = onSaveTimelineAttachment,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.refreshErrorItem(refreshError: String?) {
+    refreshError ?: return
+
+    item {
+        WarningBannerInlineNotificationCard(
+            title = "TaskMail update failed",
+            supportingText = refreshError,
+            actions = {},
         )
     }
 }
@@ -204,7 +226,7 @@ private fun LazyListScope.timelineItems(
     item {
         TaskSectionHeader(
             title = "Timeline",
-            supportingText = "Messages are shown in current repository order.",
+            supportingText = "Newest messages are shown first.",
         )
     }
 
@@ -234,6 +256,8 @@ private fun TaskSessionDetailContract.State.toReplyComposerState(
         quickAnswerChoices = detail.quickAnswerChoices,
         replyAttachments = replyAttachments,
         requiresStructuredReply = detail.requiresStructuredReply,
+        requiresResumeBeforeReply = detail.requiresResumeBeforeReply,
+        isQuestionReply = detail.pendingQuestions.isNotEmpty(),
         replyLabel = detail.replyLabel,
         replySupportingText = detail.replySupportingText,
     )

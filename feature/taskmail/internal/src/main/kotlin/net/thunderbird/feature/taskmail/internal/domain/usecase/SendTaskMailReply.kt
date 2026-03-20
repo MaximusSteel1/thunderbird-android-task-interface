@@ -2,26 +2,29 @@ package net.thunderbird.feature.taskmail.internal.domain.usecase
 
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
-import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyKind
+import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyBodyInput
+import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyBodySerializer
+import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyMode
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySender
 
 internal class SendTaskMailReply(
     private val replySender: TaskMailReplySender,
+    private val bodySerializer: TaskMailReplyBodySerializer = TaskMailReplyBodySerializer(),
 ) {
     suspend fun sendFreeText(
         context: TaskSessionReplyContext,
         draftText: String,
         attachments: List<TaskReplyAttachment> = emptyList(),
     ): TaskMailReplyResult {
-        return replySender.send(
-            TaskMailReplyRequest(
-                context = context,
-                body = draftText,
-                kind = TaskMailReplyKind.FreeText,
-                attachments = attachments,
+        return send(
+            context = context,
+            input = TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.ContinueSession,
+                userText = draftText,
             ),
+            attachments = attachments,
         )
     }
 
@@ -30,13 +33,28 @@ internal class SendTaskMailReply(
         choice: String,
         attachments: List<TaskReplyAttachment> = emptyList(),
     ): TaskMailReplyResult {
-        return replySender.send(
-            TaskMailReplyRequest(
-                context = context,
-                body = choice,
-                kind = TaskMailReplyKind.QuestionChoice,
-                attachments = attachments,
+        return send(
+            context = context,
+            input = TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.AnswerSingleQuestion,
+                userText = choice,
             ),
+            attachments = attachments,
+        )
+    }
+
+    suspend fun sendResumeSession(
+        context: TaskSessionReplyContext,
+        draftText: String,
+        attachments: List<TaskReplyAttachment> = emptyList(),
+    ): TaskMailReplyResult {
+        return send(
+            context = context,
+            input = TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.ResumeSession,
+                userText = draftText,
+            ),
+            attachments = attachments,
         )
     }
 
@@ -45,27 +63,35 @@ internal class SendTaskMailReply(
         draftText: String,
         attachments: List<TaskReplyAttachment> = emptyList(),
     ): TaskMailReplyResult {
-        return replySender.send(
-            TaskMailReplyRequest(
-                context = context,
-                body = draftText,
-                kind = TaskMailReplyKind.StructuredAnswers,
-                attachments = attachments,
+        return send(
+            context = context,
+            input = TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.AnswerMultiQuestion,
+                userText = draftText,
             ),
+            attachments = attachments,
         )
     }
 
     suspend fun sendStatusQuery(context: TaskSessionReplyContext): TaskMailReplyResult {
-        return replySender.send(
-            TaskMailReplyRequest(
-                context = context,
-                body = STATUS_QUERY_BODY,
-                kind = TaskMailReplyKind.StatusQuery,
-            ),
+        return send(
+            context = context,
+            input = TaskMailReplyBodyInput(mode = TaskMailReplyMode.StatusQuery),
         )
     }
 
-    private companion object {
-        const val STATUS_QUERY_BODY = "/status"
+    private suspend fun send(
+        context: TaskSessionReplyContext,
+        input: TaskMailReplyBodyInput,
+        attachments: List<TaskReplyAttachment> = emptyList(),
+    ): TaskMailReplyResult {
+        return replySender.send(
+            TaskMailReplyRequest(
+                context = context,
+                body = bodySerializer.serialize(input),
+                mode = input.mode,
+                attachments = attachments,
+            ),
+        )
     }
 }

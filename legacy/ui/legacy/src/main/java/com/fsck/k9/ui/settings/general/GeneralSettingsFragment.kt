@@ -111,6 +111,12 @@ class GeneralSettingsFragment : PreferenceFragmentCompat() {
             }
         }
 
+        findPreference<Preference>("taskmail_bot_mailbox_settings")?.onPreferenceClickListener =
+            Preference.OnPreferenceClickListener {
+                viewModel.onOpenTaskMailBotMailboxSettings(requireContext())
+                true
+            }
+
         initializeDataCollection()
 
         viewModel.uiState.observe(this) { uiState ->

@@ -165,6 +165,7 @@ internal class UiSimulator {
         TaskMailSessionStatus.Queued -> "queued"
         TaskMailSessionStatus.Running -> "running"
         TaskMailSessionStatus.WaitingUser -> "waiting_user"
+        TaskMailSessionStatus.Paused -> "paused"
         TaskMailSessionStatus.Done -> "done"
         TaskMailSessionStatus.Failed -> "failed"
         TaskMailSessionStatus.Killed -> "killed"

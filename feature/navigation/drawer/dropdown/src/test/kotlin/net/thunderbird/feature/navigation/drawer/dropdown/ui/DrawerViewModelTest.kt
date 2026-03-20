@@ -410,6 +410,18 @@ internal class DrawerViewModelTest {
         }
     }
 
+    @Test
+    fun `should emit OpenTasks effect when OnTasksClick event is received`() = runMviTest {
+        val testSubject = createTestSubject()
+        val turbines = turbinesWithInitialStateCheck(testSubject, State())
+
+        testSubject.event(Event.OnTasksClick)
+
+        turbines.assertThatAndEffectTurbineConsumed {
+            isEqualTo(Effect.OpenTasks)
+        }
+    }
+
     private fun createTestSubject(
         initialState: State = State(),
         drawerConfigFlow: Flow<DrawerConfig> = flow { emit(createDrawerConfig()) },

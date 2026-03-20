@@ -40,11 +40,15 @@ out/
 
 # Android Studio captures folder
 captures/
+.android-user/
+.gradle-user/
+.tmp/
 
 # Mac thumbnail db
 .DS_Store
 
 # Screenshots
 adb-screenshots/
+_mailin_*
 # Extracted eml files
 eml-files/

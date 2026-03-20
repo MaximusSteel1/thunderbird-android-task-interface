@@ -15,6 +15,8 @@ internal data class TaskMailMessage(
     val timestamp: Long,
     val subject: String,
     val rawBodyText: String,
+    val htmlBody: String? = null,
+    val internetMessageId: String? = null,
     val attachments: List<TaskMessageAttachment> = emptyList(),
     val detection: TaskMailDetection,
     val isFromCurrentUser: Boolean,

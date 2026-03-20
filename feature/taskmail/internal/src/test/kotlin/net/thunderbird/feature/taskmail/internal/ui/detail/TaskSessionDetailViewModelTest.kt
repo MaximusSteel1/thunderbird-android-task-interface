@@ -13,26 +13,51 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
+import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
+import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
+import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserver
+import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
+import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
-import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyKind
+import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyMode
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySender
-import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
+import net.thunderbird.feature.taskmail.internal.sync.DEFAULT_MESSAGE_SYNC_SCOPE_KEY
+import net.thunderbird.feature.taskmail.internal.sync.DEFAULT_MESSAGE_SYNC_SOURCE
+import net.thunderbird.feature.taskmail.internal.sync.MessageSyncCoordinator
+import net.thunderbird.feature.taskmail.internal.sync.MessageSyncRequest
 
+@Suppress("LargeClass")
 class TaskSessionDetailViewModelTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -50,10 +75,39 @@ class TaskSessionDetailViewModelTest {
 
     @Test
     fun `load detail should emit content state when repository returns detail`() = runMviTest {
-        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository())) {
+        val syncRequester = FakeTaskMailSyncRequester()
+
+        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(), syncRequester = syncRequester)) {
             start()
             loadDetail()
             assertLoadedDetail()
+            assertThat(syncRequester.requestCount).isEqualTo(0)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should show cached detail before background cache sync completes`() = runMviTest {
+        val cacheSyncGate = CompletableDeferred<Unit>()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                mviContext = this,
+                repository = FakeTaskSessionDetailRepository(),
+                syncTaskMailCache = createBlockingDetailSyncTaskMailCache(cacheSyncGate),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertLoadedDetail()
+            assertThat(viewModelState().isLoading).isEqualTo(false)
+            assertThat(viewModelState().isRefreshing).isEqualTo(true)
+
+            cacheSyncGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertLoadedDetail()
+            assertThat(viewModelState().isRefreshing).isEqualTo(false)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -163,6 +217,67 @@ class TaskSessionDetailViewModelTest {
             assertThat(attachment?.displayName).isEqualTo("result_chart.png")
             assertThat(attachment?.isInline).isEqualTo(true)
             assertThat(attachment?.isImage).isEqualTo(true)
+            assertThat(attachment?.internalUriString).isEqualTo("content://taskmail/chart-preview")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should expose newest timeline item first in ui state`() = runMviTest {
+        val detailWithChronologicalTimeline = TaskMailPreviewData.sessionDetails.first().copy(
+            timeline = listOf(
+                TaskTimelineItem(
+                    id = "timeline_oldest",
+                    timestamp = 100L,
+                    direction = TaskTimelineDirection.System,
+                    body = TaskMessageBody(
+                        plainText = "Oldest timeline item.",
+                        markdownCandidate = false,
+                    ),
+                ),
+                TaskTimelineItem(
+                    id = "timeline_newest",
+                    timestamp = 200L,
+                    direction = TaskTimelineDirection.Outgoing,
+                    body = TaskMessageBody(
+                        plainText = "Newest timeline item.",
+                        markdownCandidate = false,
+                    ),
+                ),
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = detailWithChronologicalTimeline),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertThat(viewModelState().detail?.timeline?.map(TaskTimelineItemUi::id)).isEqualTo(
+                listOf("timeline_newest", "timeline_oldest"),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should expose quick answer labels while preserving canonical choice values`() = runMviTest {
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = singleQuestionDetailWithChoiceLabels()),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertThat(viewModelState().detail?.quickAnswerChoices?.map(TaskPendingQuestionChoiceUi::label)).isEqualTo(
+                listOf("Ship it", "Not yet"),
+            )
+            assertThat(viewModelState().detail?.quickAnswerChoices?.map(TaskPendingQuestionChoiceUi::value)).isEqualTo(
+                listOf("approve", "decline"),
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -289,7 +404,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(sender.requests.single().body).isEqualTo("ship it")
             assertThat(viewModelState().draftText).isEqualTo("")
             assertThat(viewModelState().sendError).isEqualTo(null)
-            assertThat(repository.requestedKeys.size).isEqualTo(2)
+            assertThat(repository.requestedKeys.size).isEqualTo(3)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -310,7 +425,7 @@ class TaskSessionDetailViewModelTest {
             changeDraft(structuredDraft)
             sendReply()
             assertThat(sender.requests.single().body).isEqualTo(structuredDraft)
-            assertThat(sender.requests.single().kind).isEqualTo(TaskMailReplyKind.StructuredAnswers)
+            assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.AnswerMultiQuestion)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -326,7 +441,29 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(sender.requests.size).isEqualTo(0)
             assertThat(viewModelState().sendError).isEqualTo(
-                "Add at least one structured answer before sending.",
+                "Complete all required answers using valid question_id values before sending.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should block attachment only structured answers`() = runMviTest {
+        val sender = FakeTaskMailReplySender()
+        val replyAttachment = sampleReplyAttachment()
+        val attachmentResolver = FakeTaskMailReplyAttachmentResolver(
+            attachmentsToReturn = listOf(replyAttachment),
+        )
+        val repository = FakeTaskSessionDetailRepository(detail = multiQuestionDetail())
+
+        with(TaskSessionDetailViewModelRobot(this, repository, sender, attachmentResolver)) {
+            start()
+            loadDetail()
+            selectAttachments(listOf(replyAttachment.uriString))
+            sendReply()
+            assertThat(sender.requests.size).isEqualTo(0)
+            assertThat(viewModelState().sendError).isEqualTo(
+                "Complete all required answers using valid question_id values before sending.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -413,6 +550,37 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `send reply should prepend slash resume for paused sessions`() = runMviTest {
+        val sender = FakeTaskMailReplySender()
+        val repository = FakeTaskSessionDetailRepository(detail = pausedDetail())
+
+        with(TaskSessionDetailViewModelRobot(this, repository, sender)) {
+            start()
+            loadDetail()
+            changeDraft("Please continue with the cleanup.")
+            sendReply()
+            assertThat(sender.requests.single().body).isEqualTo("/resume\nPlease continue with the cleanup.")
+            assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.ResumeSession)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `question choice should prepend slash resume when paused`() = runMviTest {
+        val sender = FakeTaskMailReplySender()
+        val repository = FakeTaskSessionDetailRepository(detail = pausedSingleQuestionDetail())
+
+        with(TaskSessionDetailViewModelRobot(this, repository, sender)) {
+            start()
+            loadDetail()
+            sendChoice("approve")
+            assertThat(sender.requests.single().body).isEqualTo("/resume\napprove")
+            assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.ResumeSession)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `question choice should be blocked for multi question sessions`() = runMviTest {
         val sender = FakeTaskMailReplySender()
         val repository = FakeTaskSessionDetailRepository(detail = multiQuestionDetail())
@@ -447,6 +615,71 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `local mail change should refresh detail while preserving draft and attachments`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val changeObserver = FakeTaskMailStoreChangeObserver()
+        val replyAttachment = sampleReplyAttachment()
+        val attachmentResolver = FakeTaskMailReplyAttachmentResolver(
+            attachmentsToReturn = listOf(replyAttachment),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                attachmentResolver = attachmentResolver,
+                changeObserver = changeObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            changeDraft("Keep this draft")
+            selectAttachments(listOf(replyAttachment.uriString))
+            repository.detail = repository.detail?.copy(lastSummary = "Updated summary from local change")
+            emitLocalChange()
+            assertThat(viewModelState().draftText).isEqualTo("Keep this draft")
+            assertThat(viewModelState().replyAttachments).isEqualTo(persistentListOf(replyAttachment))
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Updated summary from local change")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `refresh clicked should trigger sync and reload detail`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val syncRequester = FakeTaskMailSyncRequester()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, syncRequester = syncRequester)) {
+            start()
+            loadDetail()
+            repository.detail = repository.detail?.copy(lastSummary = "Reloaded from detail refresh")
+            refresh()
+            assertThat(syncRequester.requestCount).isEqualTo(1)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Reloaded from detail refresh")
+            assertThat(viewModelState().refreshError).isEqualTo(null)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `refresh clicked should keep detail visible when sync fails`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val syncRequester = FakeTaskMailSyncRequester(
+            result = Result.failure(IllegalStateException("sync error")),
+        )
+
+        with(TaskSessionDetailViewModelRobot(this, repository, syncRequester = syncRequester)) {
+            start()
+            loadDetail()
+            refresh()
+            assertThat(syncRequester.requestCount).isEqualTo(1)
+            assertThat(viewModelState().detail).isNotNull()
+            assertThat(viewModelState().refreshError).isEqualTo("sync error")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `refresh clicked should keep detail visible when refresh fails`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository()
 
@@ -456,7 +689,58 @@ class TaskSessionDetailViewModelTest {
             repository.shouldThrowDetailError = true
             refresh()
             assertThat(viewModelState().detail).isNotNull()
-            assertThat(viewModelState().sendError).isEqualTo("Failed to refresh TaskMail session detail.")
+            assertThat(viewModelState().refreshError).isEqualTo("Failed to refresh TaskMail session detail.")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `foreground refresh should sync the current detail account while visible`() = runMviTest {
+        val syncRequester = FakeTaskMailSyncRequester()
+        val tickerFactory = FakeTaskMailForegroundRefreshTickerFactory()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                mviContext = this,
+                repository = FakeTaskSessionDetailRepository(),
+                syncRequester = syncRequester,
+                foregroundRefreshTickerFactory = tickerFactory,
+            ),
+        ) {
+            start()
+            loadDetail()
+            startForegroundRefresh()
+            emitForegroundRefreshTick()
+            stopForegroundRefresh()
+            emitForegroundRefreshTick()
+            assertThat(syncRequester.requestedAccountUuids).isEqualTo(
+                listOf("account-1", "account-1"),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `foreground refresh should stay disabled when reply context is unavailable`() = runMviTest {
+        val syncRequester = FakeTaskMailSyncRequester()
+        val tickerFactory = FakeTaskMailForegroundRefreshTickerFactory()
+        val repository = FakeTaskSessionDetailRepository(
+            detail = TaskMailPreviewData.sessionDetails.first().copy(replyContext = null),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                mviContext = this,
+                repository = repository,
+                syncRequester = syncRequester,
+                foregroundRefreshTickerFactory = tickerFactory,
+            ),
+        ) {
+            start()
+            loadDetail()
+            startForegroundRefresh()
+            emitForegroundRefreshTick()
+            assertThat(syncRequester.requestedAccountUuids).isEqualTo(emptyList())
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -464,17 +748,26 @@ class TaskSessionDetailViewModelTest {
 
 private class TaskSessionDetailViewModelRobot(
     private val mviContext: MviContext,
-    repository: TaskMailRepository,
+    repository: TaskSessionDetailRepository,
     replySender: TaskMailReplySender = FakeTaskMailReplySender(),
     attachmentResolver: TaskMailReplyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
     timelineAttachmentHandler: TaskMailTimelineAttachmentHandler = FakeTaskMailTimelineAttachmentHandler(),
+    syncRequester: FakeTaskMailSyncRequester = FakeTaskMailSyncRequester(),
+    private val changeObserver: FakeTaskMailStoreChangeObserver = FakeTaskMailStoreChangeObserver(),
+    private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
+        FakeTaskMailForegroundRefreshTickerFactory(),
+    syncTaskMailCache: SyncTaskMailCache? = null,
 ) {
     private val viewModel = TaskSessionDetailViewModel(
-        repository = repository,
+        detailRepository = repository,
         getTaskSessionDetail = GetTaskSessionDetail(repository),
+        refreshTaskMail = RefreshTaskMail(syncRequester),
+        observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
+        foregroundRefreshTickerFactory = foregroundRefreshTickerFactory,
         sendTaskMailReply = SendTaskMailReply(replySender),
         replyAttachmentResolver = attachmentResolver,
         timelineAttachmentHandler = timelineAttachmentHandler,
+        syncTaskMailCache = syncTaskMailCache,
     )
     private lateinit var turbines: MviTurbines<TaskSessionDetailContract.State, TaskSessionDetailContract.Effect>
 
@@ -521,6 +814,26 @@ private class TaskSessionDetailViewModelRobot(
 
     suspend fun refresh() {
         viewModel.event(TaskSessionDetailContract.Event.RefreshClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun emitLocalChange() {
+        changeObserver.emitChange()
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun startForegroundRefresh() {
+        viewModel.event(TaskSessionDetailContract.Event.ForegroundRefreshStarted)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun stopForegroundRefresh() {
+        viewModel.event(TaskSessionDetailContract.Event.ForegroundRefreshStopped)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun emitForegroundRefreshTick() {
+        foregroundRefreshTickerFactory.emitTick()
         mviContext.advanceUntilIdle()
     }
 
@@ -605,19 +918,64 @@ private class TaskSessionDetailViewModelRobot(
 }
 
 private class FakeTaskSessionDetailRepository(
-    private val detail: TaskSessionDetail? = TaskMailPreviewData.sessionDetails.first(),
+    var detail: TaskSessionDetail? = TaskMailPreviewData.sessionDetails.first(),
     var shouldThrowDetailError: Boolean = false,
-) : TaskMailRepository {
+) : TaskSessionDetailRepository {
     var requestedKey: TaskSessionKey? = null
     val requestedKeys = mutableListOf<TaskSessionKey>()
-
-    override suspend fun getTaskWorkspaceSummaries(): List<TaskWorkspaceSummary> = emptyList()
 
     override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
         if (shouldThrowDetailError) error("detail error")
         requestedKey = key
         requestedKeys += key
         return detail
+    }
+
+    override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> = listOfNotNull(detail)
+
+    override suspend fun replaceAllSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun upsertSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun removeSessionDetails(keys: List<TaskSessionKey>) = Unit
+}
+
+private class FakeTaskMailSyncRequester(
+    private val result: Result<Unit> = Result.success(Unit),
+) : TaskMailSyncRequester {
+    val requestedAccountUuids = mutableListOf<String?>()
+
+    val requestCount: Int
+        get() = requestedAccountUuids.size
+
+    override suspend fun requestSync(): Result<Unit> {
+        requestedAccountUuids += null
+        return result
+    }
+
+    override suspend fun requestSync(accountUuid: String?): Result<Unit> {
+        requestedAccountUuids += accountUuid
+        return result
+    }
+}
+
+private class FakeTaskMailStoreChangeObserver : TaskMailStoreChangeObserver {
+    private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    override fun changes(): Flow<Unit> = changes
+
+    suspend fun emitChange() {
+        changes.emit(Unit)
+    }
+}
+
+private class FakeTaskMailForegroundRefreshTickerFactory : TaskMailForegroundRefreshTickerFactory {
+    private val ticks = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    override fun createTicker(intervalMs: Long): Flow<Unit> = ticks
+
+    suspend fun emitTick() {
+        ticks.emit(Unit)
     }
 }
 
@@ -751,4 +1109,122 @@ private fun multiQuestionDetail(): TaskSessionDetail {
         question = pendingQuestions.last(),
         pendingQuestions = pendingQuestions,
     )
+}
+
+private fun singleQuestionDetailWithChoiceLabels(): TaskSessionDetail {
+    val question = TaskQuestionCapsule(
+        questionId = "question_001",
+        questionText = "Should I proceed with the cleanup?",
+        choices = listOf("approve", "decline"),
+        choiceLabels = mapOf(
+            "approve" to "Ship it",
+            "decline" to "Not yet",
+        ),
+    )
+
+    return TaskMailPreviewData.sessionDetails.first().copy(
+        question = question,
+        pendingQuestions = listOf(question),
+    )
+}
+
+private fun pausedDetail(): TaskSessionDetail {
+    return TaskMailPreviewData.sessionDetails.first().copy(
+        status = TaskMailSessionStatus.Paused,
+        pausedFromStatus = TaskMailSessionStatus.Done,
+        question = null,
+        pendingQuestions = emptyList(),
+    )
+}
+
+private fun pausedSingleQuestionDetail(): TaskSessionDetail {
+    return singleQuestionDetailWithChoiceLabels().copy(
+        status = TaskMailSessionStatus.Paused,
+        pausedFromStatus = TaskMailSessionStatus.WaitingUser,
+    )
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun createBlockingDetailSyncTaskMailCache(
+    syncGate: CompletableDeferred<Unit>,
+): SyncTaskMailCache {
+    return SyncTaskMailCache(
+        unifiedMessageRepository = DetailTestUnifiedMessageRepository(),
+        messageSyncStateRepository = DetailTestMessageSyncStateRepository(
+            MessageSyncState(
+                source = DEFAULT_MESSAGE_SYNC_SOURCE,
+                scopeKey = DEFAULT_MESSAGE_SYNC_SCOPE_KEY,
+                lastCursor = "cursor-1",
+                lastSyncAt = 123L,
+            ),
+        ),
+        syncCoordinator = BlockingDetailMessageSyncCoordinator(syncGate),
+        taskMailMessageJsonCodec = TaskMailMessageJsonCodec(),
+        sessionProjector = TaskMailSessionProjector(),
+        taskSessionDetailRepository = DetailTestTaskSessionDetailRepository(),
+        ioDispatcher = UnconfinedTestDispatcher(),
+    )
+}
+
+private class BlockingDetailMessageSyncCoordinator(
+    private val syncGate: CompletableDeferred<Unit>,
+) : MessageSyncCoordinator {
+    override suspend fun sync(request: MessageSyncRequest): Result<Unit> {
+        syncGate.await()
+        return Result.success(Unit)
+    }
+}
+
+private class DetailTestUnifiedMessageRepository : UnifiedMessageRepository {
+    private val messages = MutableStateFlow<List<UnifiedMessage>>(emptyList())
+
+    override fun observeMessages(taskId: String): Flow<List<UnifiedMessage>> {
+        return messages.map { cachedMessages ->
+            cachedMessages.filter { message -> message.taskId == taskId }
+        }
+    }
+
+    override suspend fun getAllMessages(): List<UnifiedMessage> = messages.value
+
+    override suspend fun upsertMessages(messages: List<UnifiedMessage>) {
+        this.messages.value = messages
+    }
+
+    override suspend fun findBySourceMessageId(
+        source: String,
+        sourceMessageId: String,
+    ): UnifiedMessage? {
+        return messages.value.firstOrNull { message ->
+            message.source == source && message.sourceMessageId == sourceMessageId
+        }
+    }
+}
+
+private class DetailTestMessageSyncStateRepository(
+    private var state: MessageSyncState? = null,
+) : MessageSyncStateRepository {
+    override suspend fun getState(
+        source: String,
+        scopeKey: String,
+    ): MessageSyncState? {
+        return state?.takeIf { currentState ->
+            currentState.source == source && currentState.scopeKey == scopeKey
+        }
+    }
+
+    override suspend fun upsertState(state: MessageSyncState) {
+        this.state = state
+    }
+}
+
+private class DetailTestTaskSessionDetailRepository : TaskSessionDetailRepository {
+    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? = null
+
+    override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> = emptyList()
+
+    override suspend fun replaceAllSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun upsertSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun removeSessionDetails(keys: List<TaskSessionKey>) = Unit
 }

@@ -162,4 +162,50 @@ class TaskQuestionCapsuleParserTest {
         assertThat(result).isEmpty()
         assertThat(testSubject.parse(text)).isNull()
     }
+
+    @Test
+    fun `parseAll should recover flattened multi question blocks`() {
+        // Arrange
+        val text = """
+            ---TASK-QUESTION-BEGIN---
+            question_set_id: phase2_clarifications question_id: phase2_entry_position question_type: single_choice required: true question_text: Where should the Tasks drawer entry be placed? choices: top | below | section choice_labels: top=Account list top | below=Account list bottom | section=Standalone section
+            ---TASK-QUESTION-END---
+            ---TASK-QUESTION-BEGIN---
+            question_set_id: phase2_clarifications question_id: phase2_icon_strings question_type: single_choice required: false question_text: Who provides icon and string resources? choices: provide | reuse | placeholder choice_labels: provide=You provide | reuse=Reuse existing | placeholder=Temporary placeholder
+            ---TASK-QUESTION-END---
+        """.trimIndent()
+
+        // Act
+        val result = testSubject.parseAll(text)
+
+        // Assert
+        assertThat(result).containsExactly(
+            TaskQuestionCapsule(
+                questionId = "phase2_entry_position",
+                questionText = "Where should the Tasks drawer entry be placed?",
+                choices = listOf("top", "below", "section"),
+                questionSetId = "phase2_clarifications",
+                questionType = "single_choice",
+                required = true,
+                choiceLabels = mapOf(
+                    "top" to "Account list top",
+                    "below" to "Account list bottom",
+                    "section" to "Standalone section",
+                ),
+            ),
+            TaskQuestionCapsule(
+                questionId = "phase2_icon_strings",
+                questionText = "Who provides icon and string resources?",
+                choices = listOf("provide", "reuse", "placeholder"),
+                questionSetId = "phase2_clarifications",
+                questionType = "single_choice",
+                required = false,
+                choiceLabels = mapOf(
+                    "provide" to "You provide",
+                    "reuse" to "Reuse existing",
+                    "placeholder" to "Temporary placeholder",
+                ),
+            ),
+        )
+    }
 }

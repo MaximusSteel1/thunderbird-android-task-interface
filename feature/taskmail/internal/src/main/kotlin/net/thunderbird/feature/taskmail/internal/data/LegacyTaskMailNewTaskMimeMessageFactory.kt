@@ -1,0 +1,114 @@
+package net.thunderbird.feature.taskmail.internal.data
+
+import com.fsck.k9.mail.Address
+import com.fsck.k9.mail.internet.MimeMessage
+import com.fsck.k9.message.MessageBuilder
+import com.fsck.k9.message.QuotedTextMode
+import com.fsck.k9.message.SimpleMessageBuilder
+import com.fsck.k9.message.SimpleMessageFormat
+import java.util.Date
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import net.thunderbird.core.android.account.Identity
+import net.thunderbird.core.android.account.LegacyAccountDto
+import net.thunderbird.core.preference.GeneralSettingsManager
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskRequest
+
+internal class LegacyTaskMailNewTaskMimeMessageFactory(
+    private val generalSettingsManager: GeneralSettingsManager,
+    private val destinationAddressProvider: TaskMailDestinationAddressProvider,
+) : TaskMailNewTaskMimeMessageFactory {
+
+    override suspend fun create(
+        request: TaskMailNewTaskRequest,
+        account: LegacyAccountDto,
+    ): Result<MimeMessage> {
+        val identity = account.identities.firstOrNull()
+            ?: return Result.failure(IllegalStateException("TaskMail sending account has no identity."))
+
+        return resolveBotMailboxRecipients().fold(
+            onSuccess = { botMailboxRecipients ->
+                SimpleMessageBuilder.newInstance()
+                    .setSubject(request.subject)
+                    .setSentDate(Date())
+                    .setHideTimeZone(generalSettingsManager.getConfig().privacy.isHideTimeZone)
+                    .setTo(botMailboxRecipients)
+                    .setCc(emptyList())
+                    .setBcc(emptyList())
+                    .setReplyTo(resolveReplyTo(identity))
+                    .setRequestReadReceipt(false)
+                    .setIdentity(identity)
+                    .setMessageFormat(SimpleMessageFormat.TEXT)
+                    .setText(request.body)
+                    .setAttachments(emptyList())
+                    .setInlineAttachments(emptyMap())
+                    .setSignature(null)
+                    .setQuotedTextMode(QuotedTextMode.NONE)
+                    .setMessageReference(null)
+                    .setDraft(false)
+                    .setIsPgpInlineEnabled(false)
+                    .awaitMessageBuild()
+            },
+            onFailure = { Result.failure(it) },
+        )
+    }
+
+    private fun resolveReplyTo(identity: Identity): Array<Address> {
+        val replyTo = identity.replyTo
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return emptyArray()
+
+        return Address.parse(replyTo)
+    }
+
+    private fun resolveBotMailboxRecipients(): Result<List<Address>> {
+        val destinationAddress = destinationAddressProvider.getDestinationAddress()
+            ?: return Result.failure(IllegalStateException("TaskMail bot mailbox is not configured."))
+        val recipients = Address.parse(destinationAddress).toList()
+
+        return when {
+            recipients.isEmpty() -> Result.failure(IllegalStateException("TaskMail bot mailbox address is invalid."))
+            recipients.size > 1 -> {
+                Result.failure(IllegalStateException("TaskMail bot mailbox must resolve to exactly one address."))
+            }
+            else -> Result.success(recipients)
+        }
+    }
+
+    private suspend fun MessageBuilder.awaitMessageBuild(): Result<MimeMessage> =
+        suspendCancellableCoroutine { continuation ->
+            buildAsync(
+                object : MessageBuilder.Callback {
+                    override fun onMessageBuildSuccess(message: MimeMessage, isDraft: Boolean) {
+                        continuation.resume(Result.success(message))
+                    }
+
+                    override fun onMessageBuildException(
+                        exception: net.thunderbird.core.common.exception.MessagingException,
+                    ) {
+                        continuation.resume(Result.failure(exception))
+                    }
+
+                    override fun onMessageBuildReturnPendingIntent(
+                        pendingIntent: android.app.PendingIntent,
+                        requestCode: Int,
+                    ) {
+                        continuation.resume(
+                            Result.failure(
+                                IllegalStateException(
+                                    "Unexpected pending intent while building TaskMail new-task mail",
+                                ),
+                            ),
+                        )
+                    }
+
+                    override fun onMessageBuildCancel() {
+                        continuation.resume(
+                            Result.failure(IllegalStateException("TaskMail new-task build canceled")),
+                        )
+                    }
+                },
+            )
+        }
+}

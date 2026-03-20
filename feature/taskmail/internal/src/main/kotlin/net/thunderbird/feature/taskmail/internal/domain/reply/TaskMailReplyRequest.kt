@@ -6,6 +6,6 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyCo
 internal data class TaskMailReplyRequest(
     val context: TaskSessionReplyContext,
     val body: String,
-    val kind: TaskMailReplyKind,
+    val mode: TaskMailReplyMode,
     val attachments: List<TaskReplyAttachment> = emptyList(),
 )

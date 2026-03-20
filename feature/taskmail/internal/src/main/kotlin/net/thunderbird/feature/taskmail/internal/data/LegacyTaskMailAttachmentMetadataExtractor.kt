@@ -19,7 +19,26 @@ internal class LegacyTaskMailAttachmentMetadataExtractor(
 
         return attachmentInfoExtractor.extractAttachmentInfoForView(attachmentParts)
             .map(AttachmentViewInfo::toTaskMessageAttachment)
+            .filter(TaskMessageAttachment::shouldDisplayInTaskTimeline)
+            .deduplicateForTaskTimeline()
     }
+}
+
+internal fun TaskMessageAttachment.shouldDisplayInTaskTimeline(): Boolean {
+    return contentType?.startsWith("multipart/", ignoreCase = true) != true
+}
+
+internal fun List<TaskMessageAttachment>.deduplicateForTaskTimeline(): List<TaskMessageAttachment> {
+    val deduplicated = linkedMapOf<String, TaskMessageAttachment>()
+
+    for (attachment in this) {
+        val deduplicationKey = attachment.taskTimelineDeduplicationKey()
+        deduplicated[deduplicationKey] = deduplicated[deduplicationKey]
+            ?.mergeForTaskTimeline(attachment)
+            ?: attachment
+    }
+
+    return deduplicated.values.toList()
 }
 
 private fun AttachmentViewInfo.toTaskMessageAttachment(): TaskMessageAttachment {
@@ -56,6 +75,43 @@ private fun AttachmentViewInfo.toTaskMessageAttachment(): TaskMessageAttachment 
             else -> null
         },
         isContentAvailable = isContentAvailable(),
+    )
+}
+
+private fun TaskMessageAttachment.taskTimelineDeduplicationKey(): String {
+    return partId?.let { "part:$it" }
+        ?: internalUriString?.takeIf { it.isNotBlank() }?.let { "uri:$it" }
+        ?: buildString {
+            append("fallback:")
+            append(contentId?.takeIf { it.isNotBlank() } ?: "_")
+            append('|')
+            append(displayName.ifBlank { "_" })
+            append('|')
+            append(sizeBytes ?: -1L)
+            append('|')
+            append(contentType?.takeIf { it.isNotBlank() } ?: "_")
+        }
+}
+
+private fun TaskMessageAttachment.mergeForTaskTimeline(
+    other: TaskMessageAttachment,
+): TaskMessageAttachment {
+    val mergedInternalUriString = internalUriString ?: other.internalUriString
+
+    return copy(
+        id = mergedInternalUriString ?: id,
+        displayName = displayName.takeIf { it.isNotBlank() } ?: other.displayName,
+        contentType = contentType ?: other.contentType,
+        sizeBytes = sizeBytes ?: other.sizeBytes,
+        isInline = isInline || other.isInline,
+        isImage = isImage || other.isImage,
+        contentId = contentId ?: other.contentId,
+        internalUriString = mergedInternalUriString,
+        accountUuid = accountUuid ?: other.accountUuid,
+        folderId = folderId ?: other.folderId,
+        messageServerId = messageServerId ?: other.messageServerId,
+        partId = partId ?: other.partId,
+        isContentAvailable = isContentAvailable || other.isContentAvailable,
     )
 }
 

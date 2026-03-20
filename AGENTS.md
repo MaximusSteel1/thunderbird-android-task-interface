@@ -27,6 +27,12 @@ Architectural Decision Records (ADRs) are located in `docs/architecture/adr/`.
 
 Agents MUST consult relevant documentation before making architectural or structural changes.
 
+## Toolchain Notes
+
+- Java 21+ is required to build this repository; `settings.gradle.kts` enforces this
+- Set `JAVA_HOME` to a Java 21+ installation before running Gradle
+- On Windows, prefer `.\gradlew.bat ...` when documenting or running commands from PowerShell
+
 ## Required Agent Workflow
 
 Before making changes, agents MUST:
@@ -46,6 +52,113 @@ Before making changes, agents MUST:
 - Check for related ADRs in `docs/architecture/adr/`
 - Understand the module's role in the white-label architecture
 
+#### Pitfall Recording
+
+When agents encounter a non-obvious implementation, debugging, or verification pitfall that is likely to recur, agents
+SHOULD record it in the narrowest durable place that will help the next contributor.
+
+Agents SHOULD record a pitfall when one or more of the following is true:
+
+- the issue is not obvious from the code, logs, or standard project documentation
+- the issue is likely to recur in later work
+- rediscovering the issue would cost meaningful time
+- the issue can send future work toward the wrong module, document, implementation path, or validation flow
+
+Agents SHOULD choose the lightest useful record:
+
+- update the closest authoritative document when the pitfall affects current behavior, setup, validation, or workflow guidance
+- add a concise handoff note when the pitfall materially affects the next session but is not yet stable enough for a
+  permanent document update
+- include the pitfall in a pull request description when it matters for review or follow-up but does not justify a
+  repository document change
+
+Agents SHOULD NOT create standalone pitfall documentation for one-off typos, transient environment glitches, or other
+low-value issues that are obvious, cheap to rediscover, and unlikely to affect future contributors.
+
+When recording a pitfall, keep it brief and include:
+
+- the symptom or failure mode
+- the trigger or conditions
+- the confirmed cause or current best understanding
+- the practical avoidance, workaround, or verification step
+
+#### TaskMail Work
+
+If the change affects TaskMail, agents SHOULD consult these documents first:
+
+- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md` - what is currently implemented
+- `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md` - what has actually been revalidated
+- `docs/TASKMAIL-DEBUG-VALIDATION.md` - retained debug-host and device-validation path, including formal-host vs debug-host routing caveats
+- `docs/TASKMAIL-MAIL-RULES.md` - Android-side protocol and reply behavior authority
+- `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md` - current integrated near-term development plan
+- `docs/taskmail/planning/android/taskmail-refresh-live-update-plan-v0.1.md` - refresh and live-update slice details
+- `docs/taskmail/planning/android/taskmail-bootstrap-entry-and-new-thread-plan-v0.1.md` - bootstrap discovery and guided new-thread planning
+- Local TaskMail protocol / PC-side reference workspace: `E:\projects\mail_based_task_manager`
+- In that workspace, check `docs/current/mail_protocol.md` for current cross-client protocol behavior
+- In that workspace, check `docs/current/android_reply_method_rules.md` when Android reply behavior must align with the
+  current mail control plane
+
+For TaskMail changes, do not treat older phase documents as the primary source of truth when they conflict with the
+current-status or mail-rules documents.
+
+For TaskMail repository research, agents SHOULD:
+
+- Prefer narrow, module-scoped searches and direct file reads in `feature:taskmail`, relevant launcher/navigation modules,
+  and the listed TaskMail docs before widening scope
+- Avoid broad repo-wide searches for generic terms when the expected signal is TaskMail-specific; this repository contains
+  substantial unrelated legacy code and wide searches create noise, slowdowns, and low-value output
+
+#### TaskMail Common Pitfalls
+
+When changing TaskMail behavior, agents MUST distinguish between:
+
+- implementation status (`docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`)
+- validation evidence (`docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`)
+- Android-side protocol authority (`docs/TASKMAIL-MAIL-RULES.md`)
+
+If those sources disagree with older planning or phase documents, do NOT silently code to the older document. Clarify
+the conflict or update the documentation first.
+
+For TaskMail reply changes, agents MUST:
+
+- Preserve mode-driven reply semantics; do not collapse all replies into generic free text
+- Treat single-question and multi-question waits differently; multi-question replies require structured `Answers:`
+  payloads rather than one-tap shortcuts
+- Display quick-answer labels to users but send canonical answer keys or values on the wire
+- Treat `paused` as a first-class session state; paused sessions require explicit resume behavior rather than implicit
+  continuation
+- Preserve canonical TaskMail subject identity tokens when normalizing reply subjects, including `Re:`, `[STATUS]`,
+  `[S:session_id]`, and backend routing tokens when present
+- Avoid changing quoted-body, reply anchor, or transport behavior casually; these are protocol decisions, not UI-only
+  tweaks
+
+For TaskMail verification, agents SHOULD:
+
+- Start with narrow module checks such as `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- Run `.\gradlew.bat :feature:taskmail:internal:detekt` and `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+  before widening scope
+- Consult `docs/TASKMAIL-DEBUG-VALIDATION.md` before device/debug smoke work so debug deep links are not confused with
+  the formal in-app launcher path
+- When real-device interaction becomes unreliable for automation, pause and ask the user for a precise manual step
+  instead of repeatedly brute-forcing taps or gestures; resume mailbox or log validation immediately after the user
+  confirms the action
+- Report when broader tasks are blocked by unrelated existing failures instead of expanding the change into unrelated
+  files
+
+#### TaskMail Handoff Maintenance
+
+When a TaskMail slice spans multiple sessions or is paused before implementation and validation are fully closed,
+agents MUST leave a concise handoff note under `docs/taskmail/planning/android/`.
+
+For TaskMail handoff notes, agents SHOULD:
+
+- prefer a file named `taskmail-next-session-handoff-YYYY-MM-DD.md`
+- keep the handoff brief when the slice is still early or doc-only
+- include the current decision or scope boundary
+- include the most relevant "read first" documents
+- include the next concrete implementation or validation steps
+- explicitly state whether code changes or validation were performed in the current session
+
 ### 3. Make Changes
 
 - Modify **only** files directly related to the requested change
@@ -61,12 +174,12 @@ Before making changes, agents MUST:
 
 ### Module Types
 
-- `app-*` — Application entry points (`app-thunderbird`, `app-k9mail`)
-- `app-common` — Wiring layer for features and dependency injection
-- `feature:*` — User-facing features (split into `:api` and `:internal` modules per ADR-0009)
-- `core:*` — Shared infrastructure and utilities (split into `:api` and `:internal` modules per ADR-0009)
-- `library:*` — Reusable libraries
-- `legacy:*` — Migration targets (contains original K-9 Mail codebase; avoid adding new logic here)
+- `app-*` - Application entry points (`app-thunderbird`, `app-k9mail`)
+- `app-common` - Wiring layer for features and dependency injection
+- `feature:*` - User-facing features (split into `:api` and `:internal` modules per ADR-0009)
+- `core:*` - Shared infrastructure and utilities (split into `:api` and `:internal` modules per ADR-0009)
+- `library:*` - Reusable libraries
+- `legacy:*` - Migration targets (contains the original K-9 Mail codebase; avoid adding new logic here)
 
 ### API / Internal Boundary
 
@@ -190,10 +303,18 @@ When fixing bugs, agents MUST:
 
 ### Limitations
 
-If required tasks cannot be executed locally (e.g., no Android device/emulator for `connectedAndroidTest`):
+If required tasks cannot be executed locally (for example, no Android device or emulator for
+`connectedAndroidTest`):
 
 - Agents MUST explicitly state which tasks were not run and why
 - Include this information in the pull request description
+
+If repo-wide verification is blocked by pre-existing unrelated failures outside the requested change scope:
+
+- Do NOT modify unrelated files only to make a global task pass unless explicitly asked
+- Run the narrowest relevant tasks for the affected modules
+- Report the exact blocking task and note that the failure is outside the change scope
+- Keep formatting changes scoped to files directly related to the request
 
 ## Commit Requirements
 
@@ -233,9 +354,9 @@ If uncertain about:
 
 **Then:**
 
-1. Stop — Do not proceed with uncertain changes
-2. Document assumptions — Write down what you understand and what's unclear
-3. Request clarification — Ask specific questions
+1. Stop - Do not proceed with uncertain changes
+2. Document assumptions - Write down what you understand and what is unclear
+3. Request clarification - Ask specific questions
 
 ### What NOT to Do
 
@@ -247,4 +368,4 @@ Agents MUST NOT:
 - Guess at requirements or implementation details
 - Make breaking changes without explicit approval
 
-When in doubt, ask. It's always better to clarify than to guess wrong.
+When in doubt, ask. It is always better to clarify than to guess wrong.

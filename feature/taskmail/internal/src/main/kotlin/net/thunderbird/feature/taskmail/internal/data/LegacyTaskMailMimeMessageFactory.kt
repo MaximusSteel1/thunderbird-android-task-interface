@@ -1,14 +1,13 @@
 package net.thunderbird.feature.taskmail.internal.data
 
 import com.fsck.k9.helper.IdentityHelper
-import com.fsck.k9.helper.ReplyToParser
+import com.fsck.k9.mail.Address
 import com.fsck.k9.mail.internet.MimeMessage
 import com.fsck.k9.message.MessageBuilder
 import com.fsck.k9.message.QuotedTextMode
 import com.fsck.k9.message.SimpleMessageBuilder
 import com.fsck.k9.message.SimpleMessageFormat
 import java.util.Date
-import java.util.regex.Pattern
 import kotlin.Result
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -16,9 +15,10 @@ import net.thunderbird.core.preference.GeneralSettingsManager
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 
 internal class LegacyTaskMailMimeMessageFactory(
-    private val replyToParser: ReplyToParser,
     private val generalSettingsManager: GeneralSettingsManager,
     private val replyAttachmentResolver: TaskMailReplyAttachmentResolver,
+    private val destinationAddressProvider: TaskMailDestinationAddressProvider,
+    private val replySubjectBuilder: TaskMailReplySubjectBuilder = TaskMailReplySubjectBuilder(),
 ) : TaskMailMimeMessageFactory {
 
     override suspend fun create(
@@ -28,36 +28,55 @@ internal class LegacyTaskMailMimeMessageFactory(
         val account = sourceMessage.account
         val message = sourceMessage.message
         val identity = IdentityHelper.getRecipientIdentityFromMessage(account, message)
-        val recipients = replyToParser.getRecipientsToReplyTo(message, account)
         val repliedToMessageId = message.messageId
         val referencedMessageIds = buildReferencesHeader(message.messageId, message.references)
-        val subject = buildReplySubject(message.subject)
-        val attachments = replyAttachmentResolver.buildOutgoingAttachments(request.attachments)
-            .getOrElse { return Result.failure(it) }
+        val subject = replySubjectBuilder.build(message.subject)
+        return resolveBotMailboxRecipients().fold(
+            onSuccess = { botMailboxRecipients ->
+                replyAttachmentResolver.buildOutgoingAttachments(request.attachments).fold(
+                    onSuccess = { attachments ->
+                        SimpleMessageBuilder.newInstance()
+                            .setSubject(subject)
+                            .setSentDate(Date())
+                            .setHideTimeZone(generalSettingsManager.getConfig().privacy.isHideTimeZone)
+                            .setTo(botMailboxRecipients)
+                            .setCc(emptyList())
+                            .setBcc(emptyList())
+                            .setReplyTo(Address.parse(identity.replyTo))
+                            .setInReplyTo(repliedToMessageId)
+                            .setReferences(referencedMessageIds)
+                            .setRequestReadReceipt(false)
+                            .setIdentity(identity)
+                            .setMessageFormat(SimpleMessageFormat.TEXT)
+                            .setText(request.body)
+                            .setAttachments(attachments)
+                            .setInlineAttachments(emptyMap())
+                            .setSignature(identity.signature)
+                            .setQuotedTextMode(QuotedTextMode.NONE)
+                            .setMessageReference(sourceMessage.messageReference)
+                            .setDraft(false)
+                            .setIsPgpInlineEnabled(false)
+                            .awaitMessageBuild()
+                    },
+                    onFailure = { Result.failure(it) },
+                )
+            },
+            onFailure = { Result.failure(it) },
+        )
+    }
 
-        val builder = SimpleMessageBuilder.newInstance()
-            .setSubject(subject)
-            .setSentDate(Date())
-            .setHideTimeZone(generalSettingsManager.getConfig().privacy.isHideTimeZone)
-            .setTo(recipients.to.toList())
-            .setCc(recipients.cc.toList())
-            .setBcc(emptyList())
-            .setReplyTo(com.fsck.k9.mail.Address.parse(identity.replyTo))
-            .setInReplyTo(repliedToMessageId)
-            .setReferences(referencedMessageIds)
-            .setRequestReadReceipt(false)
-            .setIdentity(identity)
-            .setMessageFormat(SimpleMessageFormat.TEXT)
-            .setText(request.body)
-            .setAttachments(attachments)
-            .setInlineAttachments(emptyMap())
-            .setSignature(identity.signature)
-            .setQuotedTextMode(QuotedTextMode.NONE)
-            .setMessageReference(sourceMessage.messageReference)
-            .setDraft(false)
-            .setIsPgpInlineEnabled(false)
+    private fun resolveBotMailboxRecipients(): Result<List<Address>> {
+        val destinationAddress = destinationAddressProvider.getDestinationAddress()
+            ?: return Result.failure(IllegalStateException("TaskMail bot mailbox is not configured."))
+        val recipients = Address.parse(destinationAddress).toList()
 
-        return builder.awaitMessageBuild()
+        return when {
+            recipients.isEmpty() -> Result.failure(IllegalStateException("TaskMail bot mailbox address is invalid."))
+            recipients.size > 1 -> {
+                Result.failure(IllegalStateException("TaskMail bot mailbox must resolve to exactly one address."))
+            }
+            else -> Result.success(recipients)
+        }
     }
 
     private suspend fun MessageBuilder.awaitMessageBuild(): Result<MimeMessage> =
@@ -93,16 +112,6 @@ internal class LegacyTaskMailMimeMessageFactory(
                 },
             )
         }
-
-    private fun buildReplySubject(subject: String?): String {
-        val normalizedSubject = replyPrefixPattern.matcher(subject.orEmpty()).replaceFirst("").trim()
-        return if (normalizedSubject.startsWith("re:", ignoreCase = true)) {
-            normalizedSubject
-        } else {
-            "Re: $normalizedSubject".trim()
-        }
-    }
-
     private fun buildReferencesHeader(messageId: String?, references: Array<String>?): String? {
         if (messageId.isNullOrBlank()) return null
 
@@ -111,9 +120,5 @@ internal class LegacyTaskMailMimeMessageFactory(
         } else {
             messageId
         }
-    }
-
-    private companion object {
-        val replyPrefixPattern: Pattern = Pattern.compile("^AW[:\\s]\\s*", Pattern.CASE_INSENSITIVE)
     }
 }

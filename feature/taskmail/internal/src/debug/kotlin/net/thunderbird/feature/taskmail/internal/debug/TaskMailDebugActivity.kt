@@ -21,9 +21,23 @@ internal class TaskMailDebugActivity : BaseActivity() {
 
         setContent {
             themeProvider.WithTheme {
-                TaskMailNavHost(
-                    deepLinkIntent = deepLinkIntent,
-                )
+                val relayDebug = isTaskMailRelayDebugUri(deepLinkIntent?.data)
+                val previewDetail = resolveTaskMailDebugPreviewDetail(deepLinkIntent?.data)
+                if (relayDebug) {
+                    TaskMailRelayDebugScreen(
+                        onBack = ::finish,
+                    )
+                } else if (previewDetail != null) {
+                    TaskMailDebugPreviewDetailContent(
+                        detail = previewDetail,
+                        onBack = ::finish,
+                    )
+                } else {
+                    TaskMailNavHost(
+                        deepLinkIntent = deepLinkIntent,
+                        onExit = ::finish,
+                    )
+                }
             }
         }
     }

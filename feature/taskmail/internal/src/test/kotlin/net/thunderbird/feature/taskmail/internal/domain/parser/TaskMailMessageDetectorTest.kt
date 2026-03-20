@@ -44,6 +44,42 @@ class TaskMailMessageDetectorTest {
     }
 
     @Test
+    fun `detect should keep sync bootstrap mail outside task session projection`() {
+        // Arrange
+        val envelope = TaskMailEnvelope(
+            messageId = "message-sync",
+            subject = "[SYNC] Project Folder List",
+            fromAddress = "assistant@example.com",
+            timestamp = 1L,
+            plainTextBody = """
+                D:\projects
+                - android_task_manager
+                - mail_based_task_manager
+            """.trimIndent(),
+        )
+
+        // Act
+        val result = testSubject.detect(envelope)
+
+        // Assert
+        assertThat(result).isEqualTo(
+            TaskMailDetection(
+                isTaskMail = false,
+                isSystemMessage = false,
+                parsedSubject = TaskMailParsedSubject(
+                    backend = null,
+                    statusLabel = null,
+                    sessionIdFromSubject = null,
+                    subjectText = "[SYNC] Project Folder List",
+                    isReplyLike = false,
+                ),
+                stateCapsule = null,
+                questionCapsule = null,
+            ),
+        )
+    }
+
+    @Test
     fun `detect should mark state capsule message as task mail system message`() {
         // Arrange
         val envelope = TaskMailEnvelope(
@@ -185,6 +221,57 @@ class TaskMailMessageDetectorTest {
             ),
         )
         assertThat(result.questionCapsule?.questionId).isEqualTo("phase2_icon_strings")
+    }
+
+    @Test
+    fun `detect should keep reply like done mail as user message even when quoted capsules are present`() {
+        // Arrange
+        val envelope = TaskMailEnvelope(
+            messageId = "message-6",
+            subject = "Re: [DONE][S:thread_026] Timeline test",
+            fromAddress = "user@example.com",
+            timestamp = 6L,
+            plainTextBody = """
+                Say Ho
+
+                -----Original Message-----
+                From: Task_runner <assistant@example.com>
+                Sent: 2026-03-15 14:15:50
+                To: user@example.com
+                Subject: [DONE][S:thread_026] Timeline test
+
+                Reply:
+                1. Hi
+
+                ---TASK-STATE-BEGIN---
+                thread_id: thread_026
+                session_id: thread_026
+                backend: opencode
+                status: done
+                ---TASK-STATE-END---
+            """.trimIndent(),
+        )
+
+        // Act
+        val result = testSubject.detect(envelope)
+
+        // Assert
+        assertThat(result).isEqualTo(
+            TaskMailDetection(
+                isTaskMail = true,
+                isSystemMessage = false,
+                parsedSubject = TaskMailParsedSubject(
+                    backend = null,
+                    statusLabel = TaskMailStatusLabel.Done,
+                    sessionIdFromSubject = "thread_026",
+                    subjectText = "Timeline test",
+                    isReplyLike = true,
+                ),
+                stateCapsule = null,
+                questionCapsule = null,
+            ),
+        )
+        assertThat(result.questionCapsules).isEqualTo(emptyList())
     }
 
     @Test

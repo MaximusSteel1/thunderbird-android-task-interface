@@ -63,4 +63,70 @@ class FeatureLauncherNavHostTaskMailCallbackTest {
         assertEquals(targetRoute, navigatedRoute)
         assertFalse(navigatedRoute == TaskMailRoute.Workspace)
     }
+
+    @Test
+    fun `taskMailOnRepoSelected returns to existing new task when it is already on the back stack`() {
+        var popToExistingNewTaskCalls = 0
+        var popProjectSyncCalls = 0
+        var openNewTaskCalls = 0
+        var selectedRepoPath: String? = null
+
+        val onRepoSelected = taskMailOnRepoSelected(
+            isReturningToExistingNewTask = { true },
+            setSelectedRepoPathOnNewTask = { repoPath ->
+                selectedRepoPath = repoPath
+            },
+            popToExistingNewTask = {
+                popToExistingNewTaskCalls++
+                true
+            },
+            popProjectSync = {
+                popProjectSyncCalls++
+                true
+            },
+            openNewTask = {
+                openNewTaskCalls++
+            },
+        )
+
+        onRepoSelected("E:/projects/android_task_manager")
+
+        assertEquals("E:/projects/android_task_manager", selectedRepoPath)
+        assertEquals(1, popToExistingNewTaskCalls)
+        assertEquals(0, popProjectSyncCalls)
+        assertEquals(0, openNewTaskCalls)
+    }
+
+    @Test
+    fun `taskMailOnRepoSelected opens new task when project list was launched directly from workspace`() {
+        val callLog = mutableListOf<String>()
+        var selectedRepoPath: String? = null
+
+        val onRepoSelected = taskMailOnRepoSelected(
+            isReturningToExistingNewTask = { false },
+            setSelectedRepoPathOnNewTask = { repoPath ->
+                callLog += "setRepo"
+                selectedRepoPath = repoPath
+            },
+            popToExistingNewTask = {
+                callLog += "popToExistingNewTask"
+                true
+            },
+            popProjectSync = {
+                callLog += "popProjectSync"
+                true
+            },
+            openNewTask = {
+                callLog += "openNewTask"
+            },
+        )
+
+        onRepoSelected("E:/projects/android_task_manager")
+
+        assertEquals("E:/projects/android_task_manager", selectedRepoPath)
+        assertEquals(
+            listOf("popProjectSync", "openNewTask", "setRepo"),
+            callLog,
+        )
+    }
 }

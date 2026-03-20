@@ -11,7 +11,9 @@ internal interface TaskSessionDetailContract {
 
     data class State(
         val isLoading: Boolean = false,
+        val isRefreshing: Boolean = false,
         val error: String? = null,
+        val refreshError: String? = null,
         val draftText: String = "",
         val isSending: Boolean = false,
         val sendError: String? = null,
@@ -34,6 +36,8 @@ internal interface TaskSessionDetailContract {
             val attachmentId: String,
             val destinationUriString: String,
         ) : Event
+        data object ForegroundRefreshStarted : Event
+        data object ForegroundRefreshStopped : Event
         data object SendReplyClicked : Event
         data class SendChoiceClicked(val choice: String) : Event
         data object StatusQueryClicked : Event
