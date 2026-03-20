@@ -46,6 +46,7 @@ generator, in this case, **mdbook**. It defines the structure and navigation of 
   - [Android Current Status](TASKMAIL-ANDROID-CURRENT-STATUS.md)
   - [Android Validation Ledger](TASKMAIL-ANDROID-VALIDATION-LEDGER.md)
   - [Debug Validation](TASKMAIL-DEBUG-VALIDATION.md)
+  - [GitHub Sync Workflow](TASKMAIL-GITHUB-SYNC-WORKFLOW.md)
   - [Planning And History Archive](taskmail/planning/README.md)
 - [User Guide]()
   - [Setup]()
