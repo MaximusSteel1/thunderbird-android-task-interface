@@ -236,6 +236,30 @@ class TaskWorkspaceViewModelTest {
     }
 
     @Test
+    fun `foreground refresh should reload current workspace summaries when returning visible`() = runMviTest {
+        val repository = FakeTaskMailRepository()
+        val syncRequester = FakeTaskMailSyncRequester()
+
+        with(
+            TaskWorkspaceViewModelRobot(
+                mviContext = this,
+                repository = repository,
+                syncRequester = syncRequester,
+            ),
+        ) {
+            start()
+            loadData()
+            repository.workspaces = emptyList()
+
+            startForegroundRefresh()
+
+            assertThat(viewModelState().workspaces).hasSize(0)
+            assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf("account_001"))
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `foreground refresh should stay disabled when sender account resolution is ambiguous`() = runMviTest {
         val syncRequester = FakeTaskMailSyncRequester()
         val tickerFactory = FakeTaskMailForegroundRefreshTickerFactory()

@@ -92,6 +92,7 @@ class TaskSessionDetailScreenKtTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
         composeTestRule.onNodeWithText("Parser layer is complete. Waiting for the next step.").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TimelineMessageSelectableBody:timeline_001").assertIsDisplayed()
     }
 
     @Test
@@ -141,6 +142,7 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onNodeWithText("Rendered heading").assertIsDisplayed()
         composeTestRule.onNodeWithText("Rendered paragraph with rich text.").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TimelineMessageSelectableBody:timeline_rich_001").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Fallback plain text").assertCountEquals(0)
     }
 

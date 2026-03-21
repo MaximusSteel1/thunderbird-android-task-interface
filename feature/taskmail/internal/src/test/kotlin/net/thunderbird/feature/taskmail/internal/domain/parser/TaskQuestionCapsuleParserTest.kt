@@ -140,6 +140,62 @@ class TaskQuestionCapsuleParserTest {
     }
 
     @Test
+    fun `parseAll should preserve duplicate question blocks from source mail`() {
+        // Arrange
+        val text = """
+            ---TASK-QUESTION-BEGIN---
+            question_set_id: phase3_duplicate_question
+            question_id: q_branch
+            question_type: single_choice
+            required: true
+            question_text: Which branch should I use?
+            choices: main | release
+            choice_labels: main=Main branch | release=Release branch
+            ---TASK-QUESTION-END---
+            ---TASK-QUESTION-BEGIN---
+            question_set_id: phase3_duplicate_question
+            question_id: q_branch
+            question_type: single_choice
+            required: true
+            question_text: Which branch should I use?
+            choices: main | release
+            choice_labels: main=Main branch | release=Release branch
+            ---TASK-QUESTION-END---
+        """.trimIndent()
+
+        // Act
+        val result = testSubject.parseAll(text)
+
+        // Assert
+        assertThat(result).containsExactly(
+            TaskQuestionCapsule(
+                questionId = "q_branch",
+                questionText = "Which branch should I use?",
+                choices = listOf("main", "release"),
+                questionSetId = "phase3_duplicate_question",
+                questionType = "single_choice",
+                required = true,
+                choiceLabels = mapOf(
+                    "main" to "Main branch",
+                    "release" to "Release branch",
+                ),
+            ),
+            TaskQuestionCapsule(
+                questionId = "q_branch",
+                questionText = "Which branch should I use?",
+                choices = listOf("main", "release"),
+                questionSetId = "phase3_duplicate_question",
+                questionType = "single_choice",
+                required = true,
+                choiceLabels = mapOf(
+                    "main" to "Main branch",
+                    "release" to "Release branch",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `parseAll should return empty list for conflicting question set ids`() {
         // Arrange
         val text = """

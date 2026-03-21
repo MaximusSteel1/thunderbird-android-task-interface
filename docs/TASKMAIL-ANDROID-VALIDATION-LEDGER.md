@@ -16,8 +16,8 @@ validation evidence for Android behavior until it lands in PC-side current docs 
 
 ## Date
 
-- Last updated: 2026-03-21
-- Last executable validation session captured here: 2026-03-21
+- Last updated: 2026-03-22
+- Last executable validation session captured here: 2026-03-22
 
 ## Purpose
 
@@ -1088,3 +1088,93 @@ retest，QUESTION mail 里的回复 token 是 `BAF751DE25`。这轮采用的验�
 - `thread_087` detail 里的 duplicate pending question 依旧存在
 - 结合前一轮 `thread_086` 的原始 mail 证据，这更像 `[QUESTION]` mail body / extractor 输入问题，
   而不是 `timeline merge + business_event_key reconciliation` 回归
+## 2026-03-22 Phase 3 Fixture / Duplicate-Question Follow-up
+
+On 2026-03-22, the remaining Phase 3 follow-up work narrowed both open questions into executable evidence.
+
+Direct inbound follow-up:
+
+- Android re-ran the shared Phase 3 fixture contract against the adjacent PC fixture package.
+- On this workstation, the adjacent PC workspace is checked out under
+  `E:\projects\mail_based_task_manager\taskMail_PC\docs\plans\fixtures\phase3_direct_inbound_v1`
+  instead of the older flat `E:\projects\mail_based_task_manager\docs\...` layout.
+- The Android-side fixture loader now accepts both adjacent-workspace layouts so the contract test is not falsely
+  skipped as "fixture package missing" on this machine.
+- `TaskMailDirectSessionFixtureContractTest` now re-runs cleanly against the current exported Phase 3 fixture package.
+- `ObserveTaskMailDirectSessionDetailTest` also re-runs cleanly and continues to lock:
+  - `subscribe_session_detail` packet emission
+  - `session_snapshot/session_delta` consumption
+  - canonical `workspace_id` reuse
+  - gap-triggered `detail_refresh` resubscribe
+  - Android-side direct-detail debug logging points
+
+Duplicate pending-question follow-up:
+
+- `TaskQuestionCapsuleParserTest` now explicitly proves that when a source QUESTION mail repeats the same
+  `TASK-QUESTION` capsule, the current Android parser preserves both blocks instead of silently deduplicating them.
+- `DefaultTaskMailRepositoryPendingQuestionsTest` now explicitly proves that repository/detail projection shows the same
+  duplicate pending question even with **no direct overlay involved**.
+
+The safest current interpretation after this follow-up is:
+
+- Phase 3 `detail` direct inbound now has stronger executable evidence through the shared fixture contract plus the
+  Android observer/use-case tests, showing that the Android implementation remains aligned with the current
+  `session_snapshot/session_delta` contract.
+- This still does **not** newly establish a live-device proof that direct websocket updates visibly beat durable mail
+  sync in driving the UI; that narrower live-ordering boundary remains open for future log capture.
+- The duplicate pending question seen in live smoke is currently best read as a source `[QUESTION]` mail / extractor
+  input duplication issue, not as a confirmed `TaskTimelineMerge` / `business_event_key reconciliation` regression.
+
+## 2026-03-22 Phase 3 Durable Mail Sync Live Closeout Update
+
+### 2026-03-22 后续复验（placeholder session filter / workspace foreground reload 后）
+
+- live thread：`thread_089 / phase3-workspace-refresh-A73D2C9F11`
+- 在装入 placeholder-session 过滤修复的新包后，workspace 不再先出现可点击的 `Unknown` placeholder card；进入 detail 的是 canonical `thread_089`
+- 在 detail 页面直接使用内置 structured reply composer 回答后，不手动刷新，设备本地 cache 先自然从 `WaitingUser` 推进到 `Running`，随后继续推进到 `Done`
+- 同一轮 watch 中，`thread_089` 的本地 detail snapshot 从 `status = Running / pendingQuestions = 0 / timelineCount = 7 / lastSummary = Permission: default`，自然推进到 `status = Done / pendingQuestions = 0 / timelineCount = 8 / lastSummary = QUESTION_FLOW_OK | A73D2C9F11`
+- UI 侧也拿到了对应正向证据：detail 画面在不做 `pull-to-refresh` 的前提下，先从 question composer 切到 running 态，再自然显示 `QUESTION_FLOW_OK | A73D2C9F11`
+- 从已完成 detail 返回 workspace 后，不做任何手动 `pull-to-refresh`，session card 已立即显示 `Done` 和 `QUESTION_FLOW_OK | A73D2C9F11`
+- 这说明上一轮的两个边界现在都已闭环：
+  - `TaskWorkspaceViewModel` 的 foreground reload 修复了 workspace stale-card / stale-summary
+  - placeholder session filter 消除了把用户带进 stale `Unknown` detail route 的根因
+- 仍未关闭的尾项：`Pending questions` / structured reply template 中重复的 `reply_token` 仍然存在，而且当前必须把重复行都填上值，`Send answers` 才会点亮；这更像 source `[QUESTION]` mail / extractor 输入重复带来的 reply UX 问题，而不是本轮 workspace refresh 修复的回归
+
+`2026-03-22` 这轮 live closeout 把 Phase 3 `durable mail sync` 的边界继续收紧到了 detail 与 workspace
+两个可区分的结果。
+
+本轮 live thread 与输入约束：
+
+- live thread：`thread_088 / phase3-direct-log-eb51a4`
+- reply token：`1FAE661EFB`
+- 验证约束：detail 保持打开，不手动 `pull-to-refresh`，直接回复 QUESTION mail，然后观察页面是否自然推进
+
+detail 侧观察到的事实：
+
+- reply 前，detail 里的 pending question 与 composer 模板都仍然显示了两行重复的
+  `live_mailbox_answer`
+- reply 发出后，`+55s` 的 detail UI dump 仍停留在 `WaitingUser`，但 timeline 已显示 outgoing 内容：
+  `Answers:` + 两行 `live_mailbox_answer: 1FAE661EFB`
+- `01:07:48` 的设备日志里，`RealImapConnection` / `ImapSync` 明确拉到了 `thread_088` 的
+  `[ACCEPTED]`、`[RUNNING]`、`[DONE]` 三封状态 mail
+- 同一批日志里，`TaskSessionDetailViewModel` 记录了 `Observed local TaskMail store change while detail is visible.`
+- 约 `+130s` 后，不做任何手动刷新，detail UI 自然推进到 `Done`；顶部 timeline entry 显示
+  `Status: DONE`、`Session ID: thread_088`、`Task ID: 20260322_010644_66c9`
+
+workspace 侧观察到的事实：
+
+- 从已完成的 detail 返回 TaskMail workspace 后，`phase3-direct-log-eb51a4` 对应 session card 仍停留在旧状态：
+  `WaitingUser / Waiting`
+- 同一张 card 的 summary 仍是旧的 `Reply with the exact token 1FAE661EFB`
+- 在 workspace 列表页静置约 `25s` 后再次抓取 UI dump，上述旧状态仍未自然纠正
+- 对 workspace 列表手动做一次 `pull-to-refresh` 后，session card 立即纠正为 `Done`，summary 变成
+  `QUESTION_FLOW_OK | 1FAE661EFB`
+
+本轮新增的验证结论：
+
+- Phase 3 detail 现在已有新的真实设备证据表明：`durable mail sync` 本身可以在不手动刷新的前提下驱动
+  detail 从 QUESTION 流程自然进入 `Done`
+- 但同一轮 live 流程里，workspace/session card 没有证明会自然吸收这次状态推进；当前更像是
+  workspace summary freshness 仍依赖显式 refresh
+- duplicate pending question / duplicate answer line 现象在本轮继续出现，但结合既有 parser / repository
+  证据，它仍更像源 `[QUESTION]` mail / extractor 输入重复，而不是新的 Phase 3 merge 回归

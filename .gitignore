@@ -52,3 +52,6 @@ adb-screenshots/
 _mailin_*
 # Extracted eml files
 eml-files/
+
+# Local-only TaskMail environment notes
+docs/taskmail/planning/android/_local/

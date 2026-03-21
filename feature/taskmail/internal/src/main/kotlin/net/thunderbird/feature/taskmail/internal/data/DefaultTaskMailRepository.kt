@@ -106,7 +106,14 @@ internal class TaskMailSessionProjector(
         val sessionId = latestState?.sessionId
             ?: sortedMessages.lastMappedNotNull { it.detection.parsedSubject.sessionIdFromSubject }
         val threadId = latestState?.threadId?.takeIf { it.isNotBlank() }
-        val fallbackThreadRootId = sortedMessages.lastOrNull()?.threadRootId?.toString() ?: return null
+        val fallbackThreadRootId = sortedMessages.lastOrNull()?.threadRootId?.toString()
+        val shouldSkipPlaceholderThread = sessionId == null &&
+            threadId == null &&
+            sortedMessages.all(TaskMailMessage::isNewTaskRequestPlaceholder)
+
+        if (fallbackThreadRootId == null || shouldSkipPlaceholderThread) {
+            return null
+        }
 
         return LogicalThreadRecord(
             logicalSession = LogicalSessionKey(
@@ -183,9 +190,7 @@ internal class TaskMailSessionProjector(
 
         return TaskWorkspaceSummary(
             key = workspace,
-            title = workspace.workspaceId
-                ?: workspace.repoPath.takeIf { it.isNotBlank() }?.let(::deriveWorkspaceTitle)
-                ?: "Task workspace",
+            title = resolveWorkspaceTitle(workspace),
             subtitle = primaryRecord.workdir,
             backendSet = records.map(SessionRecord::backend).toSet(),
             activeSessionId = sessions.firstOrNull()?.key?.sessionId,
@@ -287,6 +292,14 @@ private data class SessionRecordMetadata(
 
 private fun deriveWorkspaceTitle(repoPath: String): String {
     return File(repoPath).name.takeIf { it.isNotBlank() } ?: repoPath
+}
+
+private fun resolveWorkspaceTitle(workspace: TaskWorkspaceKey): String {
+    return workspace.repoPath
+        .takeIf { it.isNotBlank() }
+        ?.let(::deriveWorkspaceTitle)
+        ?: workspace.workspaceId
+        ?: "Task workspace"
 }
 
 private fun resolvePendingQuestions(messages: List<TaskMailMessage>): List<TaskQuestionCapsule> {
@@ -612,6 +625,41 @@ private fun TaskMailMessage.looksLikeBotMailboxTraffic(): Boolean {
         !detection.isSystemMessage && !detection.parsedSubject.isReplyLike && !isFromCurrentUser -> true
         else -> false
     }
+}
+
+private fun TaskMailMessage.isNewTaskRequestPlaceholder(): Boolean {
+    return isFromCurrentUser &&
+        !detection.isSystemMessage &&
+        !detection.parsedSubject.isReplyLike &&
+        detection.parsedSubject.sessionIdFromSubject == null &&
+        detection.stateCapsule == null &&
+        rawBodyText.looksLikeTaskMailNewTaskRequestBody()
+}
+
+private fun String.looksLikeTaskMailNewTaskRequestBody(): Boolean {
+    val normalized = replace("\r\n", "\n")
+        .replace('\r', '\n')
+        .trim()
+    val lines = normalized.lines()
+    val taskHeaderIndex = lines.indexOf("Task:")
+    val headerLines = lines.subList(1, taskHeaderIndex.coerceAtLeast(1))
+        .filter(String::isNotBlank)
+    val hasOnlySupportedHeaders = headerLines.all(String::isSupportedTaskMailRequestHeader)
+    val hasBlankSeparator = taskHeaderIndex > 1 && lines[taskHeaderIndex - 1].isBlank()
+    val hasTaskBody = taskHeaderIndex >= 0 && lines.drop(taskHeaderIndex + 1).any(String::isNotBlank)
+
+    return normalized.startsWith("Repo: ") &&
+        hasOnlySupportedHeaders &&
+        hasBlankSeparator &&
+        hasTaskBody
+}
+
+private fun String.isSupportedTaskMailRequestHeader(): Boolean {
+    return startsWith("Workdir: ") ||
+        startsWith("Timeout: ") ||
+        startsWith("Mode: ") ||
+        startsWith("Profile: ") ||
+        startsWith("Permission: ")
 }
 
 private fun dedupeMessages(messages: List<TaskMailMessage>): List<TaskMailMessage> {

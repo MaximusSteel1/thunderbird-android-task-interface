@@ -9,6 +9,8 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailDetection
+import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailEnvelope
+import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailMessageDetector
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailParsedSubject
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskStateCapsule
@@ -68,6 +70,34 @@ internal class DefaultTaskMailRepositoryPendingQuestionsTest {
         assertThat(detail.status).isEqualTo(TaskMailSessionStatus.Done)
         assertThat(detail.question).isNull()
         assertThat(detail.pendingQuestions).isEqualTo(emptyList())
+    }
+
+    @Test
+    fun `getTaskSessionDetail preserves duplicate pending questions from source mail`() = runTest {
+        val rawBodyText = duplicatePendingQuestionBody()
+        val detection = TaskMailMessageDetector().detect(
+            duplicatePendingQuestionEnvelope(rawBodyText),
+        )
+        val testSubject = DefaultTaskMailRepository(
+            messageSource = PendingQuestionsMessageSource(
+                messages = listOf(duplicatePendingQuestionMessage(rawBodyText, detection)),
+            ),
+        )
+
+        val result = testSubject.getTaskSessionDetail(
+            TaskSessionKey(
+                sessionId = "session-1",
+                threadId = "thread-100",
+            ),
+        )
+
+        assertThat(result).isNotNull()
+        val detail = result!!
+        assertThat(detail.status).isEqualTo(TaskMailSessionStatus.WaitingUser)
+        assertThat(detail.pendingQuestions.map { it.questionId }).isEqualTo(listOf("q_branch", "q_branch"))
+        assertThat(detail.pendingQuestions.map { it.questionSetId }).isEqualTo(
+            listOf("qset_branch_choice", "qset_branch_choice"),
+        )
     }
 }
 
@@ -239,6 +269,71 @@ private fun doneSystemMessage(
                 lastSummary = lastSummary,
             ),
         ),
+        isFromCurrentUser = false,
+    )
+}
+
+private fun duplicatePendingQuestionBody(): String {
+    return """
+        Summary: Need one answer before continuing.
+
+        ---TASK-QUESTION-BEGIN---
+        question_set_id: qset_branch_choice
+        question_id: q_branch
+        question_type: single_choice
+        required: true
+        question_text: Which branch should I use?
+        choices: main | release
+        choice_labels: main=Main branch | release=Release branch
+        ---TASK-QUESTION-END---
+
+        ---TASK-QUESTION-BEGIN---
+        question_set_id: qset_branch_choice
+        question_id: q_branch
+        question_type: single_choice
+        required: true
+        question_text: Which branch should I use?
+        choices: main | release
+        choice_labels: main=Main branch | release=Release branch
+        ---TASK-QUESTION-END---
+
+        ---TASK-STATE-BEGIN---
+        thread_id: thread-100
+        workspace_id: workspace-1
+        session_id: session-1
+        session_name: Implement parser
+        repo_path: E:/projects/android_task_manager
+        workdir: feature/taskmail
+        backend: codex
+        status: waiting_user
+        last_summary: Need one answer before continuing.
+        ---TASK-STATE-END---
+    """.trimIndent()
+}
+
+private fun duplicatePendingQuestionEnvelope(rawBodyText: String): TaskMailEnvelope {
+    return TaskMailEnvelope(
+        messageId = "<msg-question-duplicate>",
+        subject = "[QUESTION] [CX] [S:session-1] Implement parser",
+        fromAddress = "taskmail@example.test",
+        timestamp = 100L,
+        plainTextBody = rawBodyText,
+    )
+}
+
+private fun duplicatePendingQuestionMessage(
+    rawBodyText: String,
+    detection: TaskMailDetection,
+): TaskMailMessage {
+    return TaskMailMessage(
+        accountUuid = "account-1",
+        folderId = 1L,
+        messageServerId = "msg-question-duplicate",
+        threadRootId = 100L,
+        timestamp = 100L,
+        subject = "[QUESTION] [CX] [S:session-1] Implement parser",
+        rawBodyText = rawBodyText,
+        detection = detection,
         isFromCurrentUser = false,
     )
 }

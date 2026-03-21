@@ -11,6 +11,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
 
@@ -48,6 +49,32 @@ class SnapshotBackedTaskMailRepositoryTest {
             "Wire repository",
             "Implement parser",
         )
+    }
+
+    @Test
+    fun `getTaskWorkspaceSummaries should prefer repo folder name over workspace id when both are present`() = runTest {
+        val repository = SnapshotBackedTaskMailRepository(
+            taskSessionDetailRepository = InMemoryTaskSessionDetailRepository(
+                sessionDetails = listOf(
+                    sampleDetail(
+                        sessionId = "session-1",
+                        threadId = "thread-1",
+                        sessionName = "Wire repository",
+                        summary = "Repository wiring is waiting for input.",
+                        timestamp = 200L,
+                    ).copy(
+                        workspace = TaskWorkspaceKey(
+                            workspaceId = "workspace_cb2404bf828c",
+                            repoPath = "E:/projects/android_task_manager",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val result = repository.getTaskWorkspaceSummaries()
+
+        assertThat(result.single().title).isEqualTo("android_task_manager")
     }
 
     @Test

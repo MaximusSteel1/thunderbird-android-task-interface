@@ -6,7 +6,7 @@ If this file conflicts with older phase-planning documents, treat this file as t
 
 ## Date
 
-- Last updated: 2026-03-21
+- Last updated: 2026-03-22
 
 ## Scope of This Status
 
@@ -647,3 +647,23 @@ slice now closed, the next engineering focus should be:
 - narrow validation guardrail closeout for the already-implemented refresh/live-update and dual-mailbox slices, especially refresh-warning visibility, post-sync summary freshness, detail draft/attachment preservation, dual-mailbox coexistence, and `[SYNC]` exclusion smoke
 - deciding whether any newer lifecycle/health-facing fields remain internal-only or now need minimal UI surfacing
 - preserving protocol compatibility and dual-mailbox send-target rules without over-promising dedicated UI for the full protocol superset
+
+## 2026-03-22 Phase 3 Validation Note
+
+在 `2026-03-22` 的后续验证里，Phase 3 有两条重要结论被进一步坐实：
+
+1. `detail` direct inbound 现在不仅有先前的 live smoke 记录，也有共享 Phase 3 fixture package 对齐下的 Android 可执行证据。
+   当前 Android 测试已能在本机读取相邻 PC 工作区导出的 `phase3_direct_inbound_v1` fixtures，并重新跑通 fixture contract
+   与 direct observer 用例，锁定 `session_snapshot/session_delta`、canonical `workspace_id` 复用、以及 gap 后的
+   `detail_refresh` 重订阅语义。
+2. live smoke 里看到的 duplicate pending question，目前更应读取为 source `[QUESTION]` mail / extractor 输入重复，
+   而不是已经证实的 `timeline merge + business_event_key reconciliation` 回归。
+   Android 侧现已新增 parser 与 repository 回归测试，确认当原始 QUESTION mail 自己重复携带同一个
+   `TASK-QUESTION` capsule 时，即使**没有 direct overlay 参与**，detail 仍会原样显示重复 pending question。
+
+因此，当前最稳妥的状态解读是：
+
+- Phase 3 `detail` auto-refresh closeout 仍然成立
+- direct websocket 合同对齐现在有更强的自动化证据
+- 但“真实设备上 direct websocket update 明确早于 durable mail sync 驱动 UI”这条 live 优先级证据仍可继续补抓
+- duplicate pending question 目前应作为独立的 source-mail / extractor 输入问题继续处理，而不是先把它读成 Phase 3 merge 回归

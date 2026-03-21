@@ -3,6 +3,7 @@
 package net.thunderbird.feature.taskmail.internal.ui.detail.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -191,10 +192,12 @@ private fun RichQuote(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextLabelMedium(
-                    text = "Quoted content",
-                    color = MainTheme.colors.onSurfaceVariant,
-                )
+                DisableSelection {
+                    TextLabelMedium(
+                        text = "Quoted content",
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
                 blocks.forEach { block ->
                     TaskRichTextBlockView(
                         block = block,
@@ -347,10 +350,12 @@ private fun RichInlineImagePreview(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextLabelMedium(
-                text = "Inline image",
-                color = MainTheme.colors.onSurfaceVariant,
-            )
+            DisableSelection {
+                TextLabelMedium(
+                    text = "Inline image",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -405,10 +410,12 @@ private fun RichInlineImageFallback(
                 .testTag("TaskRichTextInlineImageFallback:${image.testKey()}"),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            TextLabelMedium(
-                text = if (image.isSvg) "Inline SVG" else "Inline image",
-                color = MainTheme.colors.onSurfaceVariant,
-            )
+            DisableSelection {
+                TextLabelMedium(
+                    text = if (image.isSvg) "Inline SVG" else "Inline image",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
             TextBodyMedium(
                 text = inlineImageSupportingText(
                     image = image,

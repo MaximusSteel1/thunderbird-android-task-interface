@@ -1,6 +1,9 @@
 package net.thunderbird.feature.taskmail.internal.ui.detail.component
 
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineItemUi
 
@@ -13,12 +16,20 @@ internal fun TimelineMessageContent(
     onSaveAttachment: (String) -> Unit,
 ) {
     if (richDocument != null) {
-        TaskRichTextBody(
-            document = richDocument,
-            attachments = item.attachments,
-        )
+        SelectionContainer(
+            modifier = Modifier.testTag("TimelineMessageSelectableBody:${item.id}"),
+        ) {
+            TaskRichTextBody(
+                document = richDocument,
+                attachments = item.attachments,
+            )
+        }
     } else if (item.plainText.isNotBlank()) {
-        PlainTextBody(text = item.plainText)
+        SelectionContainer(
+            modifier = Modifier.testTag("TimelineMessageSelectableBody:${item.id}"),
+        ) {
+            PlainTextBody(text = item.plainText)
+        }
     }
 
     if (item.attachments.isNotEmpty()) {

@@ -4,6 +4,7 @@ import java.io.File
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
@@ -43,9 +44,7 @@ internal class TaskWorkspaceSummaryProjector {
 
         return TaskWorkspaceSummary(
             key = workspace,
-            title = workspace.workspaceId
-                ?: workspace.repoPath.takeIf { it.isNotBlank() }?.let(::deriveWorkspaceTitle)
-                ?: "Task workspace",
+            title = resolveWorkspaceTitle(workspace),
             subtitle = primaryDetail.workdir,
             backendSet = details.map(TaskSessionDetail::backend).toSet(),
             activeSessionId = sessions.firstOrNull()?.key?.sessionId,
@@ -76,4 +75,12 @@ private fun TaskSessionDetail.lastUpdatedAt(): Long {
 
 private fun deriveWorkspaceTitle(repoPath: String): String {
     return File(repoPath).name.takeIf { it.isNotBlank() } ?: repoPath
+}
+
+private fun resolveWorkspaceTitle(workspace: TaskWorkspaceKey): String {
+    return workspace.repoPath
+        .takeIf { it.isNotBlank() }
+        ?.let(::deriveWorkspaceTitle)
+        ?: workspace.workspaceId
+        ?: "Task workspace"
 }

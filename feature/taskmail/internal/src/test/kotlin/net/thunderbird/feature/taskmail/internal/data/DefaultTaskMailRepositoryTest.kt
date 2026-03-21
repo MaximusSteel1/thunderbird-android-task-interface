@@ -21,6 +21,7 @@ import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsu
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskStateCapsule
 import org.junit.Test
 
+@Suppress("LargeClass")
 internal class DefaultTaskMailRepositoryTest {
 
     @Test
@@ -168,6 +169,82 @@ internal class DefaultTaskMailRepositoryTest {
 
         assertThat(result).isNotNull()
         assertThat(result!!.timeline.single().attachments).containsExactly(attachment)
+    }
+
+    @Test
+    @Suppress("MaxLineLength")
+    fun `getTaskWorkspaceSummaries should ignore outgoing new task request placeholders without canonical session identity`() = runTest {
+        val detector = TaskMailMessageDetector()
+        val testSubject = DefaultTaskMailRepository(
+            messageSource = FakeTaskMailMessageSource(
+                messages = listOf(
+                    detectedMessage(
+                        detector = detector,
+                        threadRootId = 201L,
+                        messageServerId = "msg-local",
+                        timestamp = 100L,
+                        subject = "[CX] phase3-workspace-refresh-A73D2C9F11",
+                        rawBodyText = """
+                            Repo: E:\projects\android_task_manager
+
+                            Task:
+                            Ask exactly one question that requires me to reply with the exact token A73D2C9F11.
+                        """.trimIndent(),
+                        isFromCurrentUser = true,
+                    ),
+                ),
+            ),
+        )
+
+        val result = testSubject.getTaskWorkspaceSummaries()
+
+        assertThat(result).hasSize(0)
+    }
+
+    @Test
+    @Suppress("MaxLineLength")
+    fun `getTaskWorkspaceSummaries should keep only canonical session when placeholder request and status mail coexist`() = runTest {
+        val detector = TaskMailMessageDetector()
+        val testSubject = DefaultTaskMailRepository(
+            messageSource = FakeTaskMailMessageSource(
+                messages = listOf(
+                    detectedMessage(
+                        detector = detector,
+                        threadRootId = 201L,
+                        messageServerId = "msg-local",
+                        timestamp = 100L,
+                        subject = "[CX] phase3-workspace-refresh-A73D2C9F11",
+                        rawBodyText = """
+                            Repo: E:\projects\android_task_manager
+
+                            Task:
+                            Ask exactly one question that requires me to reply with the exact token A73D2C9F11.
+                        """.trimIndent(),
+                        isFromCurrentUser = true,
+                    ),
+                    questionMessage(
+                        threadRootId = 301L,
+                        messageServerId = "msg-system",
+                        timestamp = 200L,
+                        sessionId = "thread_089",
+                        workspaceId = "workspace_cb2404bf828c",
+                        sessionName = "phase3-workspace-refresh-A73D2C9F11",
+                        repoPath = "E:/projects/android_task_manager",
+                        workdir = "",
+                        lastSummary = "Please reply with the exact token A73D2C9F11.",
+                        questionText = "Please reply with the exact token A73D2C9F11.",
+                        choices = emptyList(),
+                    ),
+                ),
+            ),
+        )
+
+        val result = testSubject.getTaskWorkspaceSummaries()
+
+        assertThat(result).hasSize(1)
+        assertThat(result.single().sessionCount).isEqualTo(1)
+        assertThat(result.single().sessions.single().key.threadId).isEqualTo("thread-301")
+        assertThat(result.single().sessions.single().status).isEqualTo(TaskMailSessionStatus.WaitingUser)
     }
 
     @Test

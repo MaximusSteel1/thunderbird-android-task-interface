@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 
 internal object Phase3DirectInboundFixturePackageLoader {
-    fun manifestFile(): File = File(FIXTURE_ROOT, "manifest.json")
+    fun manifestFile(): File = File(resolveFixtureRoot(), "manifest.json")
 
     fun loadManifest(json: Json): Phase3DirectInboundFixtureManifest {
         return json.decodeFromString(manifestFile().readText())
@@ -17,7 +17,12 @@ internal object Phase3DirectInboundFixturePackageLoader {
         json: Json,
         entry: Phase3DirectInboundFixtureManifestEntry,
     ): Phase3DirectInboundFixturePackage {
-        return json.decodeFromString(File(FIXTURE_ROOT, entry.file).readText())
+        return json.decodeFromString(File(resolveFixtureRoot(), entry.file).readText())
+    }
+
+    private fun resolveFixtureRoot(): File {
+        return FIXTURE_ROOT_CANDIDATES.firstOrNull(File::exists)
+            ?: FIXTURE_ROOT_CANDIDATES.first()
     }
 }
 
@@ -98,6 +103,7 @@ internal data class Phase3DirectInboundChoiceProjection(
     val label: String,
 )
 
-private val FIXTURE_ROOT = File(
-    "E:\\projects\\mail_based_task_manager\\docs\\plans\\fixtures\\phase3_direct_inbound_v1",
+private val FIXTURE_ROOT_CANDIDATES = listOf(
+    File("E:\\projects\\mail_based_task_manager\\docs\\plans\\fixtures\\phase3_direct_inbound_v1"),
+    File("E:\\projects\\mail_based_task_manager\\taskMail_PC\\docs\\plans\\fixtures\\phase3_direct_inbound_v1"),
 )

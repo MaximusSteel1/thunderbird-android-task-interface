@@ -121,7 +121,7 @@ internal class FileBackedTaskSessionDetailRepository(
     }
 
     private companion object {
-        const val STORAGE_VERSION = 2
+        const val STORAGE_VERSION = 3
         const val STORAGE_FILE_NAME = "taskmail_session_details.json"
     }
 }

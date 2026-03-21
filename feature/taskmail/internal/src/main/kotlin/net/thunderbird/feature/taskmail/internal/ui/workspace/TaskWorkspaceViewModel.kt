@@ -57,7 +57,16 @@ internal class TaskWorkspaceViewModel(
                 syncCacheBeforeLoad = true,
             )
 
-            Event.ForegroundRefreshStarted -> setForegroundRefreshEnabled(enabled = true)
+            Event.ForegroundRefreshStarted -> {
+                if (hasLoadedData) {
+                    loadData(
+                        force = true,
+                        refreshTransportBeforeLoad = false,
+                        syncCacheBeforeLoad = false,
+                    )
+                }
+                setForegroundRefreshEnabled(enabled = true)
+            }
             Event.ForegroundRefreshStopped -> setForegroundRefreshEnabled(enabled = false)
             Event.RetryClicked -> loadData(
                 force = true,
