@@ -20,6 +20,9 @@ private val debugPreviewDetails = mapOf(
     "inline-png" to TaskMailPreviewData.richInlinePngSessionDetail,
     "static-svg" to TaskMailPreviewData.richStaticSvgSessionDetail,
     "unmatched-image-fallback" to TaskMailPreviewData.richUnmatchedImageFallbackSessionDetail,
+    "external-deliveries" to TaskMailPreviewData.richExternalDeliveriesSessionDetail,
+    "attachment-notices" to TaskMailPreviewData.richAttachmentNoticesSessionDetail,
+    "failed-long-error" to TaskMailPreviewData.richFailedLongErrorSessionDetail,
 )
 
 internal fun resolveTaskMailDebugPreviewDetail(uri: Uri?): TaskSessionDetail? {

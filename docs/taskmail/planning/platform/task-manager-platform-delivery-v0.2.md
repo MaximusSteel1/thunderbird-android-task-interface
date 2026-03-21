@@ -1,13 +1,27 @@
 # Task Manager 平台落地方案（v0.2）
 
 更新日期：2026-03-14
-状态：用于第一阶段开发与接口收敛
+状态：更广义 Task Manager 平台落地草案的历史快照；不作为当前 TaskMail Android / PC 活跃计划
+
+> 2026-03-21 说明：
+>
+> 本文件原本用于更上层 Task Manager 平台的第一阶段开发与接口收敛。
+>
+> 在当前仓库中，它应被视为历史/参考材料，而不是当前 Android TaskMail、PC mail control plane，或跨仓库演进冻结后的执行计划。
+>
+> 当前应优先使用：
+>
+> - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+> - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+> - `docs/TASKMAIL-MAIL-RULES.md`
+> - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
+> - `E:\projects\mail_based_task_manager\docs\plans\android_pc_vps_evolution_authority.md`
 
 ## 1. 文档目的
 
 本文用于将《平台设计总纲》转化为第一阶段可执行的最小落地方案，重点定义首期范围、接口约束、最小闭环、验收标准和实施顺序。
 
-本文适合作为当前开发阶段的工作文档，会随着实现进展持续迭代。
+本文最初用于开发阶段的工作文档；在当前仓库中应视为历史快照和参考材料。
 
 ## 2. 第一阶段目标
 

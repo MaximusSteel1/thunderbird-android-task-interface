@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -99,6 +100,10 @@ internal class FileBackedTaskSessionDetailRepository(
     }
 
     private fun decodeSessionDetails(root: JsonObject): List<TaskSessionDetail> {
+        if (root["version"]?.jsonPrimitive?.intOrNull != STORAGE_VERSION) {
+            return emptyList()
+        }
+
         return root["sessionDetails"]
             ?.jsonArray
             ?.mapNotNull { element ->
@@ -116,7 +121,7 @@ internal class FileBackedTaskSessionDetailRepository(
     }
 
     private companion object {
-        const val STORAGE_VERSION = 1
+        const val STORAGE_VERSION = 2
         const val STORAGE_FILE_NAME = "taskmail_session_details.json"
     }
 }

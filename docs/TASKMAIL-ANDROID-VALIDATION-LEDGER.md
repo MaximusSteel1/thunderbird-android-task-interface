@@ -16,14 +16,286 @@ validation evidence for Android behavior until it lands in PC-side current docs 
 
 ## Date
 
-- Last updated: 2026-03-20
-- Last executable validation session captured here: 2026-03-20
+- Last updated: 2026-03-21
+- Last executable validation session captured here: 2026-03-21
 
 ## Purpose
 
 This file answers a narrower question than the current-status document:
 
 > Which parts of TaskMail Android have executable validation evidence right now, and which parts still rely on historical claims or manual follow-up?
+
+## 2026-03-21 Phase 0 Representative Consumer-Sample Follow-up
+
+On 2026-03-21, the Android-side Phase 0 consumer-acceptance package advanced from an open sample manifest into
+executable representative-sample coverage for three previously missing mail classes:
+
+- `DONE` mail with `External Deliveries`
+- mail with `Attachment Notices`
+- `FAILED` mail with long error or code-like content
+
+That follow-up added or revalidated all of the following:
+
+- `TaskMailPreviewData` now includes representative detail samples for the three previously missing Phase 0 classes
+- debug preview routing now resolves
+  `app://taskmail/preview/detail/external-deliveries`,
+  `app://taskmail/preview/detail/attachment-notices`, and
+  `app://taskmail/preview/detail/failed-long-error`
+- focused projector coverage in
+  `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/TaskMailRichTextRepresentativeSampleTest.kt`
+  now locks representative `article.task-mail` projection for `External Deliveries`, `Attachment Notices`, and
+  `<pre>`-style failure output
+- focused Robolectric detail coverage in
+  `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/detail/TaskSessionDetailRepresentativeSamplesTest.kt`
+  now locks readable rendering for the same three representative samples
+- the representative sample set is seeded from current PC-side outbound/raw mail examples, including
+  `thread_072/raw_020.json`, `thread_075/raw_138.json`, and the current failed-mail class represented by
+  `thread_051/raw_030.json`
+- a clean rerun of `:feature:taskmail:internal:testDebugUnitTest`
+- a clean rerun of `:feature:taskmail:internal:detekt`
+- a clean rerun of `:feature:taskmail:internal:lintDebug`
+
+This follow-up closes the Android-side representative sample gap for Phase 0 consumer acceptance. It does not replace
+broader live-mailbox/device validation for richer rich-text corpus coverage, and it does not change the separate relay
+TLS trust blocker recorded for Android / PC / VPS Phase 0 closeout.
+
+## 2026-03-21 Phase 1 Relay Bootstrap Manager Follow-up
+
+Later on 2026-03-21, the first Android-side Phase 1 implementation slice extracted the relay bootstrap orchestration out
+of the debug ViewModel into a reusable internal manager layer.
+
+That follow-up changed:
+
+- new `RelayBootstrapManager` / `DefaultRelayBootstrapManager` orchestration above the current debug ViewModel
+- `TaskMailRelayDebugViewModel` now delegates config load/save plus `healthz` / connect / disconnect actions through that
+  manager instead of directly owning the three lower-level dependencies
+- focused manager coverage in
+  `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/relay/DefaultRelayBootstrapManagerTest.kt`
+
+The following narrow validation was re-run cleanly after that refactor:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- `.\gradlew.bat :feature:taskmail:internal:detekt`
+- `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- direct business-action transport over relay
+- new device validation for the plaintext live VPS path
+- fallback routing from a formal TaskMail flow back to mail after direct-connect failure
+- any claim that Android production transport is no longer mail-first today
+
+## 2026-03-21 Phase 1 Relay Bootstrap Classification Follow-up
+
+Later on 2026-03-21, the next Android-side Phase 1 follow-up added explicit bootstrap result classification aligned with
+the current PC-side Phase 1 bootstrap vocabulary.
+
+That follow-up changed:
+
+- new `RelayBootstrapStatus` / `RelayBootstrapResult` models under the TaskMail internal relay/domain layer
+- `RelayBootstrapManager` now exposes a `bootstrap(...)` path that probes `healthz`, attempts relay connect, and classifies
+  the outcome into a reviewable result instead of leaving callers with raw exception text alone
+- focused manager coverage now locks representative `not_configured`, `invalid_http_response`, `token_id_mismatch`,
+  `unauthorized`, and `hello_ack` outcomes in
+  `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/relay/DefaultRelayBootstrapManagerTest.kt`
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- `.\gradlew.bat :feature:taskmail:internal:detekt`
+- `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- a non-debug TaskMail caller reusing the bootstrap result above the retained debug surface
+- direct business-action transport over relay
+- new device validation for the plaintext live VPS path
+- any claim that Android production transport is no longer mail-first today
+
+## 2026-03-21 Phase 1 New Task Bootstrap Reuse Follow-up
+
+Later on 2026-03-21, the next Android-side Phase 1 follow-up reused the structured relay bootstrap result in the formal
+`new task` flow without cutting business traffic over to relay yet.
+
+That follow-up changed:
+
+- `TaskNewTaskViewModel` now preflights relay bootstrap through `RelayBootstrapManager` before the existing mail send path
+- when bootstrap reaches `hello_ack`, the temporary preflight connection is immediately disconnected and the flow
+  continues on the existing mail transport
+- when bootstrap returns a non-success classification, the flow still sends the task request over mail and now emits an
+  explicit `mail fallback` success message instead of pretending direct connect is already active
+- `TaskNewTaskContract.State` now retains the last direct bootstrap classification for the most recent send attempt
+- focused ViewModel coverage now locks bootstrap preflight reuse, `hello_ack` disconnect cleanup, and explicit
+  mail-fallback success messaging in
+  `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/newtask/TaskNewTaskViewModelTest.kt`
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- `.\gradlew.bat :feature:taskmail:internal:detekt`
+- `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- direct business-action transport over relay for `new task`
+- new device validation for the plaintext live VPS path
+- any claim that Android production transport is no longer mail-first today
+
+## 2026-03-21 Phase 2 New Task Direct Outbound Follow-up
+
+Later on 2026-03-21, the first Android-side Phase 2 implementation slice replaced the earlier `hello_ack` preflight-only
+behavior with a direct-first `new task` send path.
+
+That follow-up changed:
+
+- Android relay protocol support now includes relay `packet` encoding plus `packet_ack` decoding
+- `RelayConnectionClient` / `OkHttpRelayConnectionClient` now support sending one business packet after `hello_ack` and
+  classifying relay server `error` responses with transport-visible error codes
+- new `RelayTaskMailDirectNewTaskSender` now maps `TaskMailNewTaskDraft` to the shared
+  `phase2-direct-outbound-contract-v1` payload for `action = new_task`
+- `TaskNewTaskViewModel` now prefers direct send after successful bootstrap, falls back to the current mail transport on
+  fallback-classified direct failures, and stops on hard direct rejection without silent mail fallback
+- focused relay protocol, relay client, direct sender, and ViewModel coverage now locks:
+  - `packet` encoding
+  - `packet_ack` decoding
+  - direct payload mapping
+  - accepted direct-send success without duplicate mail send
+  - fallback-to-mail routing
+  - hard direct rejection without silent fallback
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- `.\gradlew.bat :feature:taskmail:internal:detekt`
+- `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- the matching PC or VPS acceptance path for `phase2-direct-outbound-contract-v1` `action = new_task`
+- new device validation for the plaintext live VPS direct-send path
+- any claim that reply, `/status`, or read-side TaskMail updates no longer depend on mail today
+
+## 2026-03-21 Phase 2 Packet Ack Rejection Classification Follow-up
+
+Later on 2026-03-21, after the accepted direct-ingress smoke had already closed, a small Android-side compatibility
+follow-up tightened direct rejection handling for the remaining `packet_ack.accepted = false` branch.
+
+That follow-up changed:
+
+- `RelayPacketAck` now decodes an optional ack-level `error_code`
+- `RelayTaskMailDirectNewTaskSender` now treats `packet_ack.accepted = false` with:
+  - hard-rejection `error_code` such as `invalid_payload`, `validation_failed`, or `unauthorized`, or
+  - the same hard-rejection code carried as a prefix in `error_message`
+  as `Rejected` rather than silently routing to mail fallback
+- focused relay protocol and direct sender coverage now locks:
+  - optional `packet_ack.error_code` decoding
+  - ack-level hard rejection classification
+  - preserved mail fallback for non-hard ack rejection
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest`
+- `.\gradlew.bat :feature:taskmail:internal:detekt`
+- `.\gradlew.bat :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- live negative-path smoke for ack-level hard rejection
+- any change to the current mail-based status/result delivery path
+- any widening of direct transport beyond the current `new task` scope
+
+## 2026-03-21 Phase 2 Live Direct-Smoke Attempt
+
+Later on 2026-03-21, the first focused live-device smoke against the current plaintext relay-ready endpoint closed the
+basic end-to-end loop but did **not** close accepted direct-ingress validation for the formal Android `new task` flow.
+
+Live-device and adjacent-runtime evidence established all of the following:
+
+- retained debug relay bootstrap against `124.223.41.153:8787` reached live `hello_ack`
+- the formal Android `New task` surface successfully submitted a live task titled `Phase2 direct smoke`
+- adjacent PC runtime created `thread_082`, ran the task to `DONE`, and returned the expected token
+  `PHASE2_DIRECT_SMOKE_20260321`
+- the formal Android workspace later displayed the completed session and token summary
+
+At the same time, the smoke also showed that the accepted-direct boundary is still open:
+
+- live relay `/healthz` reported `taskmail_direct_ingress_enabled = true`
+- around the formal send, relay `session_count` increased but `packet_count` did not
+- adjacent runtime `thread_082/mail/raw_001.json` shows the first ingress as a real inbound `[CX]` mail from the
+  user's mailbox to the bot mailbox rather than a direct-bridge mail
+- that first ingress mail does not carry `X-TaskMail-Direct: 1`
+- a separate no-side-effect relay probe using the same saved device token later confirmed that the live relay direct
+  handler is actually present by returning `hello_ack` plus `invalid_payload` for a deliberately malformed Phase 2
+  packet
+
+The safest current interpretation is:
+
+- live PC or VPS direct acceptance is no longer the blocker
+- formal Android `new task` still fell back to mail in this smoke
+- the next Android-side debugging target is to capture why the formal direct path does not reach accepted packet
+  ingress under live conditions
+
+## 2026-03-21 Phase 2 Live Direct-Smoke Closure
+
+Later on 2026-03-21, after reinstalling a fresh Thunderbird debug build signed with the device-compatible local debug
+keystore and rerunning a second formal-host smoke titled `Phase2 direct smoke B`, the accepted direct-ingress boundary
+closed for the current Phase 2 `new task` slice.
+
+Live-device, relay, and adjacent-runtime evidence established all of the following:
+
+- device logcat from `OkHttpRelayConnectionClient` recorded both:
+  - `Sending relay packet packetId=android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+  - `Received relay packet ack for packetId=android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+- live relay `/healthz` still reported `taskmail_direct_ingress_enabled = true`, `tls_enabled = false`, and advanced
+  `packet_count` from the earlier `3` to `4` during the smoke
+- adjacent PC runtime created `thread_083`
+- `thread_083/mail/raw_001.json` stored the first ingress as `[CX] Phase2 direct smoke B` and carries the direct-bridge
+  markers:
+  - `X-TaskMail-Direct: 1`
+  - `X-TaskMail-Relay-Packet-Id: android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+  - `X-TaskMail-Relay-Request-Id: req_894649456f184a50a4a641a2c01d006b`
+- adjacent runtime then completed the task to `DONE`, and `thread_083/thread_state.json` stored the expected final
+  summary token `PHASE2_DIRECT_SMOKE_20260321_B`
+
+The safest current interpretation is:
+
+- accepted direct `new task` ingress from the formal Android flow is now live-validated
+- the first `[CX]` mail stored by the PC runtime is now confirmed to be the expected direct-bridge artifact rather than
+  a user-mail fallback path
+- later TaskMail status/result delivery still remains on the current mail path today
+- reply, `/status`, and read-side direct transport still remain outside the current validated scope
+
+## 2026-03-21 Phase 2 Live Negative-Path Closure
+
+Later on 2026-03-21, after the live relay exposed `taskmail_direct_negative_hook_enabled = true`, the remaining two
+Phase 2 negative branches for the current `new task` slice were closed on a real device.
+
+Live-device, relay, and adjacent-runtime evidence established all of the following:
+
+- the live relay `/healthz` snapshot now exposed `taskmail_direct_negative_hook_enabled = true`
+- the fallback smoke titled `Phase2 fallback smoke A` produced:
+  - Android logcat showing a relay `packet` send followed by rejected `packet_ack`
+  - live relay `packet_count` advancing from `6` to `7`
+  - adjacent runtime `thread_084` created from a real inbound `[CX]` mail rather than a direct-bridge mail
+  - `thread_084/thread_state.json` storing the expected final token `PHASE2_FALLBACK_SMOKE_20260321`
+- the first hard-rejection smoke titled `Phase2 hard reject smoke A` still fell back to mail and created `thread_085`,
+  but that result was traced to a stale APK on-device rather than a relay/runtime bug:
+  - the live relay already returned `error_code = invalid_payload`
+  - the phone was still running an older APK that lacked the new ack-level hard-rejection classification patch
+- after reinstalling the latest Thunderbird debug APK, the second hard-rejection smoke titled
+  `Phase2 hard reject smoke B` produced:
+  - Android logcat showing `Relay packet ack rejected ... code=invalid_payload`
+  - live relay `packet_count` advancing again without any new adjacent-runtime thread beyond `thread_085`
+  - the device staying on `New task`, keeping the draft content, and surfacing inline `TaskMail send failed`
+
+The safest current interpretation is:
+
+- the current Phase 2 `new task` slice now has live evidence for all three intended branches:
+  - accepted direct ingress
+  - fallback-classified direct failure routing back to mail
+  - hard direct rejection stopping locally without silent mail fallback
+- later TaskMail status/result delivery still remains on the current mail path today
+- reply, `/status`, and read-side direct transport still remain outside the current validated scope
 
 ## 2026-03-20 Slice A Relay Bootstrap Follow-up
 
@@ -624,6 +896,7 @@ This task was not re-run in the 2026-03-16 slice1 follow-up, so the captured evi
 | Bootstrap discovery and repo-path handoff | `TaskMailNavigationTest`, `FeatureLauncherNavHostTaskMailCallbackTest`, `FeatureLauncherNavHostTaskMailFlowTest`, `TaskMailProjectSyncResultParserTest`, `TaskProjectSyncViewModelTest`, `TaskNewTaskViewModelTest`, `TaskNewTaskScreenKtTest` | Revalidated in focused `:feature:taskmail:api:testDebugUnitTest`, `:feature:launcher:testDebugUnitTest`, and `:feature:taskmail:internal:testDebugUnitTest` reruns plus clean `:feature:launcher:detekt`, `:feature:launcher:lintDebug`, `:feature:taskmail:internal:detekt`, and `:feature:taskmail:internal:lintDebug`, including dedicated `Project list` routing, `[SYNC] Project Folder List` parsing, zero / one / multiple sender-account handling on the discovery screen, explicit sync request plus refresh, and formal-host `Use this repo` handoff coverage that prefills `Repo:` in `New task` | Current manual/device smoke is still missing for issuing `[SYNC]` from the formal TaskMail host, rendering the returned project list on-device, and verifying `Use this repo` round-trips back into the composer while `[SYNC]` stays outside TaskMail session/detail projection |
 | Session detail reply surface | `SendTaskMailReplyTest`, `TaskMailReplyBodySerializerTest`, `RealTaskMailReplySenderTest`, `TaskSessionDetailViewModelTest`, `TaskSessionDetailUiStateStructuredReplyValidationTest`, `TaskSessionDetailScreenKtTest` | Revalidated in `:feature:taskmail:internal:testDebugUnitTest`, including plain-text reply, attachment-only continuation reply, `/status`, single-question quick answers, multi-question structured template gating, local blocking of incomplete required answers, unknown `question_id`, and non-canonical choice values, plus paused-session `/resume` prefixing; later manually re-smoked on-device against live threads `thread_042`, `thread_043`, `thread_044`, and `thread_026`, where plain-text continuation stayed anchored to `thread_042`, `/status` produced `[STATUS][S:thread_042] ...`, single-question quick answer `Ship it` sent canonical `approve`, multi-question detail exposed the `Answers:` template without quick-answer shortcuts, paused-session send emitted an actual `/resume` continuation before completing successfully, and attachment-only continuation on `thread_026` succeeded with mailbox-side evidence on the existing session thread | Dedicated UI for protocol-superset fields/commands remains intentionally absent; live coverage is still concentrated on a few known threads rather than a broad corpus |
 | Timeline attachment UX | `TaskSessionDetailViewModelTest`, `TaskSessionDetailScreenKtTest`, `TaskMessageAttachmentDisplayPolicyTest` | Revalidated in `:feature:taskmail:internal:testDebugUnitTest`, including timeline attachment metadata mapping, open/save effect plumbing, reply attachment selection/removal, and `/status` blocked while reply attachments are selected; later manually re-smoked on-device against live `thread_026 / 时间线测试`, where selecting a reply attachment disabled `/status` and allowed attachment-only send, the outgoing `2026-03-16 19:34` card exposed `Open` and `Save`, `Open` launched Android `ResolverActivity` through `ACTION_VIEW`, `Save` launched DocumentsUI `PickActivity` through `ACTION_CREATE_DOCUMENT`, historical `multipart/alternative` reply-like mail at `23:24` and `22:49` showed no pseudo-attachment rows, and the historical `18:56`, `18:34`, and `18:31` outgoing timestamps each appeared once | Broader device coverage beyond these focused live threads remains limited |
+| Rich-text detail representative corpus | `TaskMailRichTextRepresentativeSampleTest`, `TaskSessionDetailRepresentativeSamplesTest`, `TaskMailPreviewData`, `TaskMailDebugPreviewDetail` | Revalidated in the 2026-03-21 full `:feature:taskmail:internal:testDebugUnitTest` rerun plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`, including controlled representative coverage for `External Deliveries`, `Attachment Notices`, and long-error `FAILED` mail seeded from current PC-side samples such as `thread_072/raw_020.json`, `thread_075/raw_138.json`, and `thread_051/raw_030.json` | This is still controlled preview/test-corpus evidence, not broad live-mailbox/device validation for the richer rich-text corpus |
 | Multi-question compatibility boundary | `DefaultTaskMailRepositoryTest`, `TaskQuestionCapsuleParserTest`, `TaskSessionDetailViewModelTest`, `TaskSessionDetailUiStateStructuredReplyValidationTest`, `TaskSessionDetailScreenKtTest` | Revalidated in `:feature:taskmail:internal:testDebugUnitTest`, with flattened multi-question capsule parsing coverage, structured `Answers:` send gating, required-answer completeness checks, unknown-`question_id` rejection, canonical-choice-only validation, and legacy two-line structured-answer compatibility; later manually re-smoked on-device against live thread `thread_044`, where quick-answer shortcuts were absent and the composer prefilled `Answers:` with one line per question id | Sending a live multi-question structured reply was not re-run in this session |
 | TaskMail-internal quality gate | `:feature:taskmail:internal:detekt`, `:feature:taskmail:internal:lintDebug`, `:feature:taskmail:internal:testDebugUnitTest` | Revalidated clean in the 2026-03-16 slice1 follow-up, later focused follow-ups, and again in the 2026-03-18 foreground-refresh follow-up, where `detekt`, `lintDebug`, focused workspace/detail reruns, and the full TaskMail-internal unit/screen suite all passed | Repo-wide quality gates and formatting are still not fully closed |
 | Debug validation path | `TaskMailDebugActivity` wiring, `TaskMailNavHostBackCallbackTest`, `docs/TASKMAIL-DEBUG-VALIDATION.md` | Back-stack exit fallback revalidated in `:feature:taskmail:internal:testDebugUnitTest`; a 2026-03-16 device pass also confirmed that debug-build `app://taskmail/workspace` launches `TaskMailDebugActivity` rather than the formal launcher host | Full debug-host device flow still pending beyond routing observation |
@@ -719,11 +992,99 @@ The safest current interpretation is:
 
 - TaskMail Android has concrete unit/regression evidence for repository, host-route, drawer-event, and detail-interaction paths.
 - That evidence now clearly includes paused-state handling, single-question canonical quick answers, structured multi-question replies, stricter local multi-question send gating for required-answer completeness plus unknown-`question_id` and canonical-choice enforcement, attachment-related UI rules, real-device attachment send plus open/save flows, reply-like outgoing rendering recovery, pseudo-attachment suppression, a formal-host TaskMail launcher flow regression, a real-device rerun of the drawer-entry navigation path, live-mail proof that plain-text continuation plus `/status` stay anchored to the existing TaskMail session thread, focused refresh/live-update ViewModel coverage for manual refresh plus foreground-only account-scoped workspace/detail refresh while visible, a current clean full `:feature:taskmail:internal:testDebugUnitTest` rerun, repository-level dual-mailbox preference that keeps `[SYNC]` outside TaskMail session projection, focused send-target coverage that locks TaskMail reply transport onto explicit bot-mailbox destination resolution, focused runtime settings coverage for saving the bot-mailbox destination from Android settings without restart-only assumptions, focused guided new-thread coverage for sender-account handling plus canonical first-task serialization, and focused bootstrap discovery coverage for `[SYNC]` project-list parsing plus `Repo:` prefill handoff.
+- That evidence now also includes full live validation for the current Phase 2 `new task` slice: the formal Android
+  host emitted a relay `packet`, received `packet_ack`, produced a direct-bridge first ingress mail with
+  `X-TaskMail-Direct: 1`, correctly routed fallback-classified rejection back to mail on `thread_084`, and correctly
+  stopped on hard rejection `invalid_payload` without creating any new adjacent-runtime thread after `thread_085`.
+  Later status/result mail still continues over the retained mail path today.
 - Manual device evidence now also confirms the workspace refresh success path keeps loaded content visible and can surface the newest local outgoing entry after reply, while the refresh-warning failure path, confirmed backend-fed summary updates, and detail auto-refresh while editing remain open.
 - The rich-text detail body slice now has executable evidence for controlled HTML projection, minimal detail
   rendering, a focused live-device inline-image placeholder pass on `thread_071`, fresh-build controlled device preview
   checks for static SVG placeholder rendering plus unmatched-image safe text fallback, and a later focused 2026-03-20
-  repository/UI follow-up that enables raster inline-image preview plus attachment deduplication; fresh device
-  validation for that raster preview path and broader live-mailbox rich-text coverage still remain outside the current
-  validation boundary.
+  repository/UI follow-up that enables raster inline-image preview plus attachment deduplication. It now also includes
+  controlled representative-sample coverage for `External Deliveries`, `Attachment Notices`, and long-error `FAILED`
+  mail. Fresh device validation for the raster preview path and broader live-mailbox rich-text coverage still remain
+  outside the current validation boundary.
 - Release confidence is still incomplete because device coverage is still concentrated on a few targeted live threads, guided new-thread and bootstrap discovery host-level smoke are not yet closed on-device, and full build plus repo-wide quality validation have not been closed.
+
+## 2026-03-21 Phase 3 Detail Live-Smoke Update
+
+在 `2026-03-21` 的 Phase 3 `detail` live smoke 里，当前验证边界又变得更具体了一步。
+
+这轮先确认了 retained debug relay bootstrap 仍然正常：
+
+- 设备上的 `TaskMail relay debug` 成功连接 `ws://124.223.41.153:8787/relay`
+- `hello_ack` 正常返回，说明 live relay 可达且当前保存的 transport token 仍然有效
+
+随后围绕 live thread `thread_086 / phase3-detail-q-20260321_194446-211b05` 做了 detail 读侧验证：
+
+- Android workspace 可以在手动刷新后看到新 session
+- Android detail 在手动 `pull-to-refresh` 后，能够沿 durable mail 路径从 `Running` 进入
+  `WaitingUser`，随后在再次手动刷新后进入 `Done`
+- 保持 detail 页面打开但不手动刷新时，没有观察到预期的 direct live update
+
+关键收敛点来自同 token 的 workstation websocket probe。该 probe 直接向 live relay 发送：
+
+- `action = subscribe_session_detail`
+- `workspace_id = workspace_d0a3ad8a2abc`
+- `repo_path = E:\projects\android_task_manager`
+- `workdir = .`
+- `session_id = thread_086`
+- `thread_id = thread_086`
+
+返回结果不是静默超时，而是明确拒绝：
+
+- `packet_ack.accepted = false`
+- `error_code = session_not_found`
+- `error_message = could not resolve a session for the requested workspace/session locator`
+
+当前最佳解读应当是：
+
+- 这轮未闭环的主 blocker 是 live relay/session registry 无法 resolve 当前 PC live smoke session
+- 因此 Phase 3 `detail` direct live-update 仍未被 live 证实，但当前失败信号还不能直接归因为 Android
+  `timeline merge` / `business_event_key reconciliation`
+- durable mail refresh 路径在这轮仍然工作，说明 Phase 3 代码面并没有被这次 smoke 直接否掉
+
+同一轮还补了一条次级证据：
+
+- `thread_086` 的 `[QUESTION]` mail 原文 `raw_004.json` 自带两段 `TASK-QUESTION` capsule
+- detail 中看到的 duplicate pending question 更像 mail body duplication，而不是 direct merge 重复
+
+## 2026-03-21 Phase 3 Detail Live-Smoke Retest
+
+同日稍后的 retest 把这条验证边界继续向前推进了一步。
+
+先做的 workstation websocket probe 已经从前一轮的 `session_not_found` 变成了成功：
+
+- `subscribe_session_detail` 对 canonical locator 返回 `packet_ack.accepted = true`
+- relay 紧接着返回 `session_update(update_type = session_snapshot)`
+
+随后围绕新的 live thread `thread_087 / phase3-detail-live-20260321_202113-1dbf6b` 做了真实设备 detail
+retest，QUESTION mail 里的回复 token 是 `BAF751DE25`。这轮采用的验证约束是：
+
+- detail 页保持打开
+- 不做手动 `pull-to-refresh`
+- 直接回复 QUESTION mail
+- 只观察页面是否会自然推进
+
+本轮实际观察到：
+
+- reply 发出后，detail 先停在 `WaitingUser`
+- 设备在 `20:27:32` 的后台 IMAP fetch 后收到 `thread_087` 的 `[ACCEPTED]` / `[RUNNING]`
+- `+20s` UI dump 时，detail 已进入 `Running`
+- 设备在 `20:28:37` 的后台 IMAP fetch 后收到 `thread_087` 的 `[DONE]`
+- 再等一个自然处理窗口后，detail UI 进入 `Done`
+- 最终 summary 显示 `QUESTION_FLOW_OK | BAF751DE25`
+
+这轮新增的 validation 结论是：
+
+- Android detail 已经有真实设备证据表明，不依赖手动刷新也能从 QUESTION 流程自然走到 DONE
+- 前一轮的 relay session resolution blocker 不再成立
+- 当前尚未单独 live 证明的是“direct websocket update 是否早于 durable mail sync 驱动页面变化”
+- 因而这轮可以视为 Phase 3 `detail` auto-refresh closeout 的正向证据，但 direct ws 优先路径仍可继续补证
+
+次级现象仍保持不变：
+
+- `thread_087` detail 里的 duplicate pending question 依旧存在
+- 结合前一轮 `thread_086` 的原始 mail 证据，这更像 `[QUESTION]` mail body / extractor 输入问题，
+  而不是 `timeline merge + business_event_key reconciliation` 回归

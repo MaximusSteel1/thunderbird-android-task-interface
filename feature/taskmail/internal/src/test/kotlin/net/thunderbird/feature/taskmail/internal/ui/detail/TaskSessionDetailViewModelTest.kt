@@ -6,6 +6,7 @@ import app.k9mail.core.ui.compose.testing.mvi.advanceUntilIdle
 import app.k9mail.core.ui.compose.testing.mvi.runMviTest
 import app.k9mail.core.ui.compose.testing.mvi.turbinesWithInitialStateCheck
 import assertk.assertThat
+import assertk.assertions.contains
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNotNull
 import assertk.assertions.isNull
@@ -20,6 +21,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import net.thunderbird.core.logging.LogMessage
+import net.thunderbird.core.logging.LogTag
+import net.thunderbird.core.logging.Logger
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
@@ -27,8 +31,11 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
+import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
@@ -47,6 +54,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncSt
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
@@ -277,6 +285,217 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().detail?.quickAnswerChoices?.map(TaskPendingQuestionChoiceUi::value)).isEqualTo(
                 listOf("approve", "decline"),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct projection should overlay detail status and summary`() = runMviTest {
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Done,
+                    lastSummary = "Direct terminal summary",
+                ),
+            )
+            assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Direct terminal summary")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct projection should update quick answers while preserving reply context`() = runMviTest {
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.WaitingUser,
+                    pendingQuestions = listOf(
+                        TaskQuestionCapsule(
+                            questionSetId = "question_set_001",
+                            questionId = "question_001",
+                            questionType = "single_choice",
+                            questionText = "Should I proceed?",
+                            choices = listOf("approve", "decline"),
+                            choiceLabels = mapOf(
+                                "approve" to "Ship it",
+                                "decline" to "Not yet",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            assertThat(viewModelState().detail?.quickAnswerChoices?.map(TaskPendingQuestionChoiceUi::label)).isEqualTo(
+                listOf("Ship it", "Not yet"),
+            )
+            assertThat(viewModelState().detail?.replyContext).isNotNull()
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct projection should append provisional timeline item`() = runMviTest {
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            val directTimestamp = viewModelState().detail?.timeline
+                ?.maxOfOrNull(TaskTimelineItemUi::timestamp)
+                ?.plus(100L)
+                ?: 100L
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Running,
+                    provisionalTimeline = listOf(
+                        directTimelineItem(
+                            id = "direct:tl_reply_001",
+                            timestamp = directTimestamp,
+                            businessEventKey = "reply/2026-03-21T22:37:03",
+                            plainText = "Direct reply preview",
+                        ),
+                    ),
+                ),
+            )
+
+            assertThat(viewModelState().detail?.timeline?.first()?.id).isEqualTo("direct:tl_reply_001")
+            assertThat(viewModelState().detail?.timeline?.first()?.plainText).isEqualTo("Direct reply preview")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `matching mail business event should suppress provisional direct timeline item after refresh`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            val directTimestamp = viewModelState().detail?.timeline
+                ?.maxOfOrNull(TaskTimelineItemUi::timestamp)
+                ?.plus(100L)
+                ?: 100L
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Running,
+                    provisionalTimeline = listOf(
+                        directTimelineItem(
+                            id = "direct:tl_reply_001",
+                            timestamp = directTimestamp,
+                            businessEventKey = "reply/2026-03-21T22:37:03",
+                            plainText = "Direct reply preview",
+                        ),
+                    ),
+                ),
+            )
+            assertThat(viewModelState().detail?.timeline?.map(TaskTimelineItemUi::id)?.first()).isEqualTo(
+                "direct:tl_reply_001",
+            )
+
+            val originalTimelineIds = repository.detail?.timeline.orEmpty()
+                .asReversed()
+                .map(TaskTimelineItem::id)
+            repository.detail = repository.detail?.copy(
+                timeline = repository.detail?.timeline.orEmpty() + listOf(
+                    TaskTimelineItem(
+                        id = "mail:reply_001",
+                        timestamp = directTimestamp + 100L,
+                        direction = TaskTimelineDirection.System,
+                        summary = "Durable reply receipt",
+                        body = TaskMessageBody(
+                            plainTextFallback = "Durable reply receipt",
+                        ),
+                        businessEventKeys = listOf("reply/2026-03-21T22:37:03"),
+                    ),
+                ),
+            )
+            refresh()
+
+            assertThat(viewModelState().detail?.timeline?.map(TaskTimelineItemUi::id)).isEqualTo(
+                listOf("mail:reply_001") + originalTimelineIds,
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should log repository render path`() = runMviTest {
+        val logger = DetailViewModelFakeLogger()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                logger = logger,
+            ),
+        ) {
+            start()
+            loadDetail()
+            val debugLog = logger.debugMessages.joinToString("\n")
+            assertThat(debugLog).contains("Rendered repository detail status=")
+            assertThat(debugLog).contains("directOverlayActive=false")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct projection should log direct overlay application`() = runMviTest {
+        val logger = DetailViewModelFakeLogger()
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                directObserver = directObserver,
+                logger = logger,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Done,
+                    lastSummary = "Direct terminal summary",
+                ),
+            )
+
+            assertThat(logger.debugMessages.joinToString("\n")).contains(
+                "Applying direct detail projection status=Done",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -757,6 +976,8 @@ private class TaskSessionDetailViewModelRobot(
     private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
         FakeTaskMailForegroundRefreshTickerFactory(),
     syncTaskMailCache: SyncTaskMailCache? = null,
+    private val directObserver: FakeObserveTaskMailDirectSessionDetail = FakeObserveTaskMailDirectSessionDetail(),
+    logger: DetailViewModelFakeLogger = DetailViewModelFakeLogger(),
 ) {
     private val viewModel = TaskSessionDetailViewModel(
         detailRepository = repository,
@@ -767,7 +988,9 @@ private class TaskSessionDetailViewModelRobot(
         sendTaskMailReply = SendTaskMailReply(replySender),
         replyAttachmentResolver = attachmentResolver,
         timelineAttachmentHandler = timelineAttachmentHandler,
+        logger = logger,
         syncTaskMailCache = syncTaskMailCache,
+        observeTaskMailDirectSessionDetail = directObserver,
     )
     private lateinit var turbines: MviTurbines<TaskSessionDetailContract.State, TaskSessionDetailContract.Effect>
 
@@ -834,6 +1057,11 @@ private class TaskSessionDetailViewModelRobot(
 
     suspend fun emitForegroundRefreshTick() {
         foregroundRefreshTickerFactory.emitTick()
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun emitDirectProjection(projection: TaskMailDirectSessionProjection) {
+        directObserver.emit(projection)
         mviContext.advanceUntilIdle()
     }
 
@@ -976,6 +1204,30 @@ private class FakeTaskMailForegroundRefreshTickerFactory : TaskMailForegroundRef
 
     suspend fun emitTick() {
         ticks.emit(Unit)
+    }
+}
+
+private class DetailViewModelFakeLogger : Logger {
+    val debugMessages = mutableListOf<String>()
+
+    override fun verbose(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+
+    override fun debug(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) {
+        debugMessages += message()
+    }
+
+    override fun info(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun warn(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun error(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+}
+
+private class FakeObserveTaskMailDirectSessionDetail : ObserveTaskMailDirectSessionDetail {
+    private val projections = MutableSharedFlow<TaskMailDirectSessionProjection>(extraBufferCapacity = 1)
+
+    override fun invoke(detail: TaskSessionDetail): Flow<TaskMailDirectSessionProjection> = projections
+
+    suspend fun emit(projection: TaskMailDirectSessionProjection) {
+        projections.emit(projection)
     }
 }
 
@@ -1141,6 +1393,48 @@ private fun pausedSingleQuestionDetail(): TaskSessionDetail {
     return singleQuestionDetailWithChoiceLabels().copy(
         status = TaskMailSessionStatus.Paused,
         pausedFromStatus = TaskMailSessionStatus.WaitingUser,
+    )
+}
+
+private fun sampleDirectProjection(
+    headerStatus: TaskMailSessionStatus,
+    lastSummary: String? = null,
+    pendingQuestions: List<TaskQuestionCapsule> = emptyList(),
+    provisionalTimeline: List<TaskTimelineItem> = emptyList(),
+): TaskMailDirectSessionProjection {
+    return TaskMailDirectSessionProjection(
+        canonicalWorkspaceId = "workspace_001",
+        canonicalSessionId = "session_001",
+        canonicalThreadId = "thread_001",
+        taskId = "task_001",
+        sessionName = "Build TaskMail Phase 1",
+        backend = TaskMailBackend.Codex,
+        headerStatus = headerStatus,
+        headerLifecycle = TaskMailSessionLifecycle.Active,
+        repoPath = "E:/projects/android_task_manager",
+        workdir = "feature/taskmail/internal",
+        lastSummary = lastSummary,
+        pendingQuestions = pendingQuestions,
+        provisionalTimeline = provisionalTimeline,
+        lastSequence = 1L,
+    )
+}
+
+private fun directTimelineItem(
+    id: String,
+    timestamp: Long,
+    businessEventKey: String,
+    plainText: String,
+): TaskTimelineItem {
+    return TaskTimelineItem(
+        id = id,
+        timestamp = timestamp,
+        direction = TaskTimelineDirection.System,
+        summary = plainText,
+        body = TaskMessageBody(
+            plainTextFallback = plainText,
+        ),
+        businessEventKeys = listOf(businessEventKey),
     )
 }
 

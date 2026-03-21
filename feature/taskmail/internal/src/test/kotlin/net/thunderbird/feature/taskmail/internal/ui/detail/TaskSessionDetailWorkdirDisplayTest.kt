@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import net.thunderbird.core.logging.LogMessage
+import net.thunderbird.core.logging.LogTag
+import net.thunderbird.core.logging.Logger
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
@@ -59,6 +62,7 @@ internal class TaskSessionDetailWorkdirDisplayTest {
             sendTaskMailReply = SendTaskMailReply(NoOpTaskMailReplySender),
             replyAttachmentResolver = NoOpTaskMailReplyAttachmentResolver,
             timelineAttachmentHandler = NoOpTaskMailTimelineAttachmentHandler,
+            logger = NoOpLogger,
         )
 
         testSubject.event(
@@ -118,4 +122,12 @@ private object NoOpTaskMailTimelineAttachmentHandler : TaskMailTimelineAttachmen
     ): Result<Unit> {
         return Result.failure(IllegalStateException("Not used in this test"))
     }
+}
+
+private object NoOpLogger : Logger {
+    override fun verbose(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun debug(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun info(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun warn(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
+    override fun error(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
 }

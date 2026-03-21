@@ -6,7 +6,7 @@ If this file conflicts with older phase-planning documents, treat this file as t
 
 ## Date
 
-- Last updated: 2026-03-20
+- Last updated: 2026-03-21
 
 ## Scope of This Status
 
@@ -62,6 +62,7 @@ This status was updated from:
   2026-03-19
 - TaskMail rich-text detail focused live-device placeholder validation performed later on 2026-03-19
 - TaskMail rich-text detail fresh-build debug-preview/device validation follow-up performed later on 2026-03-19
+- TaskMail rich-text representative Phase 0 sample follow-up plus narrow validation performed on 2026-03-21
 - the current Android documentation set
 - current PC-side canonical protocol docs in `E:\projects\mail_based_task_manager\docs/current/`
 - current PC-side mailbox parsing rules in `E:\projects\mail_based_task_manager\docs/current/task_view_mail_parsing_rules.md`
@@ -100,6 +101,13 @@ The current repository baseline is better described as:
   - sender-account resolution for zero / one / multiple mailbox-account states
   - canonical first-task subject/body serialization with collapsed advanced fields
   - dedicated non-reply first-task transport to the configured bot mailbox
+  - the current `new task` send flow now preflights relay bootstrap above the retained debug surface and, when
+    bootstrap reaches `hello_ack`, sends the first business action over the direct relay `packet` path using
+    `phase2-direct-outbound-contract-v1`
+  - when bootstrap is unavailable or the direct path returns a fallback-classified transport or capability failure, the
+    same `new task` flow falls back to the current mail transport and emits an explicit mail-fallback success message
+  - hard direct rejections such as invalid payload or unauthorized now keep the draft and surface the direct-send
+    failure instead of silently falling back to mail
 - Android-side TaskMail bot-mailbox configuration now also exists:
   - dedicated `TaskMail bot mailbox` settings route and screen
   - formal launcher target reachable from Android `General settings`
@@ -128,6 +136,8 @@ The current repository baseline is better described as:
   - detail UI now prefers controlled rich-text blocks for supported content and falls back to plain text otherwise
   - raster inline images can now render from local attachment content URIs when Android has a resolvable timeline
     attachment source, while static SVG still stays on the controlled placeholder/fallback path
+  - the controlled preview/debug corpus now also includes representative `External Deliveries`, `Attachment Notices`,
+    and long-error `FAILED` detail samples for Phase 0 consumer-acceptance work
 - session detail auto-refresh preserves in-progress draft text and selected reply attachments while local mail changes
   are reloaded, and now also runs foreground-only 10-second account-scoped refresh while visible when
   `replyContext.accountUuid` is present
@@ -156,6 +166,23 @@ The current repository baseline is better described as:
   - the runtime bot-mailbox settings follow-up now has focused repository/ViewModel/UI/navigation coverage plus clean TaskMail-internal, launcher, and legacy-settings `detekt`/`lintDebug`
   - the bootstrap discovery / repo-path assist slice now has focused navigation/parser/ViewModel/UI coverage plus clean TaskMail-internal `detekt` and `lintDebug`
   - the multi-question send-validation follow-up now has focused UiState/ViewModel coverage plus a clean rerun of
+    `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a 2026-03-21 representative-sample follow-up then added focused projector/detail coverage for
+    `External Deliveries`, `Attachment Notices`, and long-error `FAILED` rich-text samples plus another clean rerun of
+    `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a later 2026-03-21 Phase 1 relay-bootstrap follow-up then extracted a reusable `RelayBootstrapManager` above the
+    debug ViewModel, kept the current debug screen behavior intact, and added focused manager coverage plus another clean
+    rerun of `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a later 2026-03-21 Phase 1 relay-bootstrap classification follow-up then added structured
+    `RelayBootstrapStatus` / `RelayBootstrapResult` vocabulary aligned with the current PC-side Phase 1 bootstrap note,
+    kept mail-fallback routing explicit on non-success results, and added another clean rerun of
+    `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a later 2026-03-21 `new task` relay-bootstrap reuse follow-up then moved that structured bootstrap result above the
+    retained debug surface into the formal `new task` flow, preserved the current mail send path, and added another
+    clean rerun of `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a later 2026-03-21 Phase 2 direct-outbound follow-up then added relay `packet` / `packet_ack` support plus the
+    first Android direct `new task` sender, updated the formal `new task` flow to prefer direct send on `hello_ack`
+    while preserving explicit mail fallback and hard-rejection stop behavior, and added another clean rerun of
     `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
   - a 2026-03-17 manual device follow-up confirmed workspace pull-to-refresh without blanking loaded content and showed the latest local outgoing after reply, but an offline rerun did not surface a refresh warning and no backend-fed summary update was confirmed during that observation window
   - a later 2026-03-17 guided new-thread device follow-up first closed the explicit failure path (`TaskMail bot mailbox is not configured.` with draft retention), then, after reinstalling a debug build with a non-empty bot-mailbox default, confirmed canonical first-task delivery to the bot mailbox plus mailbox-side `[ACCEPTED]`, `[RUNNING]`, and `[DONE]` replies on `thread_054`
@@ -380,6 +407,26 @@ The debug-specific path still exists and remains useful:
 - `TaskMailDebugActivity`
 - debug deep link routing
 - debug wiring in app debug config
+- a reusable `RelayBootstrapManager` now sits above the debug ViewModel so current relay config, `healthz`, connect, and
+  disconnect orchestration are no longer owned only by `TaskMailRelayDebugViewModel`
+- relay bootstrap now also has a structured `hello_ack` / failure-classification result shape so the repository no
+  longer needs to read raw relay exception text as the only bootstrap outcome
+- that structured bootstrap result is now also reused by the formal `new task` flow as the gate before the first
+  direct business packet
+- Android relay transport now also supports relay `packet` / `packet_ack` and can map `TaskMailNewTaskDraft` into the
+  first shared Phase 2 direct outbound contract for `action = new_task`
+- when the direct path returns `packet_ack.accepted = true`, Android no longer duplicates that same `new task` request
+  over mail; later TaskMail status and read-side updates still remain mail-driven today
+- when relay returns `packet_ack.accepted = false`, Android now also honors an optional ack-level `error_code` and a
+  recognized hard-rejection code prefix in `error_message`, so direct validation/auth failures do not silently fall back
+  to mail just because they surfaced through the ack path
+- 2026-03-21 的 live-device smoke 现已补齐当前 Phase 2 `new task` slice 的三条关键分支：
+  - accepted direct ingress
+  - fallback-classified direct failure 回退到 mail，并在 `thread_084` 完成任务
+  - hard direct rejection (`invalid_payload`) 保留 draft、本地显示错误，并且在 `thread_085` 之后不再创建新的 PC 线程
+
+因此，当前仓库里实际实现的 Phase 2 `new task` slice 可以视为已完成主路径与负路径的 live closeout；后续
+status/result 仍走 mail，reply、`/status` 和 read-side direct transport 仍不在本 slice 范围内。
 
 The debug path should still be treated as:
 
@@ -465,6 +512,9 @@ For documentation and planning purposes, the safest current interpretation is:
 - **Formal host entry**: implemented in repository
 - **Drawer entry**: implemented in repository
 - **Guided new-thread MVP**: implemented in repository with focused automated coverage and a closed single-account success-path device smoke, but formal-host entry and multi-account on-device coverage are still open
+- **Phase 2 direct `new task`**: implemented in repository, and the current `new task` slice now has live evidence for
+  accepted direct ingress, fallback-to-mail, and hard rejection with draft retention; later status/result delivery
+  remains mail-based today, while reply, `/status`, and read-side direct transport remain future work
 - **TaskMail bot-mailbox runtime settings**: implemented in repository with focused automated coverage and a closed live-device save-then-send smoke from Android general settings
 - **Bootstrap discovery / repo-path assist**: implemented in repository with focused automated coverage, but current manual/device smoke for `Project list -> Use this repo -> Repo:` prefill is still open
 - **Session detail interaction**: implemented in repository, including attachments and structured multi-question replies

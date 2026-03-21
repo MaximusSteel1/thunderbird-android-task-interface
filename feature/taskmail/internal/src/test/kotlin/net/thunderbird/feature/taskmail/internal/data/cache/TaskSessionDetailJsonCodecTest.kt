@@ -107,6 +107,10 @@ class TaskSessionDetailJsonCodecTest {
                             isContentAvailable = true,
                         ),
                     ),
+                    businessEventKeys = listOf(
+                        "status/running/2026-03-21T18:00:00",
+                        "reply/2026-03-21T18:00:00",
+                    ),
                 ),
             ),
         )

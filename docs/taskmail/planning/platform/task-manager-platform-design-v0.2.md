@@ -1,7 +1,21 @@
 # Task Manager 平台设计总纲（v0.2）
 
 更新日期：2026-03-14
-状态：可作为平台级基线文档
+状态：更广义 Task Manager 平台背景 / 历史参考文档；不作为当前 TaskMail Android / PC 实施 authority
+
+> 2026-03-21 说明：
+>
+> 本文件保留为更上层的平台背景材料。
+>
+> 它可以描述平台目标、分层和长期方向，但当前不应被当作 Android TaskMail 或 PC 侧 mail control plane 的活跃实施 authority。
+>
+> 当前应优先使用：
+>
+> - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+> - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+> - `docs/TASKMAIL-MAIL-RULES.md`
+> - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
+> - `E:\projects\mail_based_task_manager\docs\plans\android_pc_vps_evolution_authority.md`
 
 ## 1. 文档目的
 

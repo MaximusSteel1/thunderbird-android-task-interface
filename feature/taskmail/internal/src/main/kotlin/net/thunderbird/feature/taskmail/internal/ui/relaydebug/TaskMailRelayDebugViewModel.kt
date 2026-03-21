@@ -3,12 +3,10 @@ package net.thunderbird.feature.taskmail.internal.ui.relaydebug
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayHealthProbe
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
-import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.State
@@ -17,16 +15,14 @@ private const val CONFIG_REQUIRED_ERROR = "Relay host, port, and transport token
 private const val PORT_INVALID_ERROR = "Enter a valid relay port."
 
 internal class TaskMailRelayDebugViewModel(
-    private val transportConfigRepository: TaskTransportConfigRepository,
-    private val relayHealthProbe: RelayHealthProbe,
-    private val relayConnectionClient: RelayConnectionClient,
+    private val relayBootstrapManager: RelayBootstrapManager,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskMailRelayDebugContract.ViewModel {
 
     init {
         viewModelScope.launch {
-            relayConnectionClient.connectionState.collect { connectionState ->
+            relayBootstrapManager.connectionState.collect { connectionState ->
                 updateState { state ->
                     state.copy(
                         connectionState = connectionState,
@@ -54,7 +50,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun loadData() {
-        val config = transportConfigRepository.getRelayTransportConfig()
+        val config = relayBootstrapManager.loadConfig()
         updateState {
             it.copy(
                 relayEnabled = config.enabled,
@@ -69,7 +65,7 @@ internal class TaskMailRelayDebugViewModel(
     private fun saveConfig() {
         val config = currentConfig() ?: return
         updateState { it.copy(isSaving = true, actionError = null) }
-        val isSaved = transportConfigRepository.saveRelayTransportConfig(config)
+        val isSaved = relayBootstrapManager.saveConfig(config)
         updateState { it.copy(isSaving = false) }
         emitEffect(
             Effect.ShowMessage(
@@ -89,7 +85,7 @@ internal class TaskMailRelayDebugViewModel(
         }
 
         viewModelScope.launch {
-            relayHealthProbe.probe(config).fold(
+            relayBootstrapManager.probeHealth(config).fold(
                 onSuccess = { healthStatus ->
                     updateState {
                         it.copy(
@@ -114,7 +110,7 @@ internal class TaskMailRelayDebugViewModel(
         val config = currentConfig() ?: return
         updateState { it.copy(actionError = null) }
         viewModelScope.launch {
-            relayConnectionClient.connect(config).fold(
+            relayBootstrapManager.connect(config).fold(
                 onSuccess = { helloAck ->
                     emitEffect(
                         Effect.ShowMessage(
@@ -135,7 +131,7 @@ internal class TaskMailRelayDebugViewModel(
 
     private fun disconnect() {
         viewModelScope.launch {
-            relayConnectionClient.disconnect()
+            relayBootstrapManager.disconnect()
             emitEffect(Effect.ShowMessage("Relay disconnected."))
         }
     }

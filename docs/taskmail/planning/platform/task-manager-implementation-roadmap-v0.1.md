@@ -1,5 +1,22 @@
 # Task Manager 分阶段实施路线（v0.1）
 
+更新日期：2026-03-14
+状态：更广义 Task Manager 平台路线历史快照；不作为当前 TaskMail Android / PC 活跃路线图
+
+> 2026-03-21 说明：
+>
+> 本文件记录的是 imported platform planning 的分阶段路线。
+>
+> 它可以保留平台层面的顺序和背景，但当前不应被当作 Android TaskMail、PC 当前 mail protocol，或冻结后的跨仓库演进 authority。
+>
+> 当前应优先使用：
+>
+> - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+> - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+> - `docs/TASKMAIL-MAIL-RULES.md`
+> - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
+> - `E:\projects\mail_based_task_manager\docs\plans\android_pc_vps_evolution_authority.md`
+
 ## 1. 文档目的
 
 本文件用于定义 Task Manager 平台的实施顺序与阶段边界。

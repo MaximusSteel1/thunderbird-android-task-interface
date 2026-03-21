@@ -65,6 +65,20 @@ When TaskMail device inspection is launched from the Codex sandbox on this works
 - workaround: rerun device-inspection `adb` commands outside the sandbox / with escalated permissions instead of treating
   the failure as a device-disconnect issue
 
+## ADB Path Pitfall
+
+On this workstation, fresh PowerShell shells used for TaskMail automation may not have `adb` on `PATH` even when the
+Android SDK is already installed locally.
+
+- symptom: `adb devices` fails immediately with `adb : The term 'adb' is not recognized ...`
+- trigger: running device commands from a shell that has not imported Android SDK `platform-tools` into `PATH`
+- current best understanding: the local SDK exists, but this shell profile does not add it automatically
+- workaround: use the known local binary directly:
+
+```powershell
+& 'C:\Users\Administrator\AppData\Local\Android\Sdk\platform-tools\adb.exe' devices -l
+```
+
 ## Device Input Pitfall
 
 On the current attached Xiaomi/MIUI device, repeated `adb shell input text ...` attempts during TaskMail form entry can
@@ -91,6 +105,18 @@ On this workstation, PowerShell redirection can corrupt raw `adb exec-out screen
 Before device smoke, check whether the device already has an older local debug build installed.
 
 - if Android rejects the new APK because the installed package uses a different or too-old signing key, uninstall the existing debug app first and then install the newly built APK
+
+## Debug Keystore Drift Pitfall
+
+On this workstation, switching `ANDROID_USER_HOME` between `E:\projects\android_task_manager\.android-user` and
+`C:\Users\Administrator\.android` changes which local `debug.keystore` Gradle uses for debug APK signing.
+
+- symptom: `.\gradlew.bat :app-thunderbird:installFullDebug` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` even
+  though the package name matches the build already installed on the phone
+- trigger: trying to upgrade an existing debug install that was signed with the other local debug keystore
+- cause: Android treats those two local debug keystores as different signers
+- workaround: for in-place upgrade, build and install with the same `ANDROID_USER_HOME` that produced the currently
+  installed package, or uninstall before switching debug keystores
 
 ## Relay Bootstrap Warm-Start Pitfall
 
@@ -132,6 +158,147 @@ was enabled on-device, the relay debug path advanced one step further:
 
 At that point, the Android-side blocker was no longer route wiring or token entry. The active blocker was TLS trust:
 the relay certificate chain presented to the Android client was not trusted by the device.
+
+## 2026-03-21 Phase 2 Direct-Smoke Preflight Note
+
+On 2026-03-21, a fresh preflight pass from the current workstation plus the attached device model `24090RA29C`
+confirmed that the Phase 2 direct `new task` smoke boundary moved again.
+
+That preflight established all of the following:
+
+- the attached device is visible over adb as `Y5BYVCU4PF4PINJR`
+- Thunderbird debug package `net.thunderbird.android.debug` is installed on-device
+- the app's persisted TaskMail relay config already contains:
+  - `host = 124.223.41.153`
+  - `port = 8787`
+  - `path = /relay`
+  - a non-empty relay transport token whose Android-side fingerprint is `6f05b17d957d`
+  - `TaskMail bot mailbox = sgjcc@qq.com`
+- live relay `http://124.223.41.153:8787/healthz` returns:
+  - `status = ok`
+  - `tls_enabled = false`
+  - `taskmail_direct_ingress_enabled = true`
+  - `auth.transport_token_id = 6f05b17d957d`
+
+The current blocker for the next direct smoke is now narrower than before:
+
+- the saved Android relay config still has `Use TLS = true`
+- the live relay currently reports `tls_enabled = false`
+- current Android bootstrap/direct-send attempts will therefore fail until the saved device config is updated to use
+  plaintext HTTP / WS for this endpoint
+
+One subtle but important current-code reading also matters here:
+
+- the saved `taskmail.relay_enabled` flag is currently `false` on-device
+- current formal `new task` bootstrap/direct-send does not gate on that flag; it loads the saved host / port / path /
+  token config and attempts direct bootstrap based on actual configuration presence
+- in practice, for the next smoke the meaningful device-side fix is turning `Use TLS` off and saving the relay config
+
+## 2026-03-21 Phase 2 Direct-Smoke Result
+
+Later on 2026-03-21, after `Use TLS` was turned off and the relay config was saved again on-device, the retained
+debug-host path and the formal host produced a narrower but more actionable smoke result.
+
+Confirmed results:
+
+- the debug relay screen reached live `hello_ack` successfully against `ws://124.223.41.153:8787/relay`
+- the formal TaskMail host accepted a manual `New task` submission titled `Phase2 direct smoke`
+- the adjacent PC runtime completed that task to `DONE` and returned the expected reply token
+  `PHASE2_DIRECT_SMOKE_20260321`
+- the formal TaskMail workspace on-device later showed the completed session and token summary
+
+What this smoke did **not** prove:
+
+- live direct `new task` packet acceptance from the formal Android flow
+
+The strongest current evidence is:
+
+- live relay `/healthz` still showed `taskmail_direct_ingress_enabled = true`
+- around the formal send, relay `session_count` increased but `packet_count` stayed unchanged
+- adjacent PC runtime stored `thread_082/mail/raw_001.json` as a real inbound `[CX] Phase2 direct smoke` mail from the
+  user's mailbox to the bot mailbox
+- that first mail did not carry the direct-bridge marker `X-TaskMail-Direct: 1`
+- a separate no-side-effect live `/relay` probe using the same saved device token later received:
+  - `hello_ack` for the websocket handshake
+  - `error code = invalid_payload` for a deliberately malformed Phase 2 `new_task` packet
+
+Current best reading:
+
+- the live relay direct handler is present and reachable
+- this smoke completed through formal Android mail fallback rather than accepted direct packet ingress
+- the next debugging target is the formal Android direct-send path itself:
+  either it never sent the business packet after `hello_ack`, or it received a pre-accept relay rejection and silently
+  fell back to mail
+
+## 2026-03-21 Phase 2 Direct-Smoke Closure
+
+Later on 2026-03-21, after reinstalling a fresh Thunderbird debug build signed with the device-compatible local debug
+keystore and rerunning a second formal-host smoke titled `Phase2 direct smoke B`, the accepted direct-ingress boundary
+closed.
+
+Confirmed results:
+
+- device logcat from `OkHttpRelayConnectionClient` recorded:
+  - `Sending relay packet packetId=android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+  - `Received relay packet ack for packetId=android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+- live relay `/healthz` after the send reported:
+  - `status = ok`
+  - `taskmail_direct_ingress_enabled = true`
+  - `tls_enabled = false`
+  - `session_count = 8`
+  - `packet_count = 4`
+- adjacent runtime created `thread_083`
+- `thread_083/mail/raw_001.json` stored the first ingress as `[CX] Phase2 direct smoke B` with direct-bridge headers:
+  - `X-TaskMail-Direct: 1`
+  - `X-TaskMail-Relay-Packet-Id: android-taskmail:new-task:req_894649456f184a50a4a641a2c01d006b`
+  - `X-TaskMail-Relay-Request-Id: req_894649456f184a50a4a641a2c01d006b`
+- adjacent runtime then completed that thread to `DONE`, and `thread_083/thread_state.json` stored
+  `PHASE2_DIRECT_SMOKE_20260321_B` as the final summary
+
+Current best reading:
+
+- formal Android `new task` now has live proof of accepted `packet -> packet_ack` ingress against the current relay
+- the first `[CX]` mail seen by the PC runtime in this path is the expected direct-bridge artifact, not a fallback user
+  mail
+- later TaskMail status/result delivery still remains on the retained mail path today
+- reply, `/status`, and read-side direct transport remain outside the validated scope
+
+## 2026-03-21 Phase 2 Hard-Reject Stale-APK Pitfall
+
+在 2026-03-21 的 hard-rejection smoke 里，live relay 已经返回了正确的 `error_code = invalid_payload`，但设备第一次
+仍然错误地回退到了 mail。
+
+- symptom: 期望出现本地 `TaskMail send failed`，实际却又生成了一封新的 `[CX]` mail，并在 PC 侧创建了 `thread_085`
+- trigger: Android 代码已经加入 ack-level `error_code` hard-rejection 分类后，设备仍在运行旧 APK
+- cause: 手机上的 APK 还不包含新的 `packet_ack.error_code` 拒绝分类逻辑
+- workaround: 先重装当前最新 debug APK，再确认 logcat 里的 rejected `packet_ack` 已经带出 `code=invalid_payload`
+
+## 2026-03-21 Phase 2 Negative-Path Smoke Closure
+
+Later on 2026-03-21, after the live relay exposed `taskmail_direct_negative_hook_enabled = true`, the retained
+device-validation path closed the two remaining negative branches for the current Phase 2 `new task` slice.
+
+Confirmed results:
+
+- fallback smoke `Phase2 fallback smoke A` produced:
+  - Android logcat showing a relay `packet` send followed by rejected `packet_ack`
+  - live relay `/healthz` advancing `packet_count` from `6` to `7`
+  - adjacent runtime creating `thread_084`, whose first ingress is a real inbound user-mail `[CX]` message rather than
+    a direct-bridge mail
+  - adjacent runtime later completing that thread with `PHASE2_FALLBACK_SMOKE_20260321`
+- the first hard-rejection smoke `Phase2 hard reject smoke A` was invalidated by the stale-APK pitfall above, because
+  the device still fell back to mail and created `thread_085`
+- after reinstalling the latest debug APK, hard-rejection smoke `Phase2 hard reject smoke B` produced:
+  - Android logcat `Relay packet ack rejected ... code=invalid_payload`
+  - live relay `packet_count` advancing again without any new adjacent-runtime thread beyond `thread_085`
+  - the device staying on `New task`, preserving the draft, and showing inline `TaskMail send failed`
+
+Current best reading:
+
+- the current Phase 2 `new task` slice now has live proof for accepted direct ingress, fallback-to-mail, and hard
+  rejection without silent fallback
+- later TaskMail status/result delivery still remains on the retained mail path today
+- reply, `/status`, and read-side direct transport remain outside the validated scope
 
 ## 2026-03-16 Slice1 Note
 
@@ -268,3 +435,91 @@ adb shell am start `
 - Some real-message datasets may still surface noisy fallback text if the stored mail body lacks clean reply/capsule boundaries
 - Console output from the JSON validation suite may still show text encoding issues for some Chinese content
 - Some devices may refuse to install a freshly built debug APK over an older local install if the signing key changed; uninstall the old package first in that case
+
+## 2026-03-21 Phase 3 Detail Live-Smoke Note
+
+在 `2026-03-21` 的 Phase 3 `detail` live smoke 里，`thread_086 / phase3-detail-q-20260321_194446-211b05`
+给出了一个比“Android 没刷新”更具体的结论。
+
+这轮确认了：
+
+- 设备上的 `TaskMail relay debug` 可以成功连上 `ws://124.223.41.153:8787/relay`，`hello_ack` 正常返回
+- Android `detail` 页面里的 durable mail 路径仍然可用，因为手动 `pull-to-refresh` 后可以看到
+  `Running -> WaitingUser -> Done`
+- 但在保持 `detail` 打开的窗口里，没有观察到预期的 direct `session_snapshot` / `session_update`
+
+随后用同一个已保存的 Android relay config，在工作站侧直接做 websocket probe，向 live relay 发送
+`subscribe_session_detail`，订阅参数使用了当前 live thread 的 canonical locator：
+
+- `workspace_id = workspace_d0a3ad8a2abc`
+- `repo_path = E:\projects\android_task_manager`
+- `workdir = .`
+- `session_id = thread_086`
+- `thread_id = thread_086`
+
+probe 结果是：
+
+- `hello_ack` 成功
+- `packet_ack.accepted = false`
+- `error_code = session_not_found`
+- `error_message = could not resolve a session for the requested workspace/session locator`
+
+当前最佳理解是：
+
+- live relay 本身可达，transport token 也有效
+- 但当前 VPS/live relay 所使用的 session registry / task-root 并不包含这条本地 PC live smoke 线程
+  `thread_086`
+- 因此这轮 Android `detail` 没收到 direct live update，当前更像是 relay-side session resolution blocker，
+  还不能把问题直接归到 Android `timeline merge` / projector / ViewModel
+
+同一轮还确认了一个次级现象：
+
+- `E:\projects\mail_based_task_manager\_tmp_live_mail_runner\tasks\thread_086\mail\raw_004.json`
+  里的 `[QUESTION]` mail 自身就包含两段 `---TASK-QUESTION-BEGIN--- ... ---TASK-QUESTION-END---`
+- 所以 `detail` 里出现的 duplicate pending question，更像 mail body duplication / extractor 输入问题，
+  不是这轮 direct merge 新引入的重复
+
+下一步建议顺序：
+
+1. 先让 live relay 能 resolve 当前 smoke thread，或者改用 relay 已知 task-root 下已存在的 thread 做订阅
+2. 再重做 Android `detail` live smoke，确认 `session_snapshot/session_update -> projector -> detail merge`
+   是否真的通
+3. 在 direct live-update blocker 清掉之前，不要把这轮失败读成 Android Phase 3 merge 回归
+
+## 2026-03-21 Phase 3 Detail Live-Smoke Retest
+
+在同一天稍后的 retest 里，前一轮 `session_not_found` blocker 已经不再成立。
+
+- 工作站侧用同一组 relay 配置重做 `subscribe_session_detail` probe 时，live relay 对 canonical locator
+  返回了 `packet_ack.accepted = true`，并立即下发 `session_update(update_type = session_snapshot)`。
+- 这说明前一轮卡住的问题已经从“relay 不能 resolve 当前 live session”收缩到“Android 设备侧 detail
+  实际是靠 direct ws 还是靠 durable mail sync 推进”。
+
+随后用新的 live thread `thread_087 / phase3-detail-live-20260321_202113-1dbf6b` 做了真实设备 retest，
+这轮 QUESTION mail 要求回复 token `BAF751DE25`。
+
+- Android detail 在不手动 `pull-to-refresh` 的前提下，先停在 `WaitingUser`
+- reply mail 发出后，detail 自然推进到 `Running`
+- 再经过后续后台同步，detail 自然推进到 `Done`
+- 最终 summary 正常显示 `QUESTION_FLOW_OK | BAF751DE25`
+
+本轮抓到的关键时间点是：
+
+- `20:27:32`：设备 logcat 出现 `RealImapConnection` 对 `thread_087` 的 `[ACCEPTED]` / `[RUNNING]` fetch
+- `+20s` UI dump：detail 已从 `WaitingUser` 进入 `Running`
+- `20:28:37`：设备 logcat 出现 `RealImapConnection` 对 `thread_087` 的 `[DONE]` fetch
+- 再等一个自然处理窗口后，detail UI 进入 `Done`
+
+当前最稳妥的解释是：
+
+- Phase 3 `detail` 页在真实设备上已经重新证明了“无手动刷新也能跟着 live mail 自然推进到终态”
+- 这轮没有再复现前一轮的 relay `session_not_found` blocker
+- 但从设备 logcat 能明确看到的是 IMAP fetch，不是 direct websocket `session_update` 日志
+- 因此这轮更适合作为“detail auto-refresh closeout”证据，而不是“direct ws path 优先于 durable mail path”
+  的最终证明
+
+仍然保留的次级现象没有变化：
+
+- `thread_087` 的 `[QUESTION]` mail UI 里仍显示 duplicate pending question
+- 这与前一轮 `thread_086` 一样，更像 question mail 原文 / extractor 输入问题，而不像这次 Phase 3 merge
+  新引入的重复

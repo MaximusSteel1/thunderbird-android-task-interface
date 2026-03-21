@@ -32,6 +32,11 @@ internal class LegacyTaskMailBodyExtractor {
         return extractedText.orEmpty()
     }
 
+    fun extractSystemReplyText(bodyText: String): String? {
+        val text = stripCapsules(normalizeText(bodyText))
+        return text.takeUnless(String::isBlank)?.let(::extractReplyText)
+    }
+
     private fun extractReplyText(text: String): String? {
         return REPLY_BLOCK_REGEX.find(text)
             ?.groupValues

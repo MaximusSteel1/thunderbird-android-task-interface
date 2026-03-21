@@ -27,6 +27,15 @@ Architectural Decision Records (ADRs) are located in `docs/architecture/adr/`.
 
 Agents MUST consult relevant documentation before making architectural or structural changes.
 
+## Documentation Language
+
+Unless the task explicitly requires another language, agents MUST write new repository documentation and documentation
+updates in Chinese by default.
+
+When documentation needs to reference protocol field names, code identifiers, file paths, command lines, or
+cross-repository contract titles, agents SHOULD preserve those technical identifiers in their original form and add
+Chinese explanation around them instead of translating the identifiers themselves.
+
 ## Toolchain Notes
 
 - Java 21+ is required to build this repository; `settings.gradle.kts` enforces this

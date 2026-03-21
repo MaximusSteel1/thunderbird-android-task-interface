@@ -34,3 +34,21 @@ internal fun TaskSessionDetailStaticSvgPreview() {
 internal fun TaskSessionDetailUnmatchedImageFallbackPreview() {
     TaskMailDebugPreviewDetailContent(detail = TaskMailPreviewData.richUnmatchedImageFallbackSessionDetail)
 }
+
+@Composable
+@Preview(name = "External Deliveries", showBackground = true)
+internal fun TaskSessionDetailExternalDeliveriesPreview() {
+    TaskMailDebugPreviewDetailContent(detail = TaskMailPreviewData.richExternalDeliveriesSessionDetail)
+}
+
+@Composable
+@Preview(name = "Attachment Notices", showBackground = true)
+internal fun TaskSessionDetailAttachmentNoticesPreview() {
+    TaskMailDebugPreviewDetailContent(detail = TaskMailPreviewData.richAttachmentNoticesSessionDetail)
+}
+
+@Composable
+@Preview(name = "Failed Long Error", showBackground = true)
+internal fun TaskSessionDetailFailedLongErrorPreview() {
+    TaskMailDebugPreviewDetailContent(detail = TaskMailPreviewData.richFailedLongErrorSessionDetail)
+}

@@ -3,6 +3,10 @@
 package net.thunderbird.feature.taskmail.internal.data
 
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
@@ -138,6 +142,7 @@ internal class TaskMailSessionProjector(
         return SessionRecord(
             sessionKey = metadata.sessionKey,
             workspace = metadata.workspace,
+            canonicalWorkspaceId = metadata.canonicalWorkspaceId,
             sessionName = metadata.sessionName,
             backend = metadata.backend,
             status = metadata.status,
@@ -192,7 +197,9 @@ internal class TaskMailSessionProjector(
     private fun SessionRecord.toDetail(): TaskSessionDetail {
         return TaskSessionDetail(
             key = sessionKey,
-            workspace = workspace,
+            workspace = workspace.copy(
+                workspaceId = canonicalWorkspaceId ?: workspace.workspaceId,
+            ),
             sessionName = sessionName,
             backend = backend,
             status = status,
@@ -244,6 +251,7 @@ internal class TaskMailSessionProjector(
     private data class SessionRecord(
         val sessionKey: TaskSessionKey,
         val workspace: TaskWorkspaceKey,
+        val canonicalWorkspaceId: String?,
         val sessionName: String,
         val backend: TaskMailBackend,
         val status: TaskMailSessionStatus,
@@ -264,6 +272,7 @@ internal class TaskMailSessionProjector(
 private data class SessionRecordMetadata(
     val sessionKey: TaskSessionKey,
     val workspace: TaskWorkspaceKey,
+    val canonicalWorkspaceId: String?,
     val sessionName: String,
     val backend: TaskMailBackend,
     val status: TaskMailSessionStatus,
@@ -335,6 +344,7 @@ private fun buildTimeline(
                 sourceHtml = message.htmlBody,
             ),
             attachments = timelineAttachments,
+            businessEventKeys = message.timelineBusinessEventKeys(bodyExtractor),
         )
     }
 }
@@ -378,6 +388,7 @@ private fun buildSessionRecordMetadata(
             threadId = representative,
         ),
         workspace = workspace,
+        canonicalWorkspaceId = workspaceId,
         sessionName = resolveSessionName(
             sortedMessages = sortedMessages,
             latestState = latestState,
@@ -469,6 +480,56 @@ private fun TaskMailMessage.timelineStatusLabel(): TaskMailStatusLabel? {
     return detection.parsedSubject.statusLabel?.takeIf { detection.isSystemMessage }
 }
 
+private fun TaskMailMessage.timelineBusinessEventKeys(
+    bodyExtractor: LegacyTaskMailBodyExtractor,
+): List<String> {
+    val state = detection.stateCapsule ?: return emptyList()
+    val eventAt = state.lastProgressAt
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?: state.lastActiveAt
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+        ?: timestamp.toBusinessEventTimestamp()
+    val keys = linkedSetOf<String>()
+    val status = state.status
+
+    if (status != null) {
+        keys += "status/${status.toBusinessEventStatus()}/$eventAt"
+
+        when (status) {
+            TaskMailSessionStatus.WaitingUser -> detection.effectiveQuestionCapsules()
+                .mapNotNull(TaskQuestionCapsule::questionSetId)
+                .distinct()
+                .singleOrNull()
+                ?.let { questionSetId ->
+                    keys += "question/$questionSetId/$eventAt"
+                }
+
+            TaskMailSessionStatus.Paused -> state.pausedFromStatus
+                ?.toBusinessEventStatus()
+                ?.let { pausedFromStatus ->
+                    keys += "paused/$pausedFromStatus/$eventAt"
+                }
+
+            TaskMailSessionStatus.Done,
+            TaskMailSessionStatus.Failed,
+            TaskMailSessionStatus.Killed,
+            -> {
+                keys += "terminal/${status.toBusinessEventStatus()}/$eventAt"
+            }
+
+            else -> Unit
+        }
+    }
+
+    if (detection.isSystemMessage && bodyExtractor.extractSystemReplyText(rawBodyText) != null) {
+        keys += "reply/$eventAt"
+    }
+
+    return keys.toList()
+}
+
 private fun TaskMailDetection.effectiveQuestionCapsules(): List<TaskQuestionCapsule> {
     return if (questionCapsules.isNotEmpty()) {
         questionCapsules
@@ -488,6 +549,25 @@ private fun TaskMailStatusLabel.toSessionStatus(): TaskMailSessionStatus {
         TaskMailStatusLabel.Question -> TaskMailSessionStatus.WaitingUser
         TaskMailStatusLabel.Paused -> TaskMailSessionStatus.Paused
     }
+}
+
+private fun TaskMailSessionStatus.toBusinessEventStatus(): String {
+    return when (this) {
+        TaskMailSessionStatus.Queued -> "queued"
+        TaskMailSessionStatus.Running -> "running"
+        TaskMailSessionStatus.WaitingUser -> "awaiting_user_input"
+        TaskMailSessionStatus.Paused -> "paused"
+        TaskMailSessionStatus.Done -> "done"
+        TaskMailSessionStatus.Failed -> "failed"
+        TaskMailSessionStatus.Killed -> "killed"
+        TaskMailSessionStatus.Unknown -> "unknown"
+    }
+}
+
+private fun Long.toBusinessEventTimestamp(): String {
+    return SimpleDateFormat(BUSINESS_EVENT_TIMESTAMP_PATTERN, Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date(this))
 }
 
 private inline fun <T, R : Any> List<T>.lastMappedNotNull(transform: (T) -> R?): R? {
@@ -523,6 +603,8 @@ private fun preferredMailboxMessages(messages: List<TaskMailMessage>): List<Task
 private fun looksLikeBotMailboxAccount(messages: List<TaskMailMessage>): Boolean {
     return messages.any(TaskMailMessage::looksLikeBotMailboxTraffic)
 }
+
+private const val BUSINESS_EVENT_TIMESTAMP_PATTERN = "yyyy-MM-dd'T'HH:mm:ss"
 
 private fun TaskMailMessage.looksLikeBotMailboxTraffic(): Boolean {
     return when {

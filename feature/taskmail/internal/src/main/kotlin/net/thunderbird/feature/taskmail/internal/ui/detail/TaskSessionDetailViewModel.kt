@@ -1,6 +1,7 @@
 package net.thunderbird.feature.taskmail.internal.ui.detail
 
 import androidx.lifecycle.viewModelScope
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Job
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import net.thunderbird.core.logging.Logger
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
@@ -24,6 +26,7 @@ import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsu
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
@@ -33,7 +36,7 @@ import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailCont
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract.State
 import net.thunderbird.feature.taskmail.internal.ui.toDisplayWorkdir
 
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 internal class TaskSessionDetailViewModel(
     detailRepository: TaskSessionDetailRepository,
     private val getTaskSessionDetail: GetTaskSessionDetail = GetTaskSessionDetail(detailRepository),
@@ -43,7 +46,9 @@ internal class TaskSessionDetailViewModel(
     private val sendTaskMailReply: SendTaskMailReply,
     private val replyAttachmentResolver: TaskMailReplyAttachmentResolver,
     private val timelineAttachmentHandler: TaskMailTimelineAttachmentHandler,
+    private val logger: Logger,
     private val syncTaskMailCache: SyncTaskMailCache? = null,
+    private val observeTaskMailDirectSessionDetail: ObserveTaskMailDirectSessionDetail? = null,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskSessionDetailContract.ViewModel {
@@ -53,9 +58,20 @@ internal class TaskSessionDetailViewModel(
     private val loadMutex = Mutex()
     private val syncMutex = Mutex()
     private var foregroundRefreshJob: Job? = null
+    private var directObservationJob: Job? = null
+    private var directProjectionKey: TaskSessionKey? = null
+    private var currentDirectProjectionStatus: TaskMailSessionStatus? = null
+    private var currentDirectProjectionSummary: String? = null
+    private var currentDirectProjectionQuestions: List<TaskQuestionCapsule>? = null
+    private var currentDirectProjectionTimeline: List<TaskTimelineItem>? = null
 
     init {
         observeLocalMailChanges()
+    }
+
+    override fun onCleared() {
+        stopDirectObservation(clearProjection = true)
+        super.onCleared()
     }
 
     override fun event(event: Event) {
@@ -113,6 +129,9 @@ internal class TaskSessionDetailViewModel(
                 .conflate()
                 .collect {
                     currentKey?.let { key ->
+                        logger.debug(TAG) {
+                            "Observed local TaskMail store change while detail is visible."
+                        }
                         loadDetail(
                             key = key,
                             forceRefresh = true,
@@ -134,6 +153,9 @@ internal class TaskSessionDetailViewModel(
         if (shouldSkipDetailLoad(key = key, forceRefresh = forceRefresh, comparisonKey = currentKey)) return
 
         currentKey = key
+        if (key != previousKey) {
+            stopDirectObservation(clearProjection = true)
+        }
         viewModelScope.launch {
             loadMutex.withLock {
                 if (shouldSkipDetailLoad(key = key, forceRefresh = forceRefresh, comparisonKey = previousKey)) {
@@ -309,11 +331,25 @@ internal class TaskSessionDetailViewModel(
         currentDetail = detail
 
         if (detail == null) {
+            stopDirectObservation(clearProjection = true)
             handleMissingDetail(loadContext)
             return
         }
 
-        val uiDetail = detail.toUiState()
+        startOrRefreshDirectObservation(detail)
+        logger.debug(TAG) {
+            "Rendered repository detail " +
+                "status=${detail.status.name} " +
+                "pendingQuestionCount=${detail.pendingQuestions.size} " +
+                "mailTimelineCount=${detail.timeline.size} " +
+                "directOverlayActive=${hasActiveDirectOverlay()}"
+        }
+        val uiDetail = detail.toUiState(
+            directStatus = currentDirectProjectionStatus,
+            directSummary = currentDirectProjectionSummary,
+            directQuestions = currentDirectProjectionQuestions,
+            directTimeline = currentDirectProjectionTimeline,
+        )
         updateState {
             it.copy(
                 isLoading = false,
@@ -352,6 +388,7 @@ internal class TaskSessionDetailViewModel(
     ) {
         if (!loadContext.canKeepCurrentContent) {
             currentDetail = null
+            stopDirectObservation(clearProjection = true)
         }
 
         updateState { currentState ->
@@ -371,6 +408,72 @@ internal class TaskSessionDetailViewModel(
                     detail = null,
                 )
             }
+        }
+    }
+
+    private fun startOrRefreshDirectObservation(detail: TaskSessionDetail) {
+        val observer = observeTaskMailDirectSessionDetail ?: return
+        if (directObservationJob != null && directProjectionKey == detail.key) {
+            return
+        }
+
+        stopDirectObservation(clearProjection = true)
+        directProjectionKey = detail.key
+        logger.debug(TAG) { "Starting direct detail observation from detail view model." }
+        directObservationJob = viewModelScope.launch {
+            observer(detail).collect { projection ->
+                if (currentDetail?.key != detail.key) return@collect
+
+                logger.debug(TAG) {
+                    "Applying direct detail projection " +
+                        "status=${projection.headerStatus.name} " +
+                        "pendingQuestionCount=${projection.pendingQuestions.size} " +
+                        "provisionalTimelineCount=${projection.provisionalTimeline.size} " +
+                        "lastSequence=${projection.lastSequence}"
+                }
+                currentDirectProjectionStatus = projection.headerStatus
+                currentDirectProjectionSummary = projection.lastSummary
+                currentDirectProjectionQuestions = projection.pendingQuestions
+                currentDirectProjectionTimeline = projection.provisionalTimeline
+                renderDirectProjection()
+            }
+        }
+    }
+
+    private fun stopDirectObservation(clearProjection: Boolean) {
+        directObservationJob?.cancel()
+        directObservationJob = null
+        directProjectionKey = null
+
+        if (clearProjection) {
+            currentDirectProjectionStatus = null
+            currentDirectProjectionSummary = null
+            currentDirectProjectionQuestions = null
+            currentDirectProjectionTimeline = null
+        }
+    }
+
+    private fun hasActiveDirectOverlay(): Boolean {
+        return currentDirectProjectionStatus != null ||
+            currentDirectProjectionSummary != null ||
+            currentDirectProjectionQuestions != null ||
+            currentDirectProjectionTimeline != null
+    }
+
+    private fun renderDirectProjection() {
+        val detail = currentDetail ?: return
+        val uiDetail = detail.toUiState(
+            directStatus = currentDirectProjectionStatus,
+            directSummary = currentDirectProjectionSummary,
+            directQuestions = currentDirectProjectionQuestions,
+            directTimeline = currentDirectProjectionTimeline,
+        )
+
+        updateState { currentState ->
+            currentState.copy(
+                detail = uiDetail,
+                draftText = currentState.resolveDraftText(uiDetail),
+            )
         }
     }
 
@@ -625,6 +728,7 @@ internal class TaskSessionDetailViewModel(
 }
 
 private const val FOREGROUND_REFRESH_INTERVAL_MS = 10_000L
+private const val TAG = "TaskSessionDetailViewModel"
 
 private fun shouldAttemptCachedDetailBeforeSync(
     forceRefresh: Boolean,
@@ -650,64 +754,42 @@ private fun shouldRenderCachedDetailBeforeSync(
         cachedDetail != null
 }
 
-private fun TaskSessionDetail.toUiState(): TaskSessionDetailUiState {
+private fun TaskSessionDetail.toUiState(
+    directStatus: TaskMailSessionStatus? = null,
+    directSummary: String? = null,
+    directQuestions: List<TaskQuestionCapsule>? = null,
+    directTimeline: List<TaskTimelineItem>? = null,
+): TaskSessionDetailUiState {
+    val effectiveStatus = directStatus ?: status
+    val effectiveSummary = directSummary ?: lastSummary
     val canReply = replyContext != null
-    val pendingQuestionItems = pendingQuestions
+    val pendingQuestionItems = (directQuestions ?: pendingQuestions)
         .map(TaskQuestionCapsule::toUiState)
         .toImmutableList()
-    val requiresStructuredReply = pendingQuestionItems.size > 1
-    val quickAnswerChoices = if (pendingQuestionItems.size == 1) {
-        pendingQuestionItems.single().choices
-    } else {
-        persistentListOf()
-    }
-    val requiresResumeBeforeReply = status == TaskMailSessionStatus.Paused
-    val replySupportingText = when {
-        requiresResumeBeforeReply && requiresStructuredReply -> {
-            "This session is paused. Sending will prepend /resume, then use one line per question in the form " +
-                "question_id: value."
-        }
-
-        requiresResumeBeforeReply && quickAnswerChoices.isNotEmpty() -> {
-            "This session is paused. Quick answers and manual replies will resume it with /resume first."
-        }
-
-        requiresResumeBeforeReply -> "This session is paused. Sending will prepend /resume before continuing."
-        requiresStructuredReply -> {
-            "Use one line per question in the form question_id: value. " +
-                "The draft is prefilled with a copy-ready template, and you can attach files if needed."
-        }
-
-        quickAnswerChoices.isNotEmpty() -> {
-            "Answer the pending question with plain text, attachments, or a quick TaskMail action."
-        }
-        else -> "Send a plain-text reply, attach files, or both to continue this task."
-    }
-    val structuredReplyTemplate = if (requiresStructuredReply) {
-        buildStructuredReplyTemplate(pendingQuestionItems)
-    } else {
-        null
-    }
+    val replyUiState = pendingQuestionItems.toReplyUiState(effectiveStatus)
 
     return TaskSessionDetailUiState(
         sessionName = sessionName,
         backend = backend.name,
-        status = status.name,
+        status = effectiveStatus.name,
         repoPath = repoPath,
         workdir = workdir.toDisplayWorkdir(),
-        lastSummary = lastSummary,
+        lastSummary = effectiveSummary,
         pendingQuestions = pendingQuestionItems,
-        quickAnswerChoices = quickAnswerChoices,
-        requiresStructuredReply = requiresStructuredReply,
-        requiresResumeBeforeReply = requiresResumeBeforeReply,
-        structuredReplyTemplate = structuredReplyTemplate,
-        replyLabel = if (requiresStructuredReply) "Answers" else "Reply to this task",
-        replySupportingText = replySupportingText,
+        quickAnswerChoices = replyUiState.quickAnswerChoices,
+        requiresStructuredReply = replyUiState.requiresStructuredReply,
+        requiresResumeBeforeReply = replyUiState.requiresResumeBeforeReply,
+        structuredReplyTemplate = replyUiState.structuredReplyTemplate,
+        replyLabel = replyUiState.replyLabel,
+        replySupportingText = replyUiState.replySupportingText,
         replyContext = replyContext,
         canReply = canReply,
         canQueryStatus = canReply,
         replyUnavailableReason = if (canReply) null else "Reply unavailable for this session.",
-        timeline = timeline
+        timeline = mergeTimeline(
+            mailTimeline = timeline,
+            directTimeline = directTimeline,
+        )
             .asReversed()
             .map(TaskTimelineItem::toUiState)
             .toImmutableList(),
@@ -740,6 +822,72 @@ private fun TaskQuestionCapsule.toUiState(): TaskPendingQuestionUi {
         }.toImmutableList(),
         isRequired = required,
     )
+}
+
+private data class ReplyUiStateComponents(
+    val quickAnswerChoices: ImmutableList<TaskPendingQuestionChoiceUi>,
+    val requiresStructuredReply: Boolean,
+    val requiresResumeBeforeReply: Boolean,
+    val structuredReplyTemplate: String?,
+    val replyLabel: String,
+    val replySupportingText: String,
+)
+
+private fun List<TaskPendingQuestionUi>.toReplyUiState(
+    status: TaskMailSessionStatus,
+): ReplyUiStateComponents {
+    val requiresStructuredReply = size > 1
+    val quickAnswerChoices = when (size) {
+        1 -> single().choices
+        else -> persistentListOf()
+    }
+    val requiresResumeBeforeReply = status == TaskMailSessionStatus.Paused
+
+    return ReplyUiStateComponents(
+        quickAnswerChoices = quickAnswerChoices,
+        requiresStructuredReply = requiresStructuredReply,
+        requiresResumeBeforeReply = requiresResumeBeforeReply,
+        structuredReplyTemplate = if (requiresStructuredReply) {
+            buildStructuredReplyTemplate(this)
+        } else {
+            null
+        },
+        replyLabel = if (requiresStructuredReply) "Answers" else "Reply to this task",
+        replySupportingText = replySupportingText(
+            requiresResumeBeforeReply = requiresResumeBeforeReply,
+            requiresStructuredReply = requiresStructuredReply,
+            hasQuickAnswers = quickAnswerChoices.isNotEmpty(),
+        ),
+    )
+}
+
+private fun replySupportingText(
+    requiresResumeBeforeReply: Boolean,
+    requiresStructuredReply: Boolean,
+    hasQuickAnswers: Boolean,
+): String {
+    return when {
+        requiresResumeBeforeReply && requiresStructuredReply -> {
+            "This session is paused. Sending will prepend /resume, then use one line per question in the form " +
+                "question_id: value."
+        }
+
+        requiresResumeBeforeReply && hasQuickAnswers -> {
+            "This session is paused. Quick answers and manual replies will resume it with /resume first."
+        }
+
+        requiresResumeBeforeReply -> "This session is paused. Sending will prepend /resume before continuing."
+        requiresStructuredReply -> {
+            "Use one line per question in the form question_id: value. " +
+                "The draft is prefilled with a copy-ready template, and you can attach files if needed."
+        }
+
+        hasQuickAnswers -> {
+            "Answer the pending question with plain text, attachments, or a quick TaskMail action."
+        }
+
+        else -> "Send a plain-text reply, attach files, or both to continue this task."
+    }
 }
 
 private fun TaskMessageAttachment.toUiState(): TaskTimelineAttachmentUi {

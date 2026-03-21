@@ -139,6 +139,12 @@ private fun TaskTimelineItem.toJsonObject(): JsonObject {
             "attachments",
             JsonArray(attachments.map(TaskMessageAttachment::toJsonObject)),
         )
+        put(
+            "businessEventKeys",
+            buildJsonArray {
+                businessEventKeys.forEach { key -> add(JsonPrimitive(key)) }
+            },
+        )
     }
 }
 
@@ -384,6 +390,7 @@ private fun JsonObject.toTaskTimelineItem(): TaskTimelineItem {
         summary = optionalString("summary"),
         body = objectValue("body")?.toTaskMessageBody() ?: error("Missing body"),
         attachments = arrayObjects("attachments").map(JsonObject::toTaskMessageAttachment),
+        businessEventKeys = array("businessEventKeys"),
     )
 }
 

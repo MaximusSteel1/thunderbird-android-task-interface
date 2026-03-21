@@ -12,16 +12,28 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import net.thunderbird.core.android.account.LegacyAccountDto
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSenderAccountSource
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskRequest
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
 
 class TaskNewTaskViewModelTest {
@@ -155,13 +167,49 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
-    fun `send should serialize canonical subject and body on success`() = runMviTest {
+    fun `send should prefer direct path after successful bootstrap`() = runMviTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
             start()
             loadData()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow\nList only blockers.")
+            send()
+
+            assertThat(sentRequests()).containsExactly()
+            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(collectedEffects().toSet()).isEqualTo(
+                setOf(
+                    TaskNewTaskContract.Effect.ShowMessage(
+                        "Task request sent. It will appear after the first TaskMail status mail arrives.",
+                    ),
+                    TaskNewTaskContract.Effect.NavigateBack,
+                ),
+            )
+            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.HelloAck)
+            assertThat(bootstrapCallCount()).isEqualTo(1)
+            assertThat(disconnectCallCount()).isEqualTo(1)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send should use mail fallback message when direct bootstrap is unavailable`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.NotConfigured,
+                    detailMessage = "Relay host, port, and transport token are required.",
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
             send()
 
             assertThat(sentRequests()).containsExactly(
@@ -173,18 +221,66 @@ class TaskNewTaskViewModelTest {
 
                         Task:
                         Audit the new flow
-                        List only blockers.
+                    """.trimIndent(),
+                ),
+            )
+            assertThat(directSendCallCount()).isEqualTo(0)
+            assertThat(collectedEffects().toSet()).isEqualTo(
+                setOf(
+                    TaskNewTaskContract.Effect.ShowMessage(
+                        "Task request sent over mail fallback. " +
+                            "It will appear after the first TaskMail status mail arrives.",
+                    ),
+                    TaskNewTaskContract.Effect.NavigateBack,
+                ),
+            )
+            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.NotConfigured)
+            assertThat(bootstrapCallCount()).isEqualTo(1)
+            assertThat(disconnectCallCount()).isEqualTo(0)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send should fallback to mail when direct send is temporarily unavailable`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail("unsupported_action"),
+            ),
+        ) {
+            start()
+            loadData()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
+            send()
+
+            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(sentRequests()).containsExactly(
+                TaskMailNewTaskRequest(
+                    accountUuid = primarySenderAccount.accountUuid,
+                    subject = "[CX] Audit the new flow",
+                    body = """
+                        Repo: E:/projects/android_task_manager
+
+                        Task:
+                        Audit the new flow
                     """.trimIndent(),
                 ),
             )
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "Task request sent. It will appear after the first TaskMail status mail arrives.",
+                        "Task request sent over mail fallback. " +
+                            "It will appear after the first TaskMail status mail arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
             )
+            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.HelloAck)
+            assertThat(disconnectCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -196,6 +292,7 @@ class TaskNewTaskViewModelTest {
                 this,
                 senderAccounts = listOf(primarySenderAccount),
                 sendResult = TaskMailNewTaskResult.failure("send failed"),
+                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail("unsupported_action"),
             ),
         ) {
             start()
@@ -206,10 +303,40 @@ class TaskNewTaskViewModelTest {
             changeTask("Audit the new flow")
             changeTimeout("60")
             send()
+
             assertThat(viewModelState().sendError).isEqualTo("send failed")
             assertThat(viewModelState().repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskText).isEqualTo("Audit the new flow")
             assertThat(viewModelState().isAdvancedExpanded).isEqualTo(true)
+            assertThat(directSendCallCount()).isEqualTo(1)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct hard rejection should keep draft and skip mail fallback`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                directSendResult = TaskMailDirectNewTaskResult.Rejected(
+                    "invalid_payload: task_text is required",
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
+            send()
+
+            assertThat(viewModelState().sendError).isEqualTo("invalid_payload: task_text is required")
+            assertThat(viewModelState().repoPath).isEqualTo("E:/projects/android_task_manager")
+            assertThat(viewModelState().taskText).isEqualTo("Audit the new flow")
+            assertThat(sentRequests()).containsExactly()
+            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(disconnectCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -221,6 +348,7 @@ class TaskNewTaskViewModelTest {
                 this,
                 senderAccounts = listOf(primarySenderAccount),
                 sendResult = TaskMailNewTaskResult.failure("TaskMail bot mailbox is not configured."),
+                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail("unsupported_action"),
             ),
         ) {
             start()
@@ -229,9 +357,11 @@ class TaskNewTaskViewModelTest {
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
             send()
+
             assertThat(viewModelState().sendError).isEqualTo("TaskMail bot mailbox is not configured.")
             assertThat(viewModelState().repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskText).isEqualTo("Audit the new flow")
+            assertThat(directSendCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -241,12 +371,22 @@ private class TaskNewTaskViewModelRobot(
     private val mviContext: MviContext,
     senderAccounts: List<TaskMailSenderAccount>,
     sendResult: TaskMailNewTaskResult = TaskMailNewTaskResult.success(),
+    directSendResult: TaskMailDirectNewTaskResult = TaskMailDirectNewTaskResult.Accepted(
+        receiptId = "receipt-1",
+    ),
+    bootstrapResult: RelayBootstrapResult = RelayBootstrapResult(
+        status = RelayBootstrapStatus.HelloAck,
+    ),
 ) {
     private val senderAccountSource = FakeTaskMailSenderAccountSource(senderAccounts)
     private val newTaskSender = FakeTaskMailNewTaskSender(sendResult)
+    private val directNewTaskSender = FakeTaskMailDirectNewTaskSender(directSendResult)
+    private val relayBootstrapManager = FakeRelayBootstrapManager(bootstrapResult)
     private val viewModel = TaskNewTaskViewModel(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(senderAccountSource),
+        sendTaskMailDirectNewTask = SendTaskMailDirectNewTask(directNewTaskSender),
         sendTaskMailNewTask = SendTaskMailNewTask(newTaskSender),
+        runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(relayBootstrapManager),
     )
     private lateinit var turbines: MviTurbines<TaskNewTaskContract.State, TaskNewTaskContract.Effect>
 
@@ -298,16 +438,18 @@ private class TaskNewTaskViewModelRobot(
 
     fun sentRequests(): List<TaskMailNewTaskRequest> = newTaskSender.requests
 
+    fun directSendCallCount(): Int = directNewTaskSender.sendCallCount
+
+    fun bootstrapCallCount(): Int = relayBootstrapManager.bootstrapCallCount
+
+    fun disconnectCallCount(): Int = relayBootstrapManager.disconnectCallCount
+
     suspend fun collectedEffects(): List<TaskNewTaskContract.Effect> {
         mviContext.advanceUntilIdle()
-        val effects = mutableListOf<TaskNewTaskContract.Effect>()
-
-        while (true) {
-            effects += turbines.awaitEffectItem()
-            if (effects.size >= 2 || newTaskSender.requests.isEmpty()) break
-        }
-
-        return effects
+        return listOf(
+            turbines.awaitEffectItem(),
+            turbines.awaitEffectItem(),
+        )
     }
 
     fun viewModelState(): TaskNewTaskContract.State = viewModel.state.value
@@ -334,6 +476,70 @@ private class FakeTaskMailNewTaskSender(
     override suspend fun send(request: TaskMailNewTaskRequest): TaskMailNewTaskResult {
         requests += request
         return result
+    }
+}
+
+private class FakeTaskMailDirectNewTaskSender(
+    private val result: TaskMailDirectNewTaskResult,
+) : TaskMailDirectNewTaskSender {
+    var sendCallCount: Int = 0
+
+    override suspend fun send(
+        draft: net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft,
+    ): TaskMailDirectNewTaskResult {
+        sendCallCount += 1
+        return result
+    }
+}
+
+private class FakeRelayBootstrapManager(
+    private val bootstrapResult: RelayBootstrapResult,
+) : RelayBootstrapManager {
+    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
+
+    var bootstrapCallCount: Int = 0
+    var disconnectCallCount: Int = 0
+
+    override val connectionState = mutableConnectionState
+
+    override fun loadConfig(): RelayTransportConfig = RelayTransportConfig()
+
+    override fun saveConfig(config: RelayTransportConfig): Boolean = true
+
+    override suspend fun probeHealth(config: RelayTransportConfig): Result<RelayHealthStatus> {
+        return Result.success(
+            RelayHealthStatus(
+                status = "ok",
+                service = "mail-runner-relay",
+                listenHost = "0.0.0.0",
+                listenPort = 8787,
+                sessionCount = 0,
+                packetCount = 0,
+                tlsEnabled = false,
+                transportTokenId = "token-id",
+            ),
+        )
+    }
+
+    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
+        return Result.success(
+            RelayHelloAck(
+                messageType = "hello_ack",
+                connectionId = "connection-1",
+                serverTime = "2026-03-21T12:00:00Z",
+                heartbeatSeconds = 30,
+            ),
+        )
+    }
+
+    override suspend fun disconnect() {
+        disconnectCallCount += 1
+        mutableConnectionState.value = RelayConnectionState.Idle
+    }
+
+    override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
+        bootstrapCallCount += 1
+        return bootstrapResult
     }
 }
 

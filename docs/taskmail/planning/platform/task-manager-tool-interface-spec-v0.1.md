@@ -1,7 +1,21 @@
 # Task Manager 工具接口规范（v0.1）
 
 更新日期：2026-03-14  
-状态：建议作为第一阶段开发基线文档
+状态：更广义工具接口背景 / 参考文档；不作为当前 TaskMail Android / PC mail contract authority
+
+> 2026-03-21 说明：
+>
+> 本文件描述的是 imported Task Manager platform 的工具接口设想。
+>
+> 它可以作为未来更广义平台或 API 讨论的背景，但当前不能覆盖 Android TaskMail 邮件协议、Android 当前实现状态，或冻结后的跨仓库演进 authority。
+>
+> 当前应优先使用：
+>
+> - `docs/TASKMAIL-MAIL-RULES.md`
+> - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+> - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+> - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
+> - `E:\projects\mail_based_task_manager\docs\plans\android_pc_vps_evolution_authority.md`
 
 ## 1. 文档目的
 

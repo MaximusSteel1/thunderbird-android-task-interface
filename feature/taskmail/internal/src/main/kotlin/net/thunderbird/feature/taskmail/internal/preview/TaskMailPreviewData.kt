@@ -299,12 +299,230 @@ internal object TaskMailPreviewData {
         ),
     )
 
+    val richExternalDeliveriesSessionDetail = TaskSessionDetail(
+        key = TaskSessionKey(
+            sessionId = "session_external_delivery_001",
+            threadId = "thread_external_delivery_001",
+        ),
+        workspace = workspaceKey,
+        sessionName = "TaskMail External Delivery Sample",
+        backend = TaskMailBackend.Codex,
+        status = TaskMailSessionStatus.Done,
+        repoPath = "E:/projects/android_task_manager",
+        workdir = "feature/taskmail",
+        lastSummary = "External delivery links remain readable on Android.",
+        replyContext = replyContext.copy(messageServerId = "msg-system-external-delivery"),
+        timeline = listOf(
+            TaskTimelineItem(
+                id = "timeline_external_delivery_001",
+                timestamp = 1_742_050_000_000,
+                direction = TaskTimelineDirection.System,
+                statusLabel = TaskMailStatusLabel.Done,
+                summary = "External delivery links remain readable on Android.",
+                body = richBody(
+                    plainText = "External delivery links remain readable on Android.",
+                    document = TaskRichTextDocument(
+                        blocks = listOf(
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("Reply")),
+                            ),
+                            TaskRichTextBlock.Paragraph(
+                                inlines = listOf(
+                                    TaskRichTextInline.Text(
+                                        "APK smoke reply body.",
+                                    ),
+                                ),
+                            ),
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("Artifacts")),
+                            ),
+                            TaskRichTextBlock.BulletList(
+                                items = listOf(
+                                    listOf(
+                                        TaskRichTextBlock.Paragraph(
+                                            inlines = listOf(
+                                                TaskRichTextInline.Text("thunderbird-taskmail-foss-debug.apk"),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("External Deliveries")),
+                            ),
+                            TaskRichTextBlock.BulletList(
+                                items = listOf(
+                                    listOf(
+                                        TaskRichTextBlock.Paragraph(
+                                            inlines = listOf(
+                                                TaskRichTextInline.Link(
+                                                    text = "thunderbird-taskmail-foss-debug.apk",
+                                                    href = "https://mailbot-1412015279.cos.ap-shanghai.myqcloud.com/" +
+                                                        "mail-runner/thread_072/20260320_001950_88c5/" +
+                                                        "thunderbird-taskmail-foss-debug.apk.bin",
+                                                ),
+                                                TaskRichTextInline.Text(
+                                                    ": Delivered via COS (46.7 MB, expires " +
+                                                        "2026-03-26T16:25:17+00:00)",
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    val richAttachmentNoticesSessionDetail = TaskSessionDetail(
+        key = TaskSessionKey(
+            sessionId = "session_attachment_notice_001",
+            threadId = "thread_attachment_notice_001",
+        ),
+        workspace = workspaceKey,
+        sessionName = "TaskMail Attachment Notice Sample",
+        backend = TaskMailBackend.Codex,
+        status = TaskMailSessionStatus.Done,
+        repoPath = "E:/projects/android_task_manager",
+        workdir = "feature/taskmail",
+        lastSummary = "Attachment notice copy remains readable on Android.",
+        replyContext = replyContext.copy(messageServerId = "msg-system-attachment-notice"),
+        timeline = listOf(
+            TaskTimelineItem(
+                id = "timeline_attachment_notice_001",
+                timestamp = 1_742_060_000_000,
+                direction = TaskTimelineDirection.System,
+                statusLabel = TaskMailStatusLabel.Done,
+                summary = "Attachment notice copy remains readable on Android.",
+                body = richBody(
+                    plainText = "Attachment notice copy remains readable on Android.",
+                    document = TaskRichTextDocument(
+                        blocks = listOf(
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("External Deliveries")),
+                            ),
+                            TaskRichTextBlock.BulletList(
+                                items = listOf(
+                                    listOf(
+                                        TaskRichTextBlock.Paragraph(
+                                            inlines = listOf(
+                                                TaskRichTextInline.Link(
+                                                    text = "app-thunderbird-foss-debug-20260320-taskmail-" +
+                                                        "detail-incremental.apk",
+                                                    href = "https://mailbot-1412015279.cos.ap-shanghai.myqcloud.com/" +
+                                                        "mail-runner/thread_075/20260320_162935_094f/" +
+                                                        "app-thunderbird-foss-debug-20260320-taskmail-detail-" +
+                                                        "incremental.apk.bin",
+                                                ),
+                                                TaskRichTextInline.Text(
+                                                    ": Delivered via COS (46.8 MB, expires " +
+                                                        "2026-03-27T08:32:04+00:00)",
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("Attachment Notices")),
+                            ),
+                            TaskRichTextBlock.BulletList(
+                                items = listOf(
+                                    listOf(
+                                        TaskRichTextBlock.Paragraph(
+                                            inlines = listOf(
+                                                TaskRichTextInline.Text(
+                                                    "COS default domain blocks direct APK distribution. " +
+                                                        "The external download uses a .bin object name; " +
+                                                        "rename the downloaded file back to " +
+                                                        "app-thunderbird-foss-debug-20260320-taskmail-" +
+                                                        "detail-incremental.apk if needed.",
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    val richFailedLongErrorSessionDetail = TaskSessionDetail(
+        key = TaskSessionKey(
+            sessionId = "session_failed_long_error_001",
+            threadId = "thread_failed_long_error_001",
+        ),
+        workspace = workspaceKey,
+        sessionName = "TaskMail Failed Long Error Sample",
+        backend = TaskMailBackend.Codex,
+        status = TaskMailSessionStatus.Failed,
+        repoPath = "E:/projects/android_task_manager",
+        workdir = "feature/taskmail",
+        lastSummary = "Long failure output remains readable on Android.",
+        replyContext = replyContext.copy(messageServerId = "msg-system-failed-long-error"),
+        timeline = listOf(
+            TaskTimelineItem(
+                id = "timeline_failed_long_error_001",
+                timestamp = 1_742_070_000_000,
+                direction = TaskTimelineDirection.System,
+                statusLabel = TaskMailStatusLabel.Failed,
+                summary = "Long failure output remains readable on Android.",
+                body = richBody(
+                    plainText = "Long failure output remains readable on Android.",
+                    document = TaskRichTextDocument(
+                        blocks = listOf(
+                            TaskRichTextBlock.Heading(
+                                level = 2,
+                                inlines = listOf(TaskRichTextInline.Text("Failure Output")),
+                            ),
+                            TaskRichTextBlock.Paragraph(
+                                inlines = listOf(
+                                    TaskRichTextInline.Text(
+                                        "Representative failed-mail content stays scannable without " +
+                                            "collapsing the detail view.",
+                                    ),
+                                ),
+                            ),
+                            TaskRichTextBlock.CodeBlock(
+                                languageHint = "text",
+                                text = """
+                                    Error: Codex Exec exited with code 1: 2026-03-18T12:23:54.044393Z ERROR codex_core::models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+                                    Reading prompt from stdin...
+                                    2026-03-18T12:23:59.102450Z ERROR codex_core::models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+
+                                        at CodexExec.run (file:///E:/projects/mail_based_task_manager/scripts/codex_sdk_sidecar/node_modules/@openai/codex-sdk/dist/index.js:280:15)
+                                        at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+                                        at async Thread.runStreamedInternal (file:///E:/projects/mail_based_task_manager/scripts/codex_sdk_sidecar/node_modules/@openai/codex-sdk/dist/index.js:78:24)
+                                        at async main (file:///E:/projects/mail_based_task_manager/scripts/codex_sdk_sidecar/dist/index.js:151:22)
+                                """.trimIndent(),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
     val sessionDetails: List<TaskSessionDetail> = listOf(
         questionSessionDetail,
         plainTextStatusSessionDetail,
         richInlinePngSessionDetail,
         richStaticSvgSessionDetail,
         richUnmatchedImageFallbackSessionDetail,
+        richExternalDeliveriesSessionDetail,
+        richAttachmentNoticesSessionDetail,
+        richFailedLongErrorSessionDetail,
     )
 
     private fun plainTextBody(text: String): TaskMessageBody {

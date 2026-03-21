@@ -51,10 +51,15 @@ import net.thunderbird.feature.taskmail.internal.data.cache.TaskSessionDetailJso
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngressMessage
 import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
+import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayHealthProbe
+import net.thunderbird.feature.taskmail.internal.data.relay.DefaultRelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayHealthProbe
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.parser.EmailMessageParser
 import net.thunderbird.feature.taskmail.internal.data.parser.IncomingMessageParser
@@ -63,6 +68,7 @@ import net.thunderbird.feature.taskmail.internal.data.transport.EmailTaskMailRep
 import net.thunderbird.feature.taskmail.internal.data.transport.TaskMailNewTaskTransport
 import net.thunderbird.feature.taskmail.internal.data.transport.TaskMailReplyTransport
 import net.thunderbird.feature.taskmail.internal.domain.newtask.RealTaskMailNewTaskSender
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailMessageDetector
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailProjectSyncResultParser
@@ -80,10 +86,14 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailBotMa
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskWorkspaceSummaries
+import net.thunderbird.feature.taskmail.internal.domain.usecase.DefaultObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RequestTaskMailProjectSync
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SaveTaskMailBotMailboxSettings
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
@@ -122,6 +132,33 @@ val taskMailModule: Module = module {
     single<RelayConnectionClient> {
         OkHttpRelayConnectionClient(
             codec = get(),
+            logger = get(),
+        )
+    }
+    single<RelayBootstrapManager> {
+        DefaultRelayBootstrapManager(
+            transportConfigRepository = get(),
+            relayHealthProbe = get(),
+            relayConnectionClient = get(),
+        )
+    }
+    single<TaskMailDirectNewTaskSender> {
+        RelayTaskMailDirectNewTaskSender(
+            relayConnectionClient = get(),
+        )
+    }
+    single { TaskMailDirectSessionProjector() }
+    single {
+        RelayTaskMailDirectSessionDetailSubscriber(
+            relayConnectionClient = get(),
+        )
+    }
+    single<ObserveTaskMailDirectSessionDetail> {
+        DefaultObserveTaskMailDirectSessionDetail(
+            relayBootstrapManager = get(),
+            relayConnectionClient = get(),
+            directSessionDetailSubscriber = get(),
+            projector = get(),
             logger = get(),
         )
     }
@@ -394,6 +431,18 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        RunTaskMailDirectOrFallback(
+            relayBootstrapManager = get(),
+        )
+    }
+
+    factory {
+        SendTaskMailDirectNewTask(
+            directNewTaskSender = get(),
+        )
+    }
+
+    factory {
         SendTaskMailNewTask(
             newTaskSender = get(),
         )
@@ -427,14 +476,18 @@ val taskMailModule: Module = module {
             sendTaskMailReply = get(),
             replyAttachmentResolver = get(),
             timelineAttachmentHandler = get(),
+            logger = get(),
             syncTaskMailCache = get(),
+            observeTaskMailDirectSessionDetail = get(),
         )
     }
 
     viewModel {
         TaskNewTaskViewModel(
             getTaskMailSenderAccounts = get(),
+            sendTaskMailDirectNewTask = get(),
             sendTaskMailNewTask = get(),
+            runTaskMailDirectOrFallback = get(),
         )
     }
 
@@ -458,9 +511,7 @@ val taskMailModule: Module = module {
 
     viewModel {
         TaskMailRelayDebugViewModel(
-            transportConfigRepository = get(),
-            relayHealthProbe = get(),
-            relayConnectionClient = get(),
+            relayBootstrapManager = get(),
         )
     }
 }

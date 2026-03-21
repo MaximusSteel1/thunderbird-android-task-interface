@@ -8,4 +8,5 @@ internal data class TaskTimelineItem(
     val summary: String? = null,
     val body: TaskMessageBody,
     val attachments: List<TaskMessageAttachment> = emptyList(),
+    val businessEventKeys: List<String> = emptyList(),
 )
