@@ -41,6 +41,12 @@ Chinese explanation around them instead of translating the identifiers themselve
 - Java 21+ is required to build this repository; `settings.gradle.kts` enforces this
 - Set `JAVA_HOME` to a Java 21+ installation before running Gradle
 - On Windows, prefer `.\gradlew.bat ...` when documenting or running commands from PowerShell
+- 常见环境坑：如果 `.\gradlew.bat ...` 报
+  `Gradle requires JVM 17 or later to run. Your build is currently configured to use JVM 11.`，不要继续按当前 shell
+  默认 `java.exe` 重试；这通常表示 `JAVA_HOME` 或 `PATH` 先命中了较老的 JDK。
+- 在这台工作站上，`where.exe java` 可能同时返回 Java 11 与 Java 21；运行 Gradle 前先把 `JAVA_HOME` 指到 Java 21+
+  安装（例如 `C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot`），再用 `java -version` 或
+  `.\gradlew.bat -version` 确认当前 Gradle JVM 已切到 Java 21+。
 
 ## Required Agent Workflow
 

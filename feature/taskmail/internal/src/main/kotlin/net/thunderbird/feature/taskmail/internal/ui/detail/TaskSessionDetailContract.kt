@@ -48,6 +48,7 @@ internal interface TaskSessionDetailContract {
 
     sealed interface Effect {
         data object NavigateBack : Effect
+        data class ShowMessage(val message: String) : Effect
         data class OpenAttachment(val intent: android.content.Intent) : Effect
         data class CreateAttachmentDocument(
             val attachmentId: String,

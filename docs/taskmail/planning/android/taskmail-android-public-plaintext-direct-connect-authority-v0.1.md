@@ -1,20 +1,19 @@
-# TaskMail Android Public Plaintext Direct-Connect Authority (v0.1)
+# TaskMail Android Public Plaintext Direct-Connect Authority（v0.1）
 
-Updated: 2026-03-21
+更新时间：2026-03-21
 
-## Status
+## 状态
 
-This is the current Android-side macro planning authority for the public-IP plaintext direct-connect direction chosen on
-2026-03-21.
+本文是 2026-03-21 选定的 public-IP plaintext direct-connect 方向在 Android 侧的当前宏观规划 authority。
 
-It governs:
+它负责冻结以下内容：
 
-- the intended near-term and long-term connection direction for Android TaskMail
-- which earlier assumptions are now retired
-- the fallback boundary that must remain while the new path is built
-- which current documents remain implementation-truth versus future-direction authority
+- Android TaskMail 近期与长期连接方向的预期
+- 哪些较早期假设现在已经退役
+- 在新路径建设期间必须保留的 fallback 边界
+- 哪些文档仍然是 implementation-truth，哪些文档属于 future-direction authority
 
-It does not replace current implementation-truth or protocol-truth documents such as:
+它不会替代以下当前 implementation-truth 或 protocol-truth 文档：
 
 - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
@@ -22,38 +21,36 @@ It does not replace current implementation-truth or protocol-truth documents suc
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/current/android_runner_communication_contract.md`
 
-Those current-truth documents still describe what is implemented today.
-This authority defines the direction the planning layer should now assume next.
+这些 current-truth 文档仍然描述“今天已经实现了什么”。
+本文定义的是 planning 层从现在开始应当假定的方向。
 
-## Purpose
+## 目的
 
-This document exists to freeze one new cross-repo direction on the Android side:
+本文用于在 Android 侧冻结一条新的跨仓方向：
 
-- Android direct-connect becomes the intended primary TaskMail path
-- the first direct path is allowed to use the current public plaintext relay entry
-- the current mail path remains a required fallback and compatibility lane
-- the previous mail-first / TLS-gated direct-connect assumptions are no longer the active planning baseline
+- Android direct-connect 成为 TaskMail 预期的主路径
+- 第一条 direct path 允许使用当前 public plaintext relay 入口
+- 当前 mail path 仍然必须保留，作为 fallback 与兼容通道
+- 先前的 mail-first / TLS-gated direct-connect 假设不再是活跃 planning baseline
 
-This is an intentional direction reset.
-It is not a claim that the repository already implements the new direct-connect product path.
+这是一次有意为之的方向重置。
+它不是在声称仓库已经实现了新的 direct-connect 产品路径。
 
-## Current Fixed Assumptions
+## 当前固定假设
 
-Unless a later authority doc reopens them, the following assumptions are now fixed for Android-side planning:
+除非未来有新的 authority 文档重新打开，下列假设现在已经对 Android-side planning 固定：
 
-1. The intended primary Android TaskMail path is `Android -> VPS`.
-2. Public plaintext transport is accepted as the current chosen default for this workstream, with explicit security and
-   deployment tradeoffs.
-3. The current mail path must remain available as fallback until direct-connect parity and rollback behavior are
-   explicitly validated.
-4. Token-based transport authentication is acceptable for the first direct-connect phases.
-5. The current public relay transport may be used as the practical Android-facing direct-connect boundary in this phase.
-6. PC remains the task-execution truth; the direct-connect change does not move task execution to the VPS.
-7. Current implementation-truth docs remain authoritative for the repository state until code actually changes.
+1. Android TaskMail 预期的主路径是 `Android -> VPS`。
+2. Public plaintext transport 在当前工作流中被接受为默认选择，并且相关安全与部署权衡需要显式承认。
+3. 在 direct-connect 的 parity 与 rollback 行为被显式验证前，当前 mail path 必须继续保留为 fallback。
+4. 基于 token 的 transport authentication 可以作为 direct-connect 早期阶段的可接受方案。
+5. 当前 public relay transport 可以作为本阶段 Android 面向的 direct-connect 实际边界。
+6. PC 仍然是 task execution truth；direct-connect 变更不会把任务执行迁到 VPS。
+7. 在代码实际变化之前，当前 implementation-truth 文档仍然对仓库状态保持 authority。
 
-## Assumptions Explicitly Retired
+## 已明确退役的假设
 
-The following earlier assumptions are no longer active planning authority in this repository:
+下列较早期假设不再是本仓库中的 active planning authority：
 
 1. `Android must remain mail-first for now.`
 2. `The stable live connection target is PC -> VPS only.`
@@ -61,69 +58,67 @@ The following earlier assumptions are no longer active planning authority in thi
 4. `Public DNS + stock-client-trusted TLS are required before Android direct-connect work may begin.`
 5. `Android must not hold relay transport credentials in the direct path.`
 
-Those assumptions remain historically important because they explain older docs and code boundaries, but they are no
-longer the chosen planning baseline after the 2026-03-21 decision.
+这些假设在历史上仍然重要，因为它们能解释旧文档与旧代码边界，但在 2026-03-21 的决策之后，它们已经不再是
+被选中的 planning baseline。
 
-## Chosen Product Boundary
+## 选定的产品边界
 
-For the current planning line, the chosen product boundary is:
+对当前这条 planning 线，选定的产品边界是：
 
-- Android may connect to the public VPS endpoint directly
-- the connection may use plaintext transport in the near term and, by current choice, as the accepted default unless a
-  later authority doc changes that posture
-- the direct path is allowed to grow beyond debug-only probing into the main interactive TaskMail path
-- mail fallback remains required until direct and mail behavior are proven sufficiently aligned
+- Android 可以直接连接 public VPS endpoint
+- 连接在近期可以使用 plaintext transport，并且按当前选择，它也是被接受的默认姿态，除非后续 authority
+  文档改变这个立场
+- direct path 允许从 debug-only probing 扩展到主交互 TaskMail path
+- 在 direct 与 mail 行为被证明足够对齐之前，mail fallback 仍然是必需项
 
-This means the Android-side planning layer is now allowed to:
+这意味着 Android-side planning 层现在被允许：
 
-- treat direct transport as more than a debug/bootstrap seam
-- plan direct-create, direct-reply, and direct-status flows as real product slices
-- plan read-side state updates sourced from the direct path instead of waiting for a later API-only phase
+- 把 direct transport 视为不止是 debug/bootstrap seam
+- 把 direct-create、direct-reply 与 direct-status flows 规划成真实产品切片
+- 规划从 direct path 提供 read-side state updates，而不必等到未来某个 API-only phase
 
 ## Guardrails
 
-This direction change does not remove all constraints.
-The following rules remain active:
+这次方向变化并不意味着所有约束都被移除。
+以下规则仍然有效：
 
-- do not misrepresent current implementation state in `CURRENT-STATUS` or the validation ledger
-- do not commit tokens, secrets, or operator credentials into the repository
-- do not remove mail fallback before parity, fallback triggers, and rollback behavior are explicit
-- do not let direct-connect planning casually rewrite established TaskMail business semantics without a corresponding
-  contract note
-- keep the plaintext decision explicit in docs and implementation boundaries rather than hiding it behind TLS-oriented
-  wording that no longer matches the chosen direction
+- 不要在 `CURRENT-STATUS` 或 validation ledger 中误述当前实现状态
+- 不要把 tokens、secrets 或 operator credentials 提交进仓库
+- 在 parity、fallback triggers 与 rollback 行为没有写清楚之前，不要移除 mail fallback
+- 不要让 direct-connect planning 在没有对应 contract note 的前提下，随意改写既有 TaskMail 业务语义
+- 关于 plaintext 的决定必须在文档和实现边界中保持显式，而不是继续藏在面向 TLS 的措辞后面，导致与当前选定
+  方向不一致
 
-## What This Authority Changes Immediately
+## 本 authority 立即改变的内容
 
-The following planning consequences now apply immediately:
+以下 planning 结果现在立即生效：
 
-1. The old mail-first/TLS-gated Android direct-connect blockers are no longer the phase gate for starting Android
-   direct-connect planning.
-2. Android relay/bootstrap work is no longer constrained to stay debug-only forever.
-3. The current active phased plan must now be rewritten around direct-connect as the main path plus mail fallback.
-4. Earlier Phase 0 artifact notes about relay TLS trust remain valid historical evidence, but they no longer block the
-   newly chosen plaintext direct-connect direction.
+1. 旧的 mail-first / TLS-gated Android direct-connect blockers 不再是启动 Android direct-connect planning 的阶段门槛。
+2. Android relay/bootstrap 工作不再被限制为永远只能停留在 debug-only。
+3. 当前活跃 phased plan 现在必须围绕“direct-connect 主路径 + mail fallback”重写。
+4. 较早的 Phase 0 relay TLS trust 记录仍然是有效历史证据，但它们不再阻塞这次 newly chosen plaintext
+   direct-connect 方向。
 
-## Immediate Android-Side Planning Consequences
+## Android 侧立即产生的规划后果
 
-The immediate repository-side outcomes of this authority are now:
+这份 authority 在仓库侧立即带来的结果是：
 
-1. the Android direct-connect baseline is frozen in one reviewable note
-2. the staged Android execution plan is organized around direct-connect main path plus mail fallback
-3. the earlier mail-first/TLS-gated planning docs are no longer part of the active docs set
-4. current implementation-truth docs remain unchanged until code changes land
+1. Android direct-connect baseline 被冻结在一份可评审说明里。
+2. Android 分阶段执行计划围绕 direct-connect 主路径与 mail fallback 重新组织。
+3. 较早的 mail-first / TLS-gated planning 文档不再属于 active docs set。
+4. 在代码变更真正落地前，当前 implementation-truth 文档保持不变。
 
-## Cross-Repo Alignment Note
+## 跨仓对齐说明
 
-This file is the Android-side authority reset.
+本文是 Android 侧的 authority reset。
 
-The adjacent PC-side authority and coordinated execution docs have since been rewritten around the same public
-plaintext direct-connect direction.
+相邻的 PC-side authority 与协同执行文档，随后也已经围绕相同的 public plaintext direct-connect 方向完成重写。
 
-Use them as cross-repo planning references, but do not let them override this repository's current implementation-truth
-or protocol-truth documents.
+可以把它们当作跨仓 planning references 使用，但不要让它们覆盖本仓库当前的 implementation-truth 或
+protocol-truth 文档。
 
-## Cleanup Consequence
+## 清理结果
 
-The earlier mail-first/TLS-gated Android planning set was intentionally pruned during the 2026-03-21 cleanup.
-Current direction should now be read from this file, the paired staged plan, and the current implementation-truth docs.
+较早的 mail-first / TLS-gated Android planning 集已经在 2026-03-21 清理过程中被有意裁剪。
+
+当前方向现在应从本文、配套 staged plan，以及 current implementation-truth 文档中读取。

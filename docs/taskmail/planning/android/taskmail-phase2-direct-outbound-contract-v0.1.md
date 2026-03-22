@@ -1,25 +1,25 @@
-# TaskMail Android Phase 2 Direct Outbound Contract Mirror (v0.1)
+# TaskMail Android Phase 2 Direct Outbound Contract Mirror（v0.1）
 
-Updated: 2026-03-21
+更新时间：2026-03-21
 
-## Status
+## 状态
 
-This is the Android-side mirror note for the first shared Phase 2 direct outbound contract freeze.
+本文是第一版共享 Phase 2 direct outbound contract freeze 在 Android 侧的镜像说明。
 
-The adjacent PC-side canonical note is:
+相邻的 PC-side canonical note 为：
 
 - `E:\projects\mail_based_task_manager\docs\plans\phase2_direct_outbound_contract_v1.md`
 
-This note does not claim that Android already sends direct business traffic.
-It freezes how Android should map the current `New task` form into the first direct payload once implementation starts.
+本文并不声称 Android 已经开始发送 direct business traffic。
+它冻结的是：一旦实现开始，Android 应如何把当前 `New task` 表单映射成第一版 direct payload。
 
-## Scope
+## 范围
 
-The v0.1 Android mirror covers only:
+Android 侧 v0.1 mirror 目前只覆盖：
 
 - direct `new task`
 
-It does not widen Android direct behavior to:
+它不会把 Android direct 行为扩展到：
 
 - plain continuation reply
 - `/status`
@@ -28,106 +28,105 @@ It does not widen Android direct behavior to:
 - `/end`
 - direct read-side updates
 
-Those remain outside the first direct slice and stay on the current mail path.
+这些内容仍然不属于第一版 direct slice，并继续停留在当前 mail path 上。
 
-## Shared Reading
+## 共享现状判断
 
-The current Android repository state is still:
+Android 仓库当前状态仍然是：
 
-- Phase 1 bootstrap reuse landed in repository
-- formal `new task` still sends real mail
-- relay bootstrap result is only a preflight and fallback signal today
+- Phase 1 bootstrap reuse 已经进入仓库
+- 正式 `new task` 目前仍然发送真实邮件
+- relay bootstrap result 目前只承担 preflight 与 fallback signal 角色
 
-The Phase 2 first slice is therefore:
+因此，Phase 2 的第一个 slice 是：
 
-- replace the current `new task` preflight-plus-mail path with one direct packet send
-- keep the current mail `new task` path as fallback
-- keep read-side session and detail updates mail-driven until a later phase changes them
+- 用一次 direct packet send 替换当前 `new task` 的 preflight-plus-mail 路径
+- 继续保留当前 mail `new task` 路径作为 fallback
+- 在后续阶段另行改动前，session 与 detail 的 read-side updates 继续保持 mail-driven
 
-## Android Mapping To The Shared V1 Payload
+## Android 到 Shared V1 Payload 的映射
 
-Android should map the current `TaskMailNewTaskDraft` to the shared payload as follows:
+Android 应把当前 `TaskMailNewTaskDraft` 映射到 shared payload，规则如下：
 
 - `senderAccountId -> origin.sender_account_uuid`
 - `backend.wireValue -> new_task.backend`
 - `repoPath -> new_task.repo_path`
 - `taskText -> new_task.task_text`
 - `subjectTitle -> new_task.subject_title`
-- `workdir` blank or null -> `new_task.workdir = null`
-- `workdir` non-empty -> `new_task.workdir`
+- `workdir` 为空字符串或 null -> `new_task.workdir = null`
+- `workdir` 非空 -> `new_task.workdir`
 - `timeoutMinutes -> new_task.timeout_minutes`
 - `mode.wireValue -> new_task.mode`
-- `profile` blank or null -> `new_task.profile = null`
-- `profile` non-empty -> `new_task.profile`
+- `profile` 为空字符串或 null -> `new_task.profile = null`
+- `profile` 非空 -> `new_task.profile`
 - `permission = Default -> new_task.permission = null`
 - `permission = Highest -> new_task.permission = highest`
-- `acceptanceCriteria` after the current trim and empty-item filtering -> `new_task.acceptance`
+- `acceptanceCriteria` 在当前 trim 与空项过滤之后 -> `new_task.acceptance`
 
-Android should keep using the current `TaskMailNewTaskBodySerializer` and subject builder as:
+Android 应继续把当前 `TaskMailNewTaskBodySerializer` 与 subject builder 用作：
 
-- the mail fallback projection
-- the quickest parity reference when comparing direct intent against current mail behavior
+- mail fallback projection
+- 在比较 direct intent 与当前 mail 行为时最快速的 parity reference
 
-## Android Transport Reading
+## Android 对 Transport 的理解
 
-Android should treat the shared contract as:
+Android 应把这份 shared contract 理解为：
 
-- current bootstrap seam stays reused
-- `hello -> hello_ack` remains the gate before any direct business packet is sent
-- the first business payload rides inside the existing relay `packet` wrapper
-- Android must not pretend that current PC outbound status-delivery `task_run_packet` meaning is already the Android
-  product contract
+- 当前 bootstrap seam 继续复用
+- `hello -> hello_ack` 仍然是发送任何 direct business packet 之前的 gate
+- 第一份 business payload 通过现有 relay `packet` wrapper 承载
+- Android 不得把当前 PC outbound status-delivery 中 `task_run_packet` 的旧含义误当成 Android 产品 contract
 
-In this first direct slice, Android reuses the current relay transport shell without inheriting the old PC-only mail
-delivery business meaning.
+在这第一版 direct slice 中，Android 复用的是当前 relay transport shell，而不是继承旧 PC-only mail
+delivery business meaning。
 
 ## Android Fallback Rule
 
-The current Android fallback rule remains active in Phase 2 v0.1:
+当前 Android fallback rule 在 Phase 2 v0.1 中继续生效：
 
-- bootstrap unavailable:
-  - fall back to current mail `new task`
-- connect or transport send failure before accepted packet:
-  - fall back to current mail `new task`
-- explicit server capability rejection such as unsupported action:
-  - fall back to current mail `new task`
-- explicit server hard rejection such as invalid payload or unauthorized:
-  - do not silently fall back
-  - keep the draft
-  - show the direct-send failure
-- accepted direct packet:
-  - do not also send mail
-  - show a success message that still reminds the user that the task will appear after later TaskMail status mail
+- bootstrap unavailable：
+  - 回退到当前 mail `new task`
+- connect 或 transport send 在 accepted packet 之前失败：
+  - 回退到当前 mail `new task`
+- 显式 server capability rejection，例如 unsupported action：
+  - 回退到当前 mail `new task`
+- 显式 server hard rejection，例如 invalid payload 或 unauthorized：
+  - 不得静默回退
+  - 保留 draft
+  - 向用户显示 direct-send failure
+- accepted direct packet：
+  - 不要同时再发一封 mail
+  - 显示成功消息，但仍提醒用户任务会在后续 TaskMail status mail 到来后才出现
 
-## Android UI Consequences
+## Android UI 后果
 
-The first direct slice should preserve these current UI truths:
+第一版 direct slice 应保留以下当前 UI 事实：
 
-- `New task` still requires the same local validation before any send attempt
-- current sender-account resolution and selection behavior may stay in place even though `sender_account_uuid` is only
-  provenance in the direct payload
-- current success UX should still avoid promising immediate workspace appearance before the first status mail arrives
-- current debug visibility should distinguish:
+- `New task` 在任何发送尝试前仍然执行相同的本地校验
+- 尽管 `sender_account_uuid` 在 direct payload 中只承担 provenance 角色，但当前 sender-account resolution
+  与 selection 行为可以继续保持
+- 当前 success UX 仍然不应承诺“在第一封 status mail 到来前就立即出现在 workspace”
+- 当前 debug visibility 应能区分：
   - direct accepted
   - direct rejected
-  - direct unavailable and mail fallback used
+  - direct unavailable 且使用了 mail fallback
 
-## Not In This Slice
+## 不属于这一版 Slice 的内容
 
-Do not widen the first direct implementation to include:
+不要把第一版 direct 实现扩展到：
 
 - reply composer direct serialization
-- status polling over direct transport
+- 通过 direct transport 做 status polling
 - direct timeline projection
 - direct workspace hydration
-- mail fallback removal
+- 移除 mail fallback
 
-## Current Conclusion
+## 当前结论
 
-The Android-side Phase 2 first-slice contract is now frozen tightly enough to start implementation.
+Android-side Phase 2 第一版 slice contract 现在已经冻结得足够明确，可以开始实现。
 
-The next Android implementation step should be:
+Android 下一步实现应当是：
 
-- keep the existing bootstrap preflight
-- replace `new task` mail send with direct packet send on the success path
-- preserve the existing mail fallback for unsupported or failed direct cases
+- 保留现有 bootstrap preflight
+- 在成功路径上，用 direct packet send 替换 `new task` mail send
+- 对 unsupported 或 failed direct cases 继续保留现有 mail fallback

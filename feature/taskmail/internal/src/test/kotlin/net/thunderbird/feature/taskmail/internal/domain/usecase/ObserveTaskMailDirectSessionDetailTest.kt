@@ -1,8 +1,8 @@
 package net.thunderbird.feature.taskmail.internal.domain.usecase
 
 import assertk.assertThat
-import assertk.assertions.containsExactly
 import assertk.assertions.contains
+import assertk.assertions.containsExactly
 import assertk.assertions.isEqualTo
 import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -1,24 +1,30 @@
-# TaskMail Android Current Status
+# TaskMail Android 当前状态
 
-This document is the current truth source for the Android TaskMail feature in this repository.
+本文是本仓库 Android TaskMail 功能的当前事实源。
 
-If this file conflicts with older phase-planning documents, treat this file as the current baseline and update the phase documents accordingly.
+如果本文件与旧的 phase-planning 文档冲突，应以本文件为当前基线，并同步修正相关 planning / historical 文档。
 
-## Date
+## 日期
 
-- Last updated: 2026-03-22
+- 最后更新：2026-03-22
 
-## Scope of This Status
+## 文档维护约定
 
-This file is intended to answer only one question:
+- 本文件与 `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`、`docs/TASKMAIL-MAIL-RULES.md` 共同构成当前 authority 集
+- Markdown 编码、换行与文件结尾遵循仓库 `.editorconfig`：`utf-8`、`lf`、保留 final newline
+- 后续新增或更新说明默认使用中文；协议字段、代码标识、文件路径与命令保持原文
 
-> What is currently present in the Android TaskMail feature, and what has or has not been validated?
+## 本文回答的问题
 
-It does not try to restate long-term planning in full.
+本文件只打算回答一个问题：
 
-Current authority remains in the current-status / validation-ledger / mail-rules document set.
+> Android TaskMail 当前到底已经具备哪些能力，以及这些能力中哪些已经或尚未被验证？
 
-Historical planning and implementation-reference material remains under:
+它不试图完整重述长期规划。
+
+当前 authority 仍由 current-status / validation-ledger / mail-rules 文档组共同承担。
+
+历史 planning 与 implementation-reference 材料仍保留在：
 
 - `docs/taskmail/planning/README.md`
 - `docs/taskmail/planning/android/taskmail-dual-mailbox-android-adjustments-v0.1.md`
@@ -29,16 +35,16 @@ Historical planning and implementation-reference material remains under:
 - `docs/taskmail/planning/android/taskmail-guided-new-thread-mvp-implementation-map-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-20-relay-vps-bootstrap.md`
 
-Older phase documents remain historical/reference only:
+旧的 phase 文档只保留历史 / 参考角色：
 
 - `docs/TASKMAIL-ANDROID-PHASE2.md`
 - `docs/TASKMAIL-ANDROID-PHASE3.md`
 
-Protocol authority remains:
+协议 authority 仍由以下文档承担：
 
 - `docs/TASKMAIL-MAIL-RULES.md`
 
-Validation ledger remains:
+验证台账仍由以下文档承担：
 
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 
@@ -63,6 +69,12 @@ This status was updated from:
 - TaskMail rich-text detail focused live-device placeholder validation performed later on 2026-03-19
 - TaskMail rich-text detail fresh-build debug-preview/device validation follow-up performed later on 2026-03-19
 - TaskMail rich-text representative Phase 0 sample follow-up plus narrow validation performed on 2026-03-21
+- TaskMail Phase 4 `new task` durable direct-evidence follow-up plus narrow validation performed later on 2026-03-22
+- TaskMail Phase 4 `new task` Android / PC three-scenario matrix reconciliation documentation follow-up performed later
+  on 2026-03-22
+- TaskMail Phase 4 `new task` persisted-evidence review-surface follow-up plus narrow validation performed later on
+  2026-03-22
+- TaskMail Phase 4 `new task` live fallback / persisted-evidence device closeout performed later on 2026-03-22
 - the current Android documentation set
 - current PC-side canonical protocol docs in `E:\projects\mail_based_task_manager\docs/current/`
 - current PC-side mailbox parsing rules in `E:\projects\mail_based_task_manager\docs/current/task_view_mail_parsing_rules.md`
@@ -108,6 +120,12 @@ The current repository baseline is better described as:
     same `new task` flow falls back to the current mail transport and emits an explicit mail-fallback success message
   - hard direct rejections such as invalid payload or unauthorized now keep the draft and surface the direct-send
     failure instead of silently falling back to mail
+  - the latest `new task` direct-or-fallback result is now normalized into `TaskMailDirectSendEvidence` and persisted as
+    a per-sender-account local send record, so Phase 4 parity evidence survives screen reloads and sender-account
+    reselection instead of living only in the current in-memory `TaskNewTaskViewModel` state
+  - accepted direct runs now also persist `requestId` alongside `receiptId` and optional `transportMessageId`, so the
+    Android latest-evidence record preserves the first-priority same-run bind key used by current Phase 5 narrow
+    planning
 - Android-side TaskMail bot-mailbox configuration now also exists:
   - dedicated `TaskMail bot mailbox` settings route and screen
   - formal launcher target reachable from Android `General settings`
@@ -184,10 +202,39 @@ The current repository baseline is better described as:
     first Android direct `new task` sender, updated the formal `new task` flow to prefer direct send on `hello_ack`
     while preserving explicit mail fallback and hard-rejection stop behavior, and added another clean rerun of
     `:feature:taskmail:internal:testDebugUnitTest`, `detekt`, and `lintDebug`
+  - a later 2026-03-22 Phase 4 durable-evidence follow-up then normalized the latest `new task` send result into
+    machine-readable `TaskMailDirectSendEvidence`, persisted the latest record per sender account, rehydrated that
+    evidence into `TaskNewTaskViewModel`, and added another clean rerun of focused repository/ViewModel tests,
+    `detekt`, and `lintDebug`
+  - a later 2026-03-22 Phase 4 matrix-reconciliation follow-up then mapped the current Android `new task`
+    `direct accepted` / `fallback_to_mail` / `hard_rejection_stop` evidence into the shared parity checklist,
+    mismatch ledger, and rollback trigger docs, aligned Android-side wording with the current PC-side classifier and
+    mail-baseline terms, kept the ledger intentionally empty pending confirmed cross-repo mismatches, and added another
+    clean rerun of focused direct / ViewModel / relay-sender / protocol / persistence tests
+  - a later 2026-03-22 Phase 4 persisted-evidence review-surface follow-up then added a dedicated latest-evidence card
+    on the formal `New task` screen, locked accepted and fallback/error review states in focused screen coverage, and
+    added another clean rerun of focused `TaskNewTaskScreenKtTest` / `TaskNewTaskViewModelTest`, `detekt`, and
+    `lintDebug`
+  - 2026-03-22 的后续窄实现已把 accepted direct `requestId` 从 relay sender 贯通到
+    `TaskMailDirectSendEvidence`、本地 `TaskMailNewTaskSendRecord` 持久化、formal `New task` latest-evidence
+    card，以及对应的 sender / usecase / ViewModel / screen / persistence 聚焦测试，并补跑
+    `:feature:taskmail:internal:testDebugUnitTest`、`detekt`、`lintDebug`
+  - a later 2026-03-22 Phase 4 live fallback / persisted-evidence device follow-up then used the formal host on the
+    attached device to confirm that a reinstall-left relay `not_configured` state still produces explicit
+    `[Mail fallback]` user-visible send feedback, persists `TaskMailDirectOutcome.MailFallbackSucceeded` /
+    `TaskMailDirectSwitchGate.FallbackRequired` plus the bootstrap failure reason into the local send-record store,
+    keeps that same evidence reviewable after screen reload and recent-tasks cold start on the formal `New task`
+    surface, and still closes mailbox-side on `[DONE][S:thread_093] Phase 4 live review 20260322 A`
+  - a later 2026-03-22 relay re-provision / fresh direct device follow-up then repaired the saved live relay config on
+    the attached device, revalidated debug-host `Healthz` plus `hello_ack`, confirmed formal-host user-visible
+    `[Relay]` feedback on `Phase 4 direct parity 20260322 C`, persisted `hello_ack` / `DirectAccepted` /
+    `KeepDirectDefault` into the app-private send record, and closed the same run on `thread_095` with PC
+    `canonical_summary.json` plus mailbox-side `[DONE]`
   - a 2026-03-17 manual device follow-up confirmed workspace pull-to-refresh without blanking loaded content and showed the latest local outgoing after reply, but an offline rerun did not surface a refresh warning and no backend-fed summary update was confirmed during that observation window
   - a later 2026-03-17 guided new-thread device follow-up first closed the explicit failure path (`TaskMail bot mailbox is not configured.` with draft retention), then, after reinstalling a debug build with a non-empty bot-mailbox default, confirmed canonical first-task delivery to the bot mailbox plus mailbox-side `[ACCEPTED]`, `[RUNNING]`, and `[DONE]` replies on `thread_054`
   - a 2026-03-18 device follow-up then confirmed `General settings -> TaskMail bot mailbox -> save -> return to TaskMail -> resend without reinstall/restart` on the latest Thunderbird debug APK
-  - the same guided new-thread follow-up still leaves multi-account sender selection on device, formal-host entry coverage for the first-task screen, and all bootstrap discovery manual/device smoke open
+  - the same guided new-thread and later Phase 4 live follow-ups still leave multi-account sender selection on device,
+    `Project list` rendering plus repo-prefill smoke, and raw first-task body verification open
   - full repo-wide quality and current device smoke are still not closed
 
 In short:
@@ -261,11 +308,15 @@ This means the docs should no longer describe drawer integration as purely hypot
 
 The repository now also contains a dedicated first-task TaskMail flow inside the formal TaskMail host.
 
-Read-only inspection and 2026-03-17 follow-up work found:
+Read-only inspection and later follow-up work found:
 
 - `TaskMailRoute.NewTask`
 - `TaskNewTaskScreen`
 - `TaskNewTaskViewModel`
+- `RunTaskMailDirectOrFallback`
+- `TaskMailDirectSendEvidence`
+- `TaskMailNewTaskSendRecordRepository`
+- `FileBackedTaskMailNewTaskSendRecordRepository`
 - `GetTaskMailSenderAccounts`
 - `SendTaskMailNewTask`
 - `LegacyTaskMailNewTaskMimeMessageFactory`
@@ -283,6 +334,12 @@ Current repository behavior for this slice includes:
 - canonical first-task subject/body serialization for `[OC]` / `[CX]` mail
 - dedicated non-reply MIME building with `To = bot mailbox`, `Cc = empty`, and no reply headers
 - user-visible send failures for missing, invalid, or non-unique bot-mailbox configuration instead of a generic preparation error
+- the latest `new task` send attempt now produces reviewable direct evidence fields such as `outcome`, `switchGate`,
+  optional `requestId`, `receiptId`, optional `transportMessageId`, fallback reason, and error message
+- the latest persisted `new task` evidence is restored for the currently selected sender account so the Android side can
+  review the most recent direct / fallback / hard-stop result without depending on the current screen instance alone
+- the formal `New task` form now also surfaces that restored latest evidence in a dedicated review card, so the current
+  sender-account selection has an in-repo UI path for reviewing the most recent direct / fallback / hard-stop outcome
 - a dedicated `TaskMail bot mailbox` settings screen that:
   - is reachable from Android `General settings`
   - loads the current saved or build-default bot mailbox value
@@ -456,7 +513,8 @@ The executable validation session captured in `docs/TASKMAIL-ANDROID-VALIDATION-
 - reply attachment selection plus attachment-only continuation behavior
 - refresh/live-update ViewModel behavior, including manual refresh, foreground lifecycle/account-targeting behavior,
   local-change reload, stale-content retention, and detail draft/attachment preservation
-- guided new-thread sender-account resolution, canonical first-task serialization, and explicit bot-mailbox first-task send failure surfacing
+- guided new-thread sender-account resolution, canonical first-task serialization, explicit bot-mailbox first-task send
+  failure surfacing, and latest per-sender-account `new task` direct-evidence persistence / rehydration
 - runtime bot-mailbox settings storage, settings route/navigation wiring, settings screen behavior, and legacy general-settings entry plumbing
 - TaskMail-internal `detekt`
 - TaskMail-internal `lintDebug`
@@ -511,10 +569,22 @@ For documentation and planning purposes, the safest current interpretation is:
 - **Dual-mailbox reply target**: implemented in repository through TaskMail-specific bot-mailbox destination resolution
 - **Formal host entry**: implemented in repository
 - **Drawer entry**: implemented in repository
-- **Guided new-thread MVP**: implemented in repository with focused automated coverage and a closed single-account success-path device smoke, but formal-host entry and multi-account on-device coverage are still open
+- **Guided new-thread MVP**: implemented in repository with focused automated coverage, a closed single-account
+  success-path device smoke, and a later formal-host `New task` recent-tasks cold-start review pass; multi-account
+  sender-selection on-device coverage is still open
 - **Phase 2 direct `new task`**: implemented in repository, and the current `new task` slice now has live evidence for
   accepted direct ingress, fallback-to-mail, and hard rejection with draft retention; later status/result delivery
   remains mail-based today, while reply, `/status`, and read-side direct transport remain future work
+- **Phase 4 `new task` durable direct evidence**: implemented in repository through machine-readable
+  `TaskMailDirectSendEvidence` plus per-sender-account local record persistence and rehydration; the first Android/PC
+  three-scenario matrix readout is now documented in the shared Phase 4 artifacts, and the formal `New task` screen
+  now has a stable review surface with live-device proof after screen reload and recent-tasks cold start on the formal
+  host；same-run Android / PC summary parity 现在已有 `thread_083`、`thread_093`、`thread_094` 与 fresh
+  relay-reprovisioned direct sample `thread_095` 这些正向行；后续 formal-host `thread_097` 又生成了
+  `taskmail_daily_closeout_bundle.json`，并把 same-run bind 提升到与 PC canonical outcome 的 strong
+  `transport_message_id` 对齐；再之后的 `thread_098` 则在安装当前 formal-host build 后进一步闭环了
+  `request_id`-first bind。当前剩余工作已不再是 narrow evidence blocker，而是基于现有 rollback / mismatch guardrails
+  做显式 `new_task` direct-default review
 - **TaskMail bot-mailbox runtime settings**: implemented in repository with focused automated coverage and a closed live-device save-then-send smoke from Android general settings
 - **Bootstrap discovery / repo-path assist**: implemented in repository with focused automated coverage, but current manual/device smoke for `Project list -> Use this repo -> Repo:` prefill is still open
 - **Session detail interaction**: implemented in repository, including attachments and structured multi-question replies
@@ -634,19 +704,38 @@ At the same time, Android should not overstate its own parity yet:
 
 ## Current Next Step
 
-With the P0 document-alignment slice, P1 parser/model compatibility slice, and P2 multi-question send-validation
-slice now closed, the next engineering focus should be:
+With Phase 3 now frozen and the first Android-side Phase 4 matrix readout written down, the next engineering focus
+should be:
 
-- real-mailbox/device closeout for the current send path, starting with proof that Android replies target the configured
-  bot mailbox on live mail
-- foreground-refresh device/manual closeout while the user stays on workspace/detail, especially passive arrival
-  without pull gesture, post-sync summary freshness, detail draft/attachment preservation, and confirming the loop stops
-  when those screens leave the foreground
-- bootstrap discovery device/manual smoke from the formal TaskMail workspace host, especially `Project list` open, `[SYNC]` request/refresh, on-device project-list rendering, and `Use this repo -> Repo:` prefill handoff
-- guided new-thread device/manual smoke closeout that still remains after `thread_054`, especially sender-account resolution across multiple accounts, formal-host entry for the first-task screen, and raw outgoing first-task body verification
-- narrow validation guardrail closeout for the already-implemented refresh/live-update and dual-mailbox slices, especially refresh-warning visibility, post-sync summary freshness, detail draft/attachment preservation, dual-mailbox coexistence, and `[SYNC]` exclusion smoke
-- deciding whether any newer lifecycle/health-facing fields remain internal-only or now need minimal UI surfacing
-- preserving protocol compatibility and dual-mailbox send-target rules without over-promising dedicated UI for the full protocol superset
+- continue the Android / PC `new task` three-scenario matrix reconciliation around:
+  - `direct accepted`
+  - `fallback_to_mail`
+  - `hard_rejection_stop`
+- apply the now-documented `parity checklist -> mismatch ledger -> rollback trigger` order on each new Phase 4 sample,
+  so evidence consumption stops depending on one-off readouts
+- preserve the positive same-run parity rows already captured for `thread_083`, `thread_093`, `thread_094`, and
+  `thread_095`, while treating `thread_084` only as a historical retained-artifact gap rather than a current blocker
+  before any `new task` direct-default switch discussion
+- `hard_rejection_stop` 当前也不应再被读取为 Android 仓内待补实现：
+  - 2026-03-21 的 `Phase2 hard reject smoke B` 已经在 formal-host 路径上证明 ack-level hard rejection 会本地
+    stop、保留 draft、并且在 `thread_085` 之后不再创建新的 adjacent-runtime thread
+  - 当前仓头的 `RunTaskMailDirectOrFallbackTest`、`RelayTaskMailDirectNewTaskSenderTest`、
+    `TaskNewTaskViewModelTest`、`TaskNewTaskScreenKtTest` 也继续锁定 hard rejection 分类、draft retention、
+    latest-evidence review 与 no implicit mail fallback
+  - 因此如果后续 Phase 5 planning 仍把 `ack-level hard rejection live closeout` 写成剩余尾项，应先把它读成
+    shared / PC planning drift，而不是回头补 Android direct-send 代码或新增开关
+- keep mail fallback executable and reviewable while the shared parity checklist / mismatch ledger / rollback trigger
+  artifacts continue daily use；冻结后的 workflow 已在 `thread_097` 上通过生成的
+  `taskmail_daily_closeout_bundle.json` 重跑一次，`thread_098` 又补上了当前 formal-host build 上的
+  `request_id`-first bind；switch-review、decision note 与 rollout / activation note 现已补齐，因此下一步不再是
+  重复追 fresh bind 样本，也不再停留在“应该起草哪份文档”；同日后续的 Android 窄代码判断与 TaskMail-internal
+  窄验证现已确认：当前 formal-host `new_task` 的 guarded direct-default 边界已经由现有实现表达清楚，不需要再单独新增
+  `new_task` flow-scoped activation / config change。更近的一步只是把这个 verdict 同步回 authority / handoff，
+  并继续把 `reply` / `/status` 留在 scope 外
+- preserve the formal-host cold-start validation path as launcher-first/manual-`Tasks` smoke, because debug deep links
+  and direct adb activity starts do not exercise the same host boundary
+- only after those boundaries close, re-evaluate whether `reply` or `/status` are ready for a separate direct contract
+  freeze
 
 ## 2026-03-22 Phase 3 Validation Note
 

@@ -50,6 +50,7 @@ class RelayTaskMailDirectNewTaskSenderTest {
 
         assertThat(result).isEqualTo(
             TaskMailDirectNewTaskResult.Accepted(
+                requestId = "req_001",
                 receiptId = "receipt-1",
                 transportMessageId = "transport-1",
             ),

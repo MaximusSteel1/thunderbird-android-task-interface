@@ -1,20 +1,18 @@
-# TaskMail GitHub Sync Workflow
+# TaskMail GitHub 同步工作流
 
-This document is the current working workflow for continuing this fork's TaskMail development across multiple
-computers.
+本文记录这份 fork 在多台电脑之间继续推进 TaskMail 开发时的当前协作流程。
 
-As of 2026-03-21:
+截至 2026-03-21：
 
-- Active development branch: `taskmail-dev`
-- Remote: `origin = https://github.com/MaximusSteel1/thunderbird-android-task-interface`
-- Do not use `origin/main` as the day-to-day TaskMail development branch for this fork
+- 当前活跃开发分支：`taskmail-dev`
+- 当前远端：`origin = https://github.com/MaximusSteel1/thunderbird-android-task-interface`
+- 日常 TaskMail 开发不要直接使用 `origin/main`
 
-`origin/main` and the current TaskMail development line are not the branch you should use for normal `pull / push`
-iteration. Use `taskmail-dev` unless you intentionally create a short-lived child branch from it.
+常规 `pull / push` 迭代应基于 `taskmail-dev`，除非你是有意从它切出一个短期实验分支。
 
-## First-Time Setup On A New Computer
+## 新电脑首次设置
 
-Clone the repository and switch to the active TaskMail branch:
+先 clone 仓库，再切到当前活跃的 TaskMail 分支：
 
 ```powershell
 git clone https://github.com/MaximusSteel1/thunderbird-android-task-interface
@@ -24,35 +22,34 @@ git pull --rebase origin taskmail-dev
 git status --short --branch
 ```
 
-Expected result:
+期望结果：
 
-- current branch is `taskmail-dev`
-- upstream is `origin/taskmail-dev`
-- working tree is clean
+- 当前分支是 `taskmail-dev`
+- 上游跟踪分支是 `origin/taskmail-dev`
+- 工作树是干净的
 
-If you plan to build on the new machine, also set Java 21 before running Gradle:
+如果新机器还要参与构建，请在运行 Gradle 前设置 Java 21：
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot"
 ```
 
-## Daily Start On Either Computer
+## 每日开始前检查
 
-Before writing code, make sure you are on the shared branch and up to date:
+开始写代码前，先确认自己仍在共享分支上，并且已经同步到最新：
 
 ```powershell
 git status --short --branch
 git pull --rebase origin taskmail-dev
 ```
 
-If `git status` shows a dirty tree before you pull, stop and either commit your local work first or stash it
-deliberately.
+如果 `git status` 在 pull 前就显示工作树不干净，先停下来，先提交本地工作，或者明确地自己决定 stash。
 
-## Standard Two-Computer Handoff
+## 标准双机切换
 
-### Stop On Computer A
+### 在电脑 A 停下时
 
-When you want to move work to another computer, do not leave important changes only in the working tree.
+如果要把工作切到另一台电脑，不要把重要改动只留在 working tree 里。
 
 ```powershell
 git status
@@ -61,13 +58,13 @@ git commit -m "chore(taskmail): checkpoint current workspace state"
 git push origin taskmail-dev
 ```
 
-Notes:
+说明：
 
-- Replace the commit message with a more specific `feat:` or `fix:` message when the checkpoint is a real logical step.
-- Use `chore(taskmail): checkpoint ...` only when you need a safe sync point and the work is still in progress.
-- Do not rely on `git stash` as your primary cross-computer handoff method.
+- 如果这次 checkpoint 已经是一个真实的逻辑步骤，请把提交信息换成更具体的 `feat:` 或 `fix:`
+- `chore(taskmail): checkpoint ...` 只适合“需要一个安全同步点，但工作仍在进行中”的场景
+- 不要把 `git stash` 当作主要的跨电脑交接方式
 
-### Resume On Computer B
+### 在电脑 B 恢复时
 
 ```powershell
 git checkout taskmail-dev
@@ -75,18 +72,18 @@ git pull --rebase origin taskmail-dev
 git status --short --branch
 ```
 
-Then continue working normally.
+之后再继续正常开发。
 
-## End-Of-Session Routine
+## 每次会话结束时
 
-At the end of each session, use this checklist:
+结束当前会话时，按下面的 checklist 收口：
 
-1. Run `git status`
-2. Commit the work you want to keep
-3. Push `taskmail-dev`
-4. Confirm GitHub shows the latest commit
+1. 运行 `git status`
+2. 提交你希望保留的工作
+3. push 到 `taskmail-dev`
+4. 确认 GitHub 上已经能看到最新提交
 
-Recommended commands:
+推荐命令：
 
 ```powershell
 git status
@@ -95,9 +92,9 @@ git commit -m "feat(taskmail): <short summary>"
 git push origin taskmail-dev
 ```
 
-## If You Need An Experimental Branch
+## 需要实验分支时
 
-If you want to try a risky refactor without disturbing the shared branch:
+如果你想做一个高风险尝试，但又不想打扰共享分支：
 
 ```powershell
 git checkout taskmail-dev
@@ -106,19 +103,19 @@ git checkout -b taskmail-dev-experiment
 git push -u origin taskmail-dev-experiment
 ```
 
-Use short-lived branches for experiments only. Merge or cherry-pick the good work back into `taskmail-dev`, then keep
-`taskmail-dev` as the main sync branch across machines.
+实验分支应尽量短生命周期。实验完成后，把有效改动 merge 或 cherry-pick 回 `taskmail-dev`，再继续把
+`taskmail-dev` 作为多机同步主线。
 
-## Conflict Handling During Pull
+## 处理 pull 时的冲突
 
-If `git pull --rebase origin taskmail-dev` reports conflicts:
+如果 `git pull --rebase origin taskmail-dev` 报冲突：
 
-1. Open the conflicted files
-2. Resolve the conflict markers
-3. Stage the resolved files
-4. Continue the rebase
+1. 打开冲突文件
+2. 解决冲突标记
+3. stage 已解决的文件
+4. 继续 rebase
 
-Commands:
+命令如下：
 
 ```powershell
 git status
@@ -126,30 +123,30 @@ git add <resolved-files>
 git rebase --continue
 ```
 
-If the rebase became confused and you want to back out:
+如果这次 rebase 已经混乱到不适合继续：
 
 ```powershell
 git rebase --abort
 ```
 
-Then inspect the branch state before trying again.
+然后先检查分支状态，再决定下一步。
 
-## Files That Must Stay Local
+## 必须保持本地的文件
 
-The repository is configured to keep local development artifacts out of Git. Do not force-add them.
+仓库已经配置为让本地开发产物不进入 Git。不要强行 add 这些路径。
 
-Ignored local-only paths currently include:
+当前忽略的本地专属路径包括：
 
 - `.android-user/`
 - `.gradle-user/`
 - `.tmp/`
 - `_mailin_*`
 
-These are machine-specific caches, debug data, or validation artifacts and should not be part of cross-computer sync.
+这些目录通常是机器相关缓存、调试数据或验证产物，不应参与多机同步。
 
-## Safe Commands To Memorize
+## 建议记住的安全命令
 
-Most day-to-day work only needs these commands:
+日常大多数工作只需要这些命令：
 
 ```powershell
 git checkout taskmail-dev
@@ -160,17 +157,16 @@ git commit -m "feat(taskmail): <summary>"
 git push origin taskmail-dev
 ```
 
-## Commands To Avoid For Normal Sync
+## 正常同步时尽量避免的命令
 
-Do not use these casually on this fork's TaskMail work:
+不要在这条 TaskMail 开发线上随手使用下面这些命令：
 
 - `git push origin master:main`
 - `git push --force`
-- `git reset --hard` when you have not backed up your local work
-- direct day-to-day work on `origin/main`
+- 在没有先备份本地工作的前提下使用 `git reset --hard`
+- 直接把 `origin/main` 当日常工作分支
 
-## Optional Improvement
+## 可选改进
 
-If you want cloning this repository on future machines to land on the correct branch more naturally, change the GitHub
-default branch of this fork from `main` to `taskmail-dev` in the repository settings. This is optional, but it reduces
-mistakes.
+如果你希望未来新机器 clone 之后更自然地落到正确分支，可以在 GitHub 仓库设置里把这个 fork 的默认分支从
+`main` 改成 `taskmail-dev`。这不是硬性要求，但可以减少误操作。

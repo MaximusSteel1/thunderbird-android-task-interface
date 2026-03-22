@@ -40,6 +40,7 @@ generator, in this case, **mdbook**. It defines the structure and navigation of 
     - [Proposed]()
     - [Rejected]()
 - [TaskMail]()
+  - [Documentation Guide](taskmail/README.md)
   - [Project Overview](taskmail_project_overview.md)
   - [Phase 0 Research](taskmail-phase0-research.md)
   - [Mail Rules](TASKMAIL-MAIL-RULES.md)

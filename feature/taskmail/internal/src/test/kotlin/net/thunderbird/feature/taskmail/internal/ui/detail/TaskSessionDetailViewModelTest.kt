@@ -31,8 +31,8 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
-import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
@@ -606,6 +606,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(sender.requests.single().body).isEqualTo("")
             assertThat(sender.requests.single().attachments).isEqualTo(listOf(replyAttachment))
             assertThat(viewModelState().replyAttachments).isEqualTo(persistentListOf())
+            assertShowMessageEffect("[Mail] Reply sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -624,6 +625,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().draftText).isEqualTo("")
             assertThat(viewModelState().sendError).isEqualTo(null)
             assertThat(repository.requestedKeys.size).isEqualTo(3)
+            assertShowMessageEffect("[Mail] Reply sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -645,6 +647,7 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(sender.requests.single().body).isEqualTo(structuredDraft)
             assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.AnswerMultiQuestion)
+            assertShowMessageEffect("[Mail] Reply sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -732,6 +735,7 @@ class TaskSessionDetailViewModelTest {
             loadDetail()
             sendStatusQuery()
             assertThat(sender.requests.single().body).isEqualTo("/status")
+            assertShowMessageEffect("[Mail] /status sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -764,6 +768,7 @@ class TaskSessionDetailViewModelTest {
             loadDetail()
             sendChoice("yes")
             assertThat(sender.requests.single().body).isEqualTo("yes")
+            assertShowMessageEffect("[Mail] Quick answer sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -780,6 +785,7 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(sender.requests.single().body).isEqualTo("/resume\nPlease continue with the cleanup.")
             assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.ResumeSession)
+            assertShowMessageEffect("[Mail] Reply sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -795,6 +801,7 @@ class TaskSessionDetailViewModelTest {
             sendChoice("approve")
             assertThat(sender.requests.single().body).isEqualTo("/resume\napprove")
             assertThat(sender.requests.single().mode).isEqualTo(TaskMailReplyMode.ResumeSession)
+            assertShowMessageEffect("[Mail] Quick answer sent.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -1116,6 +1123,10 @@ private class TaskSessionDetailViewModelRobot(
 
     suspend fun assertNavigateBackEffect() {
         assertThat(turbines.awaitEffectItem()).isEqualTo(TaskSessionDetailContract.Effect.NavigateBack)
+    }
+
+    suspend fun assertShowMessageEffect(message: String) {
+        assertThat(turbines.awaitEffectItem()).isEqualTo(TaskSessionDetailContract.Effect.ShowMessage(message))
     }
 
     suspend fun assertOpenAttachmentEffect() {

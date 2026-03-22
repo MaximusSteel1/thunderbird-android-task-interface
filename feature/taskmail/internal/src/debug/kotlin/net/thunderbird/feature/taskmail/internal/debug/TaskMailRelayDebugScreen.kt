@@ -26,8 +26,8 @@ import app.k9mail.core.ui.compose.designsystem.organism.TopAppBarWithBackButton
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
-import net.thunderbird.core.ui.contract.mvi.observe
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.core.ui.contract.mvi.observe
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugViewModel

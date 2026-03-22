@@ -36,6 +36,10 @@ import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailCont
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract.State
 import net.thunderbird.feature.taskmail.internal.ui.toDisplayWorkdir
 
+private const val REPLY_SENT_VIA_MAIL_MESSAGE = "[Mail] Reply sent."
+private const val QUICK_ANSWER_SENT_VIA_MAIL_MESSAGE = "[Mail] Quick answer sent."
+private const val STATUS_QUERY_SENT_VIA_MAIL_MESSAGE = "[Mail] /status sent."
+
 @Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 internal class TaskSessionDetailViewModel(
     detailRepository: TaskSessionDetailRepository,
@@ -534,7 +538,7 @@ internal class TaskSessionDetailViewModel(
                 return@withReplyContext
             }
 
-            performSend {
+            performSend(REPLY_SENT_VIA_MAIL_MESSAGE) {
                 if (detail.requiresResumeBeforeReply) {
                     sendTaskMailReply.sendResumeSession(
                         context = context,
@@ -568,7 +572,7 @@ internal class TaskSessionDetailViewModel(
         }
 
         withReplyContext { context ->
-            performSend {
+            performSend(QUICK_ANSWER_SENT_VIA_MAIL_MESSAGE) {
                 if (detail.requiresResumeBeforeReply) {
                     sendTaskMailReply.sendResumeSession(
                         context = context,
@@ -595,7 +599,7 @@ internal class TaskSessionDetailViewModel(
         }
 
         withReplyContext { context ->
-            performSend {
+            performSend(STATUS_QUERY_SENT_VIA_MAIL_MESSAGE) {
                 sendTaskMailReply.sendStatusQuery(context)
             }
         }
@@ -672,7 +676,10 @@ internal class TaskSessionDetailViewModel(
         }
     }
 
-    private fun performSend(action: suspend () -> TaskMailReplyResult) {
+    private fun performSend(
+        successMessage: String,
+        action: suspend () -> TaskMailReplyResult,
+    ) {
         viewModelScope.launch {
             updateState {
                 it.copy(
@@ -696,6 +703,7 @@ internal class TaskSessionDetailViewModel(
                         sendError = null,
                     )
                 }
+                emitEffect(Effect.ShowMessage(successMessage))
                 val key = currentKey ?: return@launch
                 loadDetail(
                     key = key,

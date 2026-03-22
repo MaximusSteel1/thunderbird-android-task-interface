@@ -5,8 +5,6 @@ import assertk.assertions.isEqualTo
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
-import net.thunderbird.core.logging.LogTag
-import net.thunderbird.core.logging.Logger
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer

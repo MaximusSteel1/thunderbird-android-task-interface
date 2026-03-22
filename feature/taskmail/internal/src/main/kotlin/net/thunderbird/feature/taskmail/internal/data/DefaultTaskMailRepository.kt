@@ -519,11 +519,12 @@ private fun TaskMailMessage.timelineBusinessEventKeys(
                     keys += "question/$questionSetId/$eventAt"
                 }
 
-            TaskMailSessionStatus.Paused -> state.pausedFromStatus
-                ?.toBusinessEventStatus()
-                ?.let { pausedFromStatus ->
-                    keys += "paused/$pausedFromStatus/$eventAt"
-                }
+            TaskMailSessionStatus.Paused ->
+                state.pausedFromStatus
+                    ?.toBusinessEventStatus()
+                    ?.let { pausedFromStatus ->
+                        keys += "paused/$pausedFromStatus/$eventAt"
+                    }
 
             TaskMailSessionStatus.Done,
             TaskMailSessionStatus.Failed,

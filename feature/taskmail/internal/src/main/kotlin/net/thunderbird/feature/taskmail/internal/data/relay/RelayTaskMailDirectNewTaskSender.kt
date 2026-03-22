@@ -40,7 +40,7 @@ internal class RelayTaskMailDirectNewTaskSender(
         val requestId = requestIdFactory()
         return relayConnectionClient.sendPacket(buildPacket(draft, requestId)).fold(
             onSuccess = { packetAck ->
-                packetAck.toDirectNewTaskResult()
+                packetAck.toDirectNewTaskResult(requestId)
             },
             onFailure = { error ->
                 error.toDirectNewTaskResult()
@@ -131,9 +131,10 @@ private fun Throwable.toDirectNewTaskResult(): TaskMailDirectNewTaskResult {
     }
 }
 
-private fun RelayPacketAck.toDirectNewTaskResult(): TaskMailDirectNewTaskResult {
+private fun RelayPacketAck.toDirectNewTaskResult(requestId: String): TaskMailDirectNewTaskResult {
     return if (accepted) {
         TaskMailDirectNewTaskResult.Accepted(
+            requestId = requestId,
             receiptId = receiptId,
             transportMessageId = transportMessageId,
         )

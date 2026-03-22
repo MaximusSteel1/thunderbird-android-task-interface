@@ -25,13 +25,20 @@ import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionSta
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskRequest
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskSender
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTaskSendRecordRepository
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
@@ -71,6 +78,42 @@ class TaskNewTaskViewModelTest {
             loadData()
             assertThat(viewModelState().selectedSenderAccountId).isEqualTo(primarySenderAccount.accountUuid)
             assertThat(viewModelState().requiresSenderAccountSelection).isEqualTo(false)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load data should restore latest direct send evidence for the selected sender account`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                latestSendRecord = TaskMailNewTaskSendRecord(
+                    recordedAt = 123L,
+                    senderAccountId = primarySenderAccount.accountUuid,
+                    backend = TaskMailBackend.Codex,
+                    repoPath = "E:/projects/android_task_manager",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectAccepted,
+                        switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                        requestId = "req_restore",
+                        receiptId = "receipt-restore",
+                    ),
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
+                TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.DirectAccepted,
+                    switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                    requestId = "req_restore",
+                    receiptId = "receipt-restore",
+                ),
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -181,14 +224,37 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "Task request sent. It will appear after the first TaskMail status mail arrives.",
+                        "[Relay] Task request sent. It will appear after the first TaskMail status mail arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
             )
-            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.HelloAck)
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
+                TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.DirectAccepted,
+                    switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                    requestId = "req_001",
+                    receiptId = "receipt-1",
+                ),
+            )
             assertThat(bootstrapCallCount()).isEqualTo(1)
             assertThat(disconnectCallCount()).isEqualTo(1)
+            assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(
+                TaskMailNewTaskSendRecord(
+                    recordedAt = 456L,
+                    senderAccountId = primarySenderAccount.accountUuid,
+                    backend = TaskMailBackend.Codex,
+                    repoPath = "E:/projects/android_task_manager",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectAccepted,
+                        switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                        requestId = "req_001",
+                        receiptId = "receipt-1",
+                    ),
+                ),
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -228,13 +294,20 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "Task request sent over mail fallback. " +
+                        "[Mail fallback] Task request sent. " +
                             "It will appear after the first TaskMail status mail arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
             )
-            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.NotConfigured)
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
+                TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.NotConfigured,
+                    outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
+                    switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                    fallbackReason = "Relay host, port, and transport token are required.",
+                ),
+            )
             assertThat(bootstrapCallCount()).isEqualTo(1)
             assertThat(disconnectCallCount()).isEqualTo(0)
             ensureThatAllEventsAreConsumed()
@@ -273,13 +346,20 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "Task request sent over mail fallback. " +
+                        "[Mail fallback] Task request sent. " +
                             "It will appear after the first TaskMail status mail arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
             )
-            assertThat(viewModelState().lastDirectBootstrapStatus).isEqualTo(RelayBootstrapStatus.HelloAck)
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
+                TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
+                    switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                    fallbackReason = "unsupported_action",
+                ),
+            )
             assertThat(disconnectCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
@@ -332,6 +412,14 @@ class TaskNewTaskViewModelTest {
             send()
 
             assertThat(viewModelState().sendError).isEqualTo("invalid_payload: task_text is required")
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
+                TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.DirectRejected,
+                    switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                    errorMessage = "invalid_payload: task_text is required",
+                ),
+            )
             assertThat(viewModelState().repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskText).isEqualTo("Audit the new flow")
             assertThat(sentRequests()).containsExactly()
@@ -372,8 +460,10 @@ private class TaskNewTaskViewModelRobot(
     senderAccounts: List<TaskMailSenderAccount>,
     sendResult: TaskMailNewTaskResult = TaskMailNewTaskResult.success(),
     directSendResult: TaskMailDirectNewTaskResult = TaskMailDirectNewTaskResult.Accepted(
+        requestId = "req_001",
         receiptId = "receipt-1",
     ),
+    latestSendRecord: TaskMailNewTaskSendRecord? = null,
     bootstrapResult: RelayBootstrapResult = RelayBootstrapResult(
         status = RelayBootstrapStatus.HelloAck,
     ),
@@ -381,9 +471,15 @@ private class TaskNewTaskViewModelRobot(
     private val senderAccountSource = FakeTaskMailSenderAccountSource(senderAccounts)
     private val newTaskSender = FakeTaskMailNewTaskSender(sendResult)
     private val directNewTaskSender = FakeTaskMailDirectNewTaskSender(directSendResult)
+    private val sendRecordRepository = FakeTaskMailNewTaskSendRecordRepository(latestSendRecord)
     private val relayBootstrapManager = FakeRelayBootstrapManager(bootstrapResult)
     private val viewModel = TaskNewTaskViewModel(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(senderAccountSource),
+        getLatestTaskMailNewTaskSendRecord = GetLatestTaskMailNewTaskSendRecord(sendRecordRepository),
+        recordTaskMailNewTaskSendRecord = RecordTaskMailNewTaskSendRecord(
+            repository = sendRecordRepository,
+            clock = { 456L },
+        ),
         sendTaskMailDirectNewTask = SendTaskMailDirectNewTask(directNewTaskSender),
         sendTaskMailNewTask = SendTaskMailNewTask(newTaskSender),
         runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(relayBootstrapManager),
@@ -444,6 +540,10 @@ private class TaskNewTaskViewModelRobot(
 
     fun disconnectCallCount(): Int = relayBootstrapManager.disconnectCallCount
 
+    suspend fun latestSendRecord(senderAccountId: String): TaskMailNewTaskSendRecord? {
+        return sendRecordRepository.getLatestRecord(senderAccountId)
+    }
+
     suspend fun collectedEffects(): List<TaskNewTaskContract.Effect> {
         mviContext.advanceUntilIdle()
         return listOf(
@@ -466,6 +566,23 @@ private class FakeTaskMailSenderAccountSource(
     override fun getSenderAccounts(): List<TaskMailSenderAccount> = senderAccounts
 
     override fun getAccount(accountUuid: String): LegacyAccountDto? = null
+}
+
+private class FakeTaskMailNewTaskSendRecordRepository(
+    latestRecord: TaskMailNewTaskSendRecord? = null,
+) : TaskMailNewTaskSendRecordRepository {
+    private val records = latestRecord
+        ?.let(::listOf)
+        ?.toMutableList()
+        ?: mutableListOf()
+
+    override suspend fun getLatestRecord(senderAccountId: String): TaskMailNewTaskSendRecord? {
+        return records.firstOrNull { record -> record.senderAccountId == senderAccountId }
+    }
+
+    override suspend fun saveRecord(record: TaskMailNewTaskSendRecord) {
+        records.add(0, record)
+    }
 }
 
 private class FakeTaskMailNewTaskSender(

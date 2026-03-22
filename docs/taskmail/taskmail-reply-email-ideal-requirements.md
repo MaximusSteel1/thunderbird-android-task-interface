@@ -1,57 +1,55 @@
-# TaskMail Reply Email Ideal Requirements
+# TaskMail Reply 邮件理想要求
 
-## Status
+## 状态
 
-Draft target specification derived from the current `TaskMail` Android implementation and related parsing logic.
+本文是基于当前 `TaskMail` Android 实现与相关解析逻辑整理出的草案型目标规范。
 
-This document describes what a `TaskMail` reply email should ideally contain on the wire.
-It is intentionally stricter than the current implementation where that improves session stability,
-reply safety, and downstream parsing reliability.
+它描述的是一封 `TaskMail` reply 邮件在 wire 上“理想情况下应当长什么样”，并且在有助于提升 session
+稳定性、reply 安全性与下游解析可靠性时，会刻意比当前实现更严格。
 
-## Purpose
+## 目的
 
-This document defines the target shape of a `TaskMail` reply email for:
+本文定义 `TaskMail` reply 邮件的目标形态，供以下场景使用：
 
 - reply message generation
-- reply validation in the Android UI
-- future backend and client interoperability
-- session continuity across physical mail threads
+- Android UI 中的 reply validation
+- 未来 backend / client 互操作
+- 跨物理 mail thread 的 session continuity
 
-It is not a description of current behavior only.
-When current code differs from this document, treat this document as the desired product target
-and record the mismatch as implementation debt.
+它不是对“当前行为”的单纯抄录。
+如果当前代码与本文不一致，应把本文视为目标产品形态，并将差异记录为实现债务。
 
-## Scope
+## 适用范围
 
-This document applies to user-originated `TaskMail` replies, including:
+本文适用于用户发出的 `TaskMail` reply，包括：
 
-- free-text replies
-- quick-answer replies
-- structured-answer replies
-- `/status` replies
+- free-text reply
+- quick-answer reply
+- structured-answer reply
+- `/status` reply
 
-It does not define the format of system-generated status or question emails.
+它不定义系统生成的 status 邮件或 question 邮件格式。
 
-## Ideal Reply Email Shape
+## 理想的 Reply 邮件形态
 
 ### 1. Subject
 
-A `TaskMail` reply email should preserve task identity in the subject line.
+`TaskMail` reply 邮件应在主题中保留任务身份标识。
 
-Required:
+必需：
 
-- The wire subject should use the canonical reply prefix `Re:`.
-- The subject should preserve the original `TaskMail` task title text.
-- The subject should preserve or synthesize the stable logical session token `[S:<session_id>]` whenever a session ID is known.
-- The subject should preserve the backend token when known, e.g. `[CX]` or `[OC]`.
-- The subject should preserve an existing `TaskMail` status token from the anchor subject when one is already part of the conversation, e.g. `[QUESTION]`, `[DONE]`, or `[RUNNING]`.
+- wire subject 应使用 canonical reply 前缀 `Re:`
+- 主题应保留原始 `TaskMail` 任务标题文本
+- 只要 session ID 已知，主题就应保留或补出稳定的逻辑 session token `[S:<session_id>]`
+- 如果 backend token 已知，应保留，例如 `[CX]` 或 `[OC]`
+- 如果锚点主题本来就带有 `TaskMail` 状态 token，也应保留，例如 `[QUESTION]`、`[DONE]` 或 `[RUNNING]`
 
-Constraints:
+约束：
 
-- Reply subject rewriting must not drop `TaskMail` identity tokens that are needed for later session detection.
-- The canonical stored subject should not depend on localized reply prefixes such as `AW:`, `FW:`, `Fwd:`, or Chinese reply markers.
+- reply 主题改写不能丢掉后续 session 检测所需的 `TaskMail` 身份 token
+- 规范化后的 canonical subject 不应依赖本地化 reply 前缀，如 `AW:`、`FW:`、`Fwd:`，或中文回复前缀
 
-Preferred examples:
+推荐示例：
 
 ```text
 Re: [QUESTION] [S:session-42] [CX] Analyze floor_shear
@@ -60,93 +58,93 @@ Re: [DONE] [S:thread_026] [OC] Timeline test
 
 ### 2. Threading Headers
 
-A `TaskMail` reply email should be a real mail-thread reply, not a loosely related new message.
+`TaskMail` reply 邮件应是真实的 mail-thread reply，而不是松散关联的新邮件。
 
-Required:
+必需：
 
-- `In-Reply-To` must point to the selected reply anchor message ID.
-- `References` must include the prior reference chain plus the selected reply anchor message ID.
-- The reply anchor should be the newest available message that belongs to the same logical `TaskMail` session and can still be loaded safely for reply.
+- `In-Reply-To` 必须指向所选 reply anchor 的 message ID
+- `References` 必须包含既有 reference chain 以及所选 reply anchor 的 message ID
+- reply anchor 应取自同一逻辑 `TaskMail` session 中最新、且仍可安全用于 reply 的消息
 
-Constraints:
+约束：
 
-- Reply must not be enabled when the logical session spans multiple accounts.
-- Reply must not be enabled when the anchor message cannot be resolved to a stable local message reference.
-- The chosen anchor should come from the newest logical-session message, not merely the newest physical thread copy.
+- 当一个逻辑 session 横跨多个 account 时，不应允许 reply
+- 当 anchor message 无法解析为稳定的本地 message reference 时，不应允许 reply
+- 选择 anchor 时应取最新 logical-session message，而不是仅仅取最新 physical thread copy
 
 ### 3. Addressing
 
-Required:
+必需：
 
-- The sender identity should be the identity that originally received the anchor message when that can be determined.
-- The primary reply target should follow normal reply resolution rules: `Reply-To`, then `List-Post`, then `From`.
-- `TaskMail` reply should behave as a normal reply, not as reply-all by default.
+- sender identity 应尽量使用最初接收 anchor message 的那个 identity
+- 主 reply 目标应遵循普通 reply 解析规则：`Reply-To`，然后 `List-Post`，然后 `From`
+- `TaskMail` reply 默认应按普通 reply 发送，而不是 reply-all
 
-Preferred:
+推荐：
 
-- `Cc` should only be included when the resolved reply target explicitly requires it.
-- `Bcc` should be empty unless there is an explicit future product rule that says otherwise.
+- 只有在解析出的 reply 目标明确要求时才带 `Cc`
+- `Bcc` 应保持为空，除非未来有明确产品规则要求
 
-### 4. Body Format
+### 4. Body 格式
 
-Required:
+必需：
 
-- The reply body should be sent as `text/plain`.
-- The body should contain only the user payload for this reply.
-- The body should not include the quoted original message body by default.
-- The body should not include machine-readable `TaskMail` state or question capsules.
+- reply body 应以 `text/plain` 发送
+- body 只应包含这次 reply 的用户有效载荷
+- 默认不应附带引用的原邮件正文
+- 不应附带机器可读的 `TaskMail` state 或 question capsules
 
-Rationale:
+理由：
 
-- Reply-like messages are intentionally treated as user messages by the current detector.
-- Quoted metadata and embedded capsules increase parsing noise and make timeline extraction less reliable.
+- 当前 detector 有意把 reply-like messages 当作用户消息处理
+- 引用块、元数据块与 capsules 会增加解析噪音，降低 timeline 抽取可靠性
 
-### 5. Body Content by Reply Kind
+### 5. 按 Reply 类型区分的 Body 内容
 
 #### 5.1 Free-Text Reply
 
-Required:
+必需：
 
-- The body may contain arbitrary plain text entered by the user.
-- Leading and internal whitespace should be preserved unless the transport requires normalization.
+- body 可以是用户输入的任意纯文本
+- 除非 transport 层有强制规范化要求，否则应保留前导、内部与换行空白
 
-Allowed:
+允许：
 
-- Attachments may be included.
-- A free-text reply may be attachment-only if product requirements accept files as the complete response.
+- 可以带附件
+- 如果产品要求允许文件作为完整响应，则 free-text reply 可以是 attachment-only
 
 #### 5.2 Quick-Answer Reply
 
-Required:
+必需：
 
-- The body should be the exact selected choice value.
-- Quick-answer reply should only be available when exactly one pending question is active for the session.
+- body 应是用户选中的精确 choice value
+- 只有当 session 当前恰好存在一组单题 pending question 时，才应暴露 quick-answer reply
 
-Allowed:
+允许：
 
-- Attachments may be included if the product treats them as supplementary context.
+- 如果产品把附件视为补充上下文，可以附带附件
 
 #### 5.3 Structured-Answer Reply
 
-Structured reply is the preferred format when more than one pending question is active.
+当同时存在多道 pending question 时，structured reply 是首选格式。
 
-Required:
+必需：
 
-- The body should contain at least one structured answer.
-- Each answer should be expressed in a stable machine-friendly form.
-- The preferred one-line form is:
+- body 至少应包含一条 structured answer
+- 每条 answer 都应以稳定、机器友好的形式表达
+- 推荐的单行形式是：
 
 ```text
 question_id: value
 ```
 
-- The preferred multi-answer template starts with:
+- 推荐的多答案模板应以以下内容起始：
 
 ```text
 Answers:
 ```
 
-Preferred example:
+推荐示例：
 
 ```text
 Answers:
@@ -154,95 +152,97 @@ phase2_entry_position: below
 phase2_icon_strings: reuse
 ```
 
-Allowed compatibility forms:
+允许的兼容形式：
 
-- `question_id: <known_question_id>` followed by the answer on the next non-blank line
-- a full-width colon character as a separator when needed by input method behavior
+- `question_id: <known_question_id>` 后一行再写答案
+- 在输入法行为需要时，使用全角冒号作为分隔符
 
-Constraints:
+约束：
 
-- Attachments may supplement a structured reply, but should not replace structured answers entirely.
-- When structured reply is required, attachment-only submission should be treated as incomplete.
+- 附件可以作为 structured reply 的补充，但不应完全替代 structured answers
+- 如果当前 reply 类型要求 structured answer，那么 attachment-only 提交应视为不完整
 
 #### 5.4 Status Query Reply
 
-Required:
+必需：
 
-- The body must be exactly `/status`.
-- No extra prose should be added before or after `/status`.
+- body 必须严格等于 `/status`
+- `/status` 前后都不应再加额外说明文字
 
-Constraints:
+约束：
 
-- `/status` reply must not include attachments.
+- `/status` reply 不得带附件
 
 ### 6. Attachments
 
-Required:
+必需：
 
-- Reply attachments should be sent as ordinary outgoing attachments.
-- Reply attachments should not be converted into quoted inline artifacts.
+- reply attachments 应作为普通外发附件发送
+- reply attachments 不应被转换成引用型 inline artifacts
 
-Allowed:
+允许：
 
-- Attachments are allowed for free-text, quick-answer, and structured-answer replies.
+- free-text、quick-answer 与 structured-answer replies 可以带附件
 
-Not allowed:
+不允许：
 
-- Attachments on `/status` replies
+- `/status` reply 带附件
 
-### 7. Content That Should Not Be Included
+### 7. 不应包含的内容
 
-A `TaskMail` reply email should ideally avoid all of the following unless a future protocol explicitly requires them:
+除非未来协议明确要求，否则理想的 `TaskMail` reply 邮件应避免包含以下内容：
 
-- quoted original message blocks
-- `On ... wrote:` blocks
-- `-----Original Message-----` blocks
-- localized original-message quote blocks
+- 引用原邮件正文的块
+- `On ... wrote:` 这类引用前缀块
+- `-----Original Message-----` 这类块
+- 本地化的 original-message quote blocks
 - `---TASK-STATE-BEGIN--- ... ---TASK-STATE-END---`
 - `---TASK-QUESTION-BEGIN--- ... ---TASK-QUESTION-END---`
-- copied structured metadata such as `Session ID`, `Thread ID`, `Repo`, `Workdir`, `Backend`, or `Status`
+- 拷贝出来的结构化元数据，例如 `Session ID`、`Thread ID`、`Repo`、`Workdir`、`Backend`、`Status`
 
-## Ideal Validation Rules
+## 理想验证规则
 
-The Android client should apply these validation rules before sending:
+Android 客户端在发送前应执行以下验证规则：
 
-- Reply is available only when a valid reply context exists.
-- Free-text reply can send when body is non-blank or at least one attachment is selected.
-- Quick-answer reply can send only when exactly one pending-question choice set is active and the selected choice belongs to that set.
-- Structured reply can send only when at least one valid structured answer is present.
-- `/status` can send only when no attachments are selected.
-- Sending should be blocked when the session is cross-account and no single safe reply identity exists.
+- 只有当存在有效 reply context 时，reply 才可用
+- free-text reply 在 body 非空，或至少选中一个附件时可发送
+- quick-answer reply 只有在恰好存在一组单题 choice set，且所选 choice 属于该集合时才可发送
+- structured reply 只有在至少存在一条有效 structured answer 时才可发送
+- `/status` 只有在未选择任何附件时才可发送
+- 当 session 跨 account 且没有单一安全 reply identity 时，应阻止发送
 
-## Current Code Alignment
+## 与当前代码的一致部分
 
-The current implementation already aligns with part of this target:
+当前实现已经满足这个目标中的一部分：
 
-- replies are built as real mail-thread replies with `In-Reply-To` and `References`
-- `TaskMail` reply sends plain-text bodies
-- quoted text is disabled for `TaskMail` replies
-- `/status` is modeled as a dedicated reply kind
-- reply context is intentionally anchored to the newest logical-session message
+- replies 会构造成真实的 mail-thread replies，并带 `In-Reply-To` 与 `References`
+- `TaskMail` reply 发送 `text/plain` body
+- `TaskMail` reply 默认关闭 quoted text
+- `/status` 已作为独立 reply kind 建模
+- reply context 有意锚定到最新的 logical-session message
 
-## Known Gaps Versus This Ideal Spec
+## 相对这份理想规范的已知缺口
 
-Based on current code, the following gaps exist:
+基于当前代码，已知仍有以下缺口：
 
-- Reply subject generation currently strips only the German `AW:` prefix before adding `Re:`, even though parsing accepts additional reply-like prefixes.
-- Reply subject generation currently reuses the source subject and does not synthesize missing session or backend tokens when the anchor subject is incomplete.
-- Structured reply validation currently allows attachment-only send in some cases, while this ideal spec requires at least one structured answer.
-- The current reply request context does not carry canonical session metadata such as `session_id`, backend token, or canonical subject, which limits subject normalization.
+- 目前 reply subject generation 只会在加 `Re:` 前剥掉德语 `AW:` 前缀，尽管解析侧接受更多 reply-like prefixes
+- 当前 reply subject generation 直接复用源主题；当 anchor subject 不完整时，不会主动补出缺失的 session 或
+  backend tokens
+- structured reply validation 在某些场景下仍允许 attachment-only send，而本文要求至少有一条 structured answer
+- 当前 reply request context 还不携带 canonical session metadata，如 `session_id`、backend token 或 canonical
+  subject，这限制了 subject normalization
 
-## Suggested Follow-Up Work
+## 建议的后续工作
 
-To move the implementation toward this target, the client will likely need:
+如果要把实现推进到这份目标，客户端大概率需要：
 
-- a canonical `TaskMail` reply-subject builder that understands session ID, backend, and anchor subject
-- stricter structured-reply validation in the UI layer
-- a clearer separation between canonical reply metadata and raw anchor-message data
+- 一个理解 session ID、backend 与 anchor subject 的 canonical `TaskMail` reply-subject builder
+- 更严格的 UI 层 structured-reply validation
+- 把 canonical reply metadata 与原始 anchor-message data 更清晰地分离开
 
-## Source Basis
+## 来源依据
 
-This target was derived from the current behavior and contracts in:
+本文目标整理自当前行为与以下契约：
 
 - `feature/taskmail/internal/src/main/kotlin/net/thunderbird/feature/taskmail/internal/data/LegacyTaskMailMimeMessageFactory.kt`
 - `feature/taskmail/internal/src/main/kotlin/net/thunderbird/feature/taskmail/internal/data/DefaultTaskMailRepository.kt`

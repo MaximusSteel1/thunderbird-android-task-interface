@@ -2,6 +2,7 @@ package net.thunderbird.feature.taskmail.internal.domain.newtask
 
 internal sealed interface TaskMailDirectNewTaskResult {
     data class Accepted(
+        val requestId: String,
         val receiptId: String,
         val transportMessageId: String? = null,
     ) : TaskMailDirectNewTaskResult

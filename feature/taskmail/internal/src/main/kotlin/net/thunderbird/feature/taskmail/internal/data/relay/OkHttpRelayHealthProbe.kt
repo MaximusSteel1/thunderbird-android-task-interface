@@ -1,5 +1,6 @@
 package net.thunderbird.feature.taskmail.internal.data.relay
 
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,7 +14,6 @@ import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 private const val TAG = "OkHttpRelayHealthProbe"
 

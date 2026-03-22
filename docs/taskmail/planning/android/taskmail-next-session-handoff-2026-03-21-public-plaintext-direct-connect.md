@@ -1,18 +1,18 @@
-# TaskMail Next Session Handoff (2026-03-21, public plaintext direct-connect reset)
+# TaskMail Next Session Handoff（2026-03-21，public plaintext direct-connect reset）
 
-## Current Decision
+## 当前决策
 
-As of 2026-03-21, the Android-side planning direction has been reset to:
+截至 2026-03-21，Android-side planning 方向已经重置为：
 
-- Android public direct-connect as the intended main TaskMail path
-- public plaintext transport accepted as the chosen baseline
-- mail retained as fallback
+- Android public direct-connect 作为预期的主 TaskMail 路径
+- public plaintext transport 作为选定 baseline 被接受
+- mail 继续保留为 fallback
 
-The Android-side planning closeout for Phase 0 is now in place.
-This is no longer doc-only.
-The Android-side Phase 1 bootstrap-manager, bootstrap-classification, and `new task` bootstrap-reuse slices are now in
-repository. The Android-side repository dependency that kept bootstrap trapped behind the debug surface is no longer the
-main blocker, but direct business transport and live plaintext validation are still not closed.
+Android-side planning 在 Phase 0 上的收口现在已经到位。
+这条线也不再只是 doc-only。
+Android-side 的 Phase 1 bootstrap-manager、bootstrap-classification 与 `new task` bootstrap-reuse slices 已经进入
+仓库。此前把 bootstrap 困在 debug surface 之后的那个 Android-side repository 依赖，已经不再是主 blocker；但
+direct business transport 与 live plaintext validation 仍然没有收口。
 
 ## Read First
 
@@ -23,45 +23,45 @@ main blocker, but direct business transport and live plaintext validation are st
 5. `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 6. `docs/TASKMAIL-MAIL-RULES.md`
 
-## What Changed This Session
+## 本次会话改了什么
 
-- planning README was updated to point at the new active planning docs
-- a new Android-side authority doc was added for the public plaintext direct-connect decision
-- a new staged plan was added for the same direction
-- a compact Phase 0 baseline note was added to freeze the exact Android-side public plaintext endpoint shape
-- the Android-side planning layer now treats Phase 0 as closed and Phase 1 as active
-- a reusable `RelayBootstrapManager` was added above the current relay debug ViewModel
-- the current debug relay screen now delegates config load/save plus `healthz` / connect / disconnect through that
-  manager instead of owning those lower-level dependencies directly
-- structured `RelayBootstrapStatus` / `RelayBootstrapResult` models were added so Android relay bootstrap now classifies
-  `hello_ack` and representative failure outcomes in repository code instead of relying only on raw exception strings
-- the bootstrap manager now exposes that classification path and focused manager coverage locks representative
-  `not_configured`, `invalid_http_response`, `token_id_mismatch`, `unauthorized`, and `hello_ack` outcomes
-- the formal `new task` ViewModel now reuses that bootstrap result before mail send, records the last bootstrap
-  classification, disconnects temporary `hello_ack` preflight connections, and emits an explicit mail-fallback success
-  message when direct bootstrap is unavailable
-- focused manager coverage landed and clean narrow Gradle validation was re-run
+- planning README 已更新，指向新的 active planning docs
+- 为 public plaintext direct-connect 决策新增了一份 Android-side authority doc
+- 为同一方向新增了一份 staged plan
+- 新增了一份紧凑的 Phase 0 baseline note，用来冻结 Android-side public plaintext endpoint 的精确形态
+- Android-side planning 层现在把 Phase 0 视为已关闭，把 Phase 1 视为活跃阶段
+- 在当前 relay debug ViewModel 之上新增了一个可复用的 `RelayBootstrapManager`
+- 当前 debug relay screen 现在通过这个 manager 委托 config load/save 与 `healthz` / connect / disconnect，而不再
+  直接持有那些底层依赖
+- 新增了结构化 `RelayBootstrapStatus` / `RelayBootstrapResult` 模型，使 Android relay bootstrap 在仓库代码里
+  就能对 `hello_ack` 及代表性失败结果做分类，而不再只依赖原始异常字符串
+- bootstrap manager 现在暴露了这条 classification path，并且 focused manager coverage 已经锁定代表性的
+  `not_configured`、`invalid_http_response`、`token_id_mismatch`、`unauthorized` 与 `hello_ack` 结果
+- 正式 `new task` ViewModel 现在会在 mail send 之前复用 bootstrap result，记录最后一次 bootstrap
+  classification，断开临时的 `hello_ack` preflight connection，并在 direct bootstrap 不可用时显式发出
+  mail-fallback success message
+- focused manager coverage 已落地，并且重新跑过了 clean 的窄范围 Gradle 验证
 
-## What Did Not Change
+## 本次没有改什么
 
-- no direct business-action transport was added
-- no current-status or validation-ledger facts were rewritten into future tense
-- no new device validation was run for the live plaintext VPS path
+- 没有新增 direct business-action transport
+- 没有把 current-status 或 validation-ledger 里的事实改写成 future tense
+- 没有针对 live plaintext VPS path 跑新的 device validation
 
-## Next Concrete Steps
+## 下一步的具体动作
 
-1. keep the frozen Phase 0 baseline stable unless a later authority doc explicitly changes it
-2. freeze the first Android direct outbound contract for `new task` with the adjacent PC/VPS repo
-3. replace the current `new task` preflight-plus-mail path with a real direct-send path that still preserves mail
-   fallback on non-success bootstrap or send failures
-4. decide the next covered direct action after `new task`:
+1. 保持已冻结的 Phase 0 baseline 稳定，除非未来有新的 authority doc 显式改写它
+2. 与相邻的 PC/VPS 仓库一起冻结 `new task` 的第一版 Android direct outbound contract
+3. 把当前 `new task` 的 preflight-plus-mail 路径替换成真实的 direct-send 路径，同时仍保留在 bootstrap 或
+   send 非成功情况下的 mail fallback
+4. 决定 `new task` 之后下一条纳入覆盖的 direct action：
    - `/status`
    - plain continuation reply
-5. add device/manual validation for the live public plaintext path once the first real direct outbound slice lands
-6. preserve mail fallback from the first direct implementation slice onward
+5. 在第一版真实 direct outbound slice 落地后，补 device/manual validation，验证 live public plaintext path
+6. 从第一版 direct implementation slice 开始就持续保留 mail fallback
 
 ## Scope Boundary Reminder
 
-The older mail-first/TLS-gated Android planning docs were pruned during the 2026-03-21 cleanup.
-Do not attempt to recover direction from deleted intermediate planning notes; use the new authority/plan pair plus the
-current implementation-truth docs instead.
+较早的 mail-first / TLS-gated Android planning docs 已经在 2026-03-21 的清理中被裁剪。
+不要再试图从那些已删除的中间 planning notes 里恢复方向；请改用新的 authority / plan pair，以及当前
+implementation-truth docs。

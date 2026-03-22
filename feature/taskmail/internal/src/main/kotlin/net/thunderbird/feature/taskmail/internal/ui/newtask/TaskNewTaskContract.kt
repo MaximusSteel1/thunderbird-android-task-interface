@@ -3,8 +3,8 @@ package net.thunderbird.feature.taskmail.internal.ui.newtask
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.ui.contract.mvi.UnidirectionalViewModel
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskMode
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
@@ -32,7 +32,7 @@ internal interface TaskNewTaskContract {
         val isAdvancedExpanded: Boolean = false,
         val isSending: Boolean = false,
         val sendError: String? = null,
-        val lastDirectBootstrapStatus: RelayBootstrapStatus? = null,
+        val lastDirectSendEvidence: TaskMailDirectSendEvidence? = null,
         val senderAccountError: String? = null,
         val backendError: String? = null,
         val repoError: String? = null,

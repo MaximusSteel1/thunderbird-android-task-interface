@@ -12,6 +12,10 @@ import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStat
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 
 class RunTaskMailDirectOrFallbackTest {
 
@@ -23,14 +27,30 @@ class RunTaskMailDirectOrFallbackTest {
         val testSubject = RunTaskMailDirectOrFallback(relayBootstrapManager)
 
         val result = testSubject.execute(
-            directSend = { TaskMailDirectAttemptResult.Accepted("receipt-1") },
+            directSend = {
+                TaskMailDirectAttemptResult.Accepted(
+                    payload = "receipt-1",
+                    acceptedEvidence = TaskMailDirectAcceptedEvidence(
+                        requestId = "req_001",
+                        receiptId = "receipt-1",
+                        transportMessageId = "transport-1",
+                    ),
+                )
+            },
             mailFallback = { Result.success(Unit) },
         )
 
         assertThat(result).isEqualTo(
             TaskMailDirectOrFallbackResult.DirectAccepted(
-                bootstrapStatus = RelayBootstrapStatus.HelloAck,
                 payload = "receipt-1",
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.DirectAccepted,
+                    switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                    requestId = "req_001",
+                    receiptId = "receipt-1",
+                    transportMessageId = "transport-1",
+                ),
             ),
         )
         assertThat(relayBootstrapManager.bootstrapCallCount).isEqualTo(1)
@@ -55,7 +75,11 @@ class RunTaskMailDirectOrFallbackTest {
 
         assertThat(result).isEqualTo(
             TaskMailDirectOrFallbackResult.MailFallbackSucceeded(
-                bootstrapStatus = RelayBootstrapStatus.NotConfigured,
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.NotConfigured,
+                    outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
+                    switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                ),
             ),
         )
         assertThat(mailFallbackCallCount).isEqualTo(1)
@@ -80,7 +104,12 @@ class RunTaskMailDirectOrFallbackTest {
 
         assertThat(result).isEqualTo(
             TaskMailDirectOrFallbackResult.MailFallbackSucceeded(
-                bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
+                    switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                    fallbackReason = "unsupported_action",
+                ),
             ),
         )
         assertThat(mailFallbackCallCount).isEqualTo(1)
@@ -105,8 +134,13 @@ class RunTaskMailDirectOrFallbackTest {
 
         assertThat(result).isEqualTo(
             TaskMailDirectOrFallbackResult.DirectRejected(
-                bootstrapStatus = RelayBootstrapStatus.HelloAck,
                 errorMessage = "invalid_payload",
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.DirectRejected,
+                    switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                    errorMessage = "invalid_payload",
+                ),
             ),
         )
         assertThat(mailFallbackCallCount).isEqualTo(0)
@@ -131,8 +165,14 @@ class RunTaskMailDirectOrFallbackTest {
 
         assertThat(result).isEqualTo(
             TaskMailDirectOrFallbackResult.MailFallbackFailed(
-                bootstrapStatus = RelayBootstrapStatus.HelloAck,
                 errorMessage = "mail failed",
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                    outcome = TaskMailDirectOutcome.MailFallbackFailed,
+                    switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                    fallbackReason = "send failed",
+                    errorMessage = "mail failed",
+                ),
             ),
         )
         assertThat(mailFallbackCallCount).isEqualTo(1)

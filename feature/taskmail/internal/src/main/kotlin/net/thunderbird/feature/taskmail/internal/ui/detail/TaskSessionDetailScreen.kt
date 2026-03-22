@@ -146,6 +146,11 @@ private fun handleDetailEffect(
             pendingAttachmentSave
         }
 
+        is TaskSessionDetailContract.Effect.ShowMessage -> {
+            Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()
+            pendingAttachmentSave
+        }
+
         is TaskSessionDetailContract.Effect.OpenAttachment -> {
             openTimelineAttachment(context = context, intent = effect.intent)
             pendingAttachmentSave

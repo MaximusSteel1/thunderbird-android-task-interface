@@ -5,7 +5,6 @@ import java.util.Locale
 import java.util.TimeZone
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestion
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestionState
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionDelta
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayStateTransition
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayTimelineItem

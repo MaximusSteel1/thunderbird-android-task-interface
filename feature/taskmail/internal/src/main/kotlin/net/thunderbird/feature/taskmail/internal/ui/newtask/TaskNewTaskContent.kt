@@ -157,6 +157,8 @@ private fun TaskNewTaskForm(
             onEvent = onEvent,
         )
 
+        latestDirectEvidenceItem(state)
+
         item {
             TaskNewTaskSendSection(
                 state = state,

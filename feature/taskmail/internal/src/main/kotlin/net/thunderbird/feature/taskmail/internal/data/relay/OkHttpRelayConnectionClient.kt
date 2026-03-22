@@ -1,5 +1,10 @@
 package net.thunderbird.feature.taskmail.internal.data.relay
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -13,14 +18,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import net.thunderbird.core.logging.Logger
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayError
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHello
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayError
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayServerMessage
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import okhttp3.OkHttpClient
@@ -28,11 +33,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
-import java.util.concurrent.TimeUnit
 
 private const val TAG = "OkHttpRelayConnectionClient"
 private const val CLIENT_ID = "android-taskmail"

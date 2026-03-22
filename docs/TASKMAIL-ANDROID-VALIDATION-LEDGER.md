@@ -1,29 +1,432 @@
-# TaskMail Android Validation Ledger
+# TaskMail Android 验证台账
 
-This document records the current validation evidence for the Android TaskMail feature.
+本文记录 Android TaskMail 功能当前的验证证据。
 
-Use it together with:
+请与下列文档配合阅读：
 
-- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md` for implementation status
-- `docs/TASKMAIL-MAIL-RULES.md` for protocol authority
+- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`，用于实现状态
+- `docs/TASKMAIL-MAIL-RULES.md`，用于协议 authority
 
-Cross-repo interpretation for this ledger should follow the current PC-side canonical docs in
-`E:\projects\mail_based_task_manager\docs/current/`, especially
-`E:\projects\mail_based_task_manager\docs/current/task_view_mail_parsing_rules.md`.
+跨仓库解读本台账时，应遵循 PC 侧当前 canonical docs：
+`E:\projects\mail_based_task_manager\docs/current/`，尤其是
+`E:\projects\mail_based_task_manager\docs/current/task_view_mail_parsing_rules.md`。
 
-Do not treat PC-side next-phase planning in `E:\projects\mail_based_task_manager\docs/plans/coding_backlog.md` as
-validation evidence for Android behavior until it lands in PC-side current docs and Android executable validation.
+在相关内容真正进入 PC 侧 current docs，并且完成 Android 可执行验证之前，不要把
+`E:\projects\mail_based_task_manager\docs/plans/coding_backlog.md` 里的 PC-side next-phase planning 直接当成
+Android 行为的验证证据。
 
-## Date
+## 日期
 
-- Last updated: 2026-03-22
-- Last executable validation session captured here: 2026-03-22
+- 最后更新：2026-03-22
+- 本文件最近一次记录的可执行验证会话：2026-03-22
 
-## Purpose
+## 文档维护约定
 
-This file answers a narrower question than the current-status document:
+- 本文件只回答“哪些能力现在有可执行验证证据”，不替代 current status 或 protocol authority
+- Markdown 编码、换行与文件结尾遵循仓库 `.editorconfig`：`utf-8`、`lf`、保留 final newline
+- 后续新增或更新说明默认使用中文；测试类名、Gradle 命令、路径和协议标识保持原文
 
-> Which parts of TaskMail Android have executable validation evidence right now, and which parts still rely on historical claims or manual follow-up?
+## 目的
+
+相比 current-status 文档，本文件回答的是一个更窄的问题：
+
+> TaskMail Android 现在有哪些部分已经具备可执行验证证据，哪些部分仍然依赖历史结论或手工后续确认？
+
+## 2026-03-22 Phase 4 New Task Durable Evidence Follow-up
+
+Later on 2026-03-22, the first Android-side Phase 4 implementation slice turned the current `new task` direct-send
+classification into durable local evidence instead of leaving it only in transient `TaskNewTaskViewModel` state.
+
+That follow-up changed:
+
+- new machine-readable `TaskMailDirectSendEvidence` / `TaskMailDirectOutcome` / `TaskMailDirectSwitchGate` models for
+  `direct accepted`, `mail fallback`, and `hard rejection` outcomes
+- `RunTaskMailDirectOrFallback` now returns explicit `outcome`, `switchGate`, `receiptId`, optional
+  `transportMessageId`, fallback reason, and error-message evidence rather than only a bootstrap-status hint
+- new `TaskMailNewTaskSendRecordRepository` plus file-backed JSON persistence for the latest `new task` send record per
+  sender account
+- `TaskNewTaskViewModel` now saves the latest direct-or-fallback evidence after each send attempt and rehydrates the
+  latest persisted evidence when the selected sender account is resolved again
+- focused coverage now locks:
+  - machine-readable direct / fallback / hard-stop evidence mapping in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/domain/usecase/RunTaskMailDirectOrFallbackTest.kt`
+  - sender-account-scoped evidence rehydration plus post-send persistence in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/newtask/TaskNewTaskViewModelTest.kt`
+  - file-backed latest-record persistence and reload behavior in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/cache/FileBackedTaskMailNewTaskSendRecordRepositoryTest.kt`
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat -Dkotlin.compiler.execution.strategy=in-process :feature:taskmail:internal:testDebugUnitTest --tests "net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallbackTest" --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskViewModelTest" --tests "net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskMailNewTaskSendRecordRepositoryTest"`
+- `.\gradlew.bat -Dkotlin.compiler.execution.strategy=in-process :feature:taskmail:internal:detekt :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- export of that durable evidence into the shared Phase 4 `parity checklist`, `mismatch ledger`, or `rollback trigger`
+  operational workflow
+- new live-device smoke for reviewing the persisted evidence after process death or screen reload
+- any widening of direct transport beyond the current `new task` scope
+
+## 2026-03-22 Phase 4 New Task Three-Scenario Matrix Reconciliation
+
+Later on 2026-03-22, the current Android-side `new_task` evidence was reconciled against the adjacent PC-side Phase 4
+shared artifacts so the three intended scenarios now have an explicit Android-side matrix readout instead of only
+scattered tests and smoke notes.
+
+That follow-up changed:
+
+- `docs/taskmail/planning/android/phase4_dual_stack_parity_checklist.md` now records the first Android-side matrix
+  readout for:
+  - `direct accepted`
+  - `fallback_to_mail`
+  - `hard_rejection_stop`
+- `docs/taskmail/planning/android/phase4_mismatch_ledger.md` now includes a first Android-side readout and remains
+  intentionally empty because no Android-side confirmed mismatch was evidenced in this pass
+- `docs/taskmail/planning/android/phase4_rollback_trigger_note.md` now cites concrete Android evidence for:
+  - bootstrap failure
+  - ack classification drift
+  - accepted without expected outcome
+  - fallback path unavailable
+  - summary outcome drift
+
+This reconciliation reused already-recorded Android evidence from:
+
+- `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/domain/usecase/RunTaskMailDirectOrFallbackTest.kt`
+- `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/newtask/TaskNewTaskViewModelTest.kt`
+- `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/relay/RelayTaskMailDirectNewTaskSenderTest.kt`
+- `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/relay/protocol/RelayProtocolJsonCodecTest.kt`
+- `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/cache/FileBackedTaskMailNewTaskSendRecordRepositoryTest.kt`
+- the previously recorded 2026-03-21 live-device evidence for:
+  - `thread_083` direct accepted
+  - `thread_084` fallback-to-mail
+  - hard reject smoke B after `thread_085`
+
+The following narrow validation was re-run cleanly after this matrix-reconciliation follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallbackTest" --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskViewModelTest" --tests "net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectNewTaskSenderTest" --tests "net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodecTest" --tests "net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskMailNewTaskSendRecordRepositoryTest"`
+
+This follow-up does **not** yet establish:
+
+- new live-device review of persisted latest evidence after screen reload or process death
+- same-run Android / PC summary parity closeout on the shared artifacts
+- any widening of direct transport beyond the current `new task` scope
+
+## 2026-03-22 Phase 4 New Task Persisted-Evidence Review Surface
+
+Later on 2026-03-22, the next Android-side Phase 4 follow-up turned the previously rehydrated latest
+`TaskMailDirectSendEvidence` into a stable in-repo review surface on the formal `New task` screen.
+
+That follow-up changed:
+
+- the formal `TaskNewTaskContent` flow now renders a dedicated latest-evidence card when
+  `state.lastDirectSendEvidence` is present
+- new `TaskNewTaskDirectEvidenceCard` UI logic now shows the restored latest `outcome`, `switchGate`,
+  `bootstrapStatus`, optional `requestId`, optional `receiptId`, optional `transportMessageId`, optional fallback
+  reason, and optional error message in a reviewable form
+- focused screen coverage now locks both:
+  - accepted-result review with `requestId`, `receiptId`, and `transportMessageId`
+  - rejected-result review with fallback reason and surfaced error text
+
+The following narrow validation was re-run cleanly after this follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskScreenKtTest" --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskViewModelTest"`
+- `.\gradlew.bat :feature:taskmail:internal:detekt :feature:taskmail:internal:lintDebug`
+
+This follow-up was automation-only in the current session because no attached Android device was available for the
+live/manual closeout step.
+
+This follow-up does **not** yet establish:
+
+- live-device proof that the same review surface remains visible after actual screen reload or process death
+- same-run Android / PC summary parity closeout on the shared artifacts
+- any widening of direct transport beyond the current `new task` scope
+
+## 2026-03-22 Phase 5 New Task `requestId` Bind Prep
+
+在 2026-03-22 的后续窄实现中，Android 侧 accepted direct `new task` 结果把先前只在 packet 构造期生成的
+`requestId` 真正贯通到了 durable evidence 链路。
+
+That follow-up changed:
+
+- `RelayTaskMailDirectNewTaskSender` now returns accepted direct `requestId` together with `receiptId` and optional
+  `transportMessageId`
+- `RunTaskMailDirectOrFallback`、`TaskNewTaskViewModel`、`TaskMailNewTaskSendRecordJsonCodec`、
+  `FileBackedTaskMailNewTaskSendRecordRepository`、`TaskNewTaskDirectEvidenceCard` 现在都会保留并展示
+  accepted direct `requestId`
+- focused coverage now locks:
+  - accepted-result request-id propagation in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/relay/RelayTaskMailDirectNewTaskSenderTest.kt`
+  - evidence mapping with `requestId` in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/domain/usecase/RunTaskMailDirectOrFallbackTest.kt`
+  - post-send persistence / rehydration of `requestId` in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/newtask/TaskNewTaskViewModelTest.kt`
+  - latest-evidence card rendering of `requestId` in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/ui/newtask/TaskNewTaskScreenKtTest.kt`
+  - file-backed reload of accepted-direct `requestId` in
+    `feature/taskmail/internal/src/test/kotlin/net/thunderbird/feature/taskmail/internal/data/cache/FileBackedTaskMailNewTaskSendRecordRepositoryTest.kt`
+
+The following narrow validation was re-run cleanly after that follow-up:
+
+- `.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectNewTaskSenderTest" --tests "net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallbackTest" --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskViewModelTest" --tests "net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskScreenKtTest" --tests "net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskMailNewTaskSendRecordRepositoryTest"`
+- `.\gradlew.bat :feature:taskmail:internal:detekt :feature:taskmail:internal:lintDebug`
+
+This follow-up does **not** yet establish:
+
+- automatic binding from Android latest direct evidence to the later canonical mail terminal outcome
+- any widening of direct transport beyond the current `new task` scope
+
+## 2026-03-22 Phase 4 New Task Live Persisted-Evidence / Mail-Fallback Closeout
+
+Later on 2026-03-22, the attached Android device was used to close the remaining live/manual boundary for the current
+Phase 4 latest-evidence review surface on the formal `New task` host.
+
+That follow-up established all of the following:
+
+- after reinstall plus account reconfiguration, a live formal-host send titled `Phase 4 live review 20260322 A`
+  surfaced explicit user-visible `[Mail fallback]` feedback rather than pretending the request took the direct path
+- app-private send-record persistence under `files/taskmail/taskmail_new_task_send_records.json` stored the same run as:
+  - `bootstrapStatus = not_configured`
+  - `outcome = MailFallbackSucceeded`
+  - `switchGate = FallbackRequired`
+  - `fallbackReason = Relay host, port, and transport token are required.`
+- reopening the formal `New task` page in the same session still showed the latest-evidence card with
+  `Mail fallback succeeded`, `Fallback required`, `Not configured`, and the same fallback reason
+- after clearing Thunderbird from recent tasks, relaunching from the desktop launcher, and manually re-entering
+  `Tasks -> New task`, the same latest-evidence card was still present on the formal host
+- mailbox-side truth also closed for the same run: the device inbox later showed
+  `[DONE][S:thread_093] Phase 4 live review 20260322 A` with the expected reply token
+  `PHASE4_LIVE_REVIEW_20260322_A`
+
+Current best reading:
+
+- the current formal-host latest-evidence review surface is no longer only an in-repo or same-process claim; it now has
+  live-device proof across screen reload and recent-tasks cold start
+- this specific live sample is a bootstrap-unavailable fallback case caused by missing relay config after reinstall, not
+  a new regression in the accepted-direct path
+- same-run Android / PC summary parity on the shared artifacts is still not fully closed just because one fallback
+  sample now has better evidence
+
+No additional Gradle rerun was required for this documentation-only closeout; it reused the focused automated coverage
+already recorded above for the persisted-evidence review surface and direct / fallback classification.
+
+## 2026-03-22 Phase 4 New Task Same-Run Summary Parity Readout
+
+Later on 2026-03-22, the Android-side same-run summary parity readout tightened the shared Phase 4 matrix from
+"all three rows still need Android / PC outcome reconciliation" into a state where the current `new task` direct /
+fallback main rows all have retained positive samples.
+
+That readout established:
+
+- `thread_083` direct-accepted row now has a positive same-run parity sample:
+  - Android retained workspace dump `_tmp_device/taskmail_phase2_negative_after_tap.xml` shows
+    `Phase2 direct smoke B`, `Done`, and `PHASE2_DIRECT_SMOKE_20260321_B`
+  - PC `thread_083/thread_state.json` and `mail/raw_004.json` both close on the same token
+- `thread_093` bootstrap-unavailable fallback row now also has a positive same-run parity sample:
+  - Android retained workspace dump `_tmp_device/current_taskmail_workspace2.xml` shows
+    `Phase 4 live review 20260322 A`, `Done`, and `PHASE4_LIVE_REVIEW_20260322_A`
+  - PC `thread_093/thread_state.json` and `mail/raw_004.json` both close on the same token
+- `thread_094` fallback-to-mail replacement row now also has a positive same-run parity sample:
+  - Android retained workspace dump `_tmp_device/phase4_fallback_after_refresh.xml` shows
+    `Phase 4 fallback parity 20260322 B`, `Done`, and `PHASE4_FALLBACK_PARITY_20260322_B`
+  - the latest app-private send record still stores the same run as
+    `bootstrapStatus = not_configured` / `outcome = MailFallbackSucceeded` / `switchGate = FallbackRequired`
+  - PC `thread_094/thread_state.json` and `mail/raw_004.json` both close on the same token
+- `thread_084` should now be read as a historical retained-artifact gap, not an active blocker:
+  - PC `thread_084/thread_state.json` and `mail/raw_004.json` already close on `PHASE2_FALLBACK_SMOKE_20260321`
+  - the only retained Android live artifact currently on disk is `_tmp_device/taskmail_phase2_hardreject_prep.xml`,
+    which still shows the earlier workspace card `Phase2 fallback smoke A / Unknown /` original prompt text
+  - current best reading is that the retained Android terminal-summary sample for that older run was not preserved in
+    this workspace, and the gap has now been superseded by the stronger `thread_094` same-run sample
+
+This readout does **not** yet establish:
+
+- automatic binding from Android latest direct evidence to the later canonical mail terminal outcome
+- repeated real-run use of the now-documented manual `parity checklist -> mismatch ledger -> rollback trigger` flow
+  beyond the current first fresh direct-accepted re-provision sample
+- a confirmed mismatch that should already be promoted into `phase4_mismatch_ledger.md`
+
+## 2026-03-22 Phase 4 Relay Re-Provision / Fresh Direct-Accepted Closeout
+
+Later on 2026-03-22, after reinstall plus account reconfiguration had previously left the formal host in
+`bootstrapStatus = not_configured`, the attached Android device was re-provisioned with the current live relay config
+again and then used for one fresh direct-accepted formal-host sample.
+
+That follow-up established all of the following:
+
+- live VPS `http://124.223.41.153:8787/healthz` still returned:
+  - `status = ok`
+  - `tls_enabled = false`
+  - `taskmail_direct_ingress_enabled = true`
+  - `auth.transport_token_id = 6f05b17d957d`
+- the device-side persisted TaskMail relay config was repaired back to the current live plaintext boundary:
+  - `host = 124.223.41.153`
+  - `port = 8787`
+  - `path = /relay`
+  - `useTls = false`
+  - bot mailbox `sgjcc@qq.com`
+  - non-empty relay transport token whose fingerprint again matched `6f05b17d957d`
+- the retained debug-host relay screen then closed both bootstrap prechecks again on-device:
+  - `Healthz` returned `status=ok | service=mail-runner-relay | listen=0.0.0.0:8787 | sessions=25 | packets=18 | token_id=6f05b17d957d`
+  - `Connect` then reached `connection=connected` with a real `connection_id`
+- after force-stop and desktop-launch re-entry into the formal host, a fresh `New task` titled
+  `Phase 4 direct parity 20260322 C` surfaced explicit user-visible `[Relay]` feedback on send
+- app-private send-record persistence under `files/taskmail/taskmail_new_task_send_records.json` stored that same run
+  as:
+  - `bootstrapStatus = hello_ack`
+  - `outcome = DirectAccepted`
+  - `switchGate = KeepDirectDefault`
+  - `receiptId = relay-receipt:android-taskmail:new-task:req_f8f52bd45be6445185c0553b4b248fb0:03bed494`
+  - `transportMessageId = <177416864698.472093.13590235740865598638@mail-runner.local>`
+- the adjacent PC runtime closed that same run on `thread_095`, where:
+  - `thread_state.json.last_summary = PHASE4_DIRECT_ACCEPT_20260322_C`
+  - `mail/raw_001.json` stored the ingress mail as `[CX] Phase 4 direct parity 20260322 C`
+  - `mail/raw_001.json` carries `X-TaskMail-Direct: 1`
+  - `mail/raw_001.json` carries `X-TaskMail-Relay-Request-Id: req_f8f52bd45be6445185c0553b4b248fb0`
+  - `mail/raw_001.json.message_id` matches Android `transportMessageId`
+  - `runs/20260322_163746_d160/canonical_summary.json` now also closes the same run as:
+    - `ingress_type = direct_bridge`
+    - `ingress_message_id = <177416864698.472093.13590235740865598638@mail-runner.local>`
+    - `request_id = req_f8f52bd45be6445185c0553b4b248fb0`
+    - `terminal_mail_subject = [DONE][S:thread_095] Phase 4 direct parity 20260322 C`
+  - `mail/raw_004.json` then closed mailbox-side on reply token `PHASE4_DIRECT_ACCEPT_20260322_C`
+
+Current best reading:
+
+- the current formal-host direct-accepted path is no longer represented only by the older `thread_083` sample; it now
+  also has a fresh same-day sample after live relay re-provision on `thread_095`
+- Android / PC same-run parity now has positive rows for both:
+  - earlier accepted-direct proof (`thread_083`)
+  - fresh accepted-direct proof after relay re-provision (`thread_095`)
+- the shared-artifact manual consumption flow has now been exercised once with the newer PC-side
+  `canonical_summary.json` artifact rather than relying only on manual `raw_001` / `raw_004` inspection
+- later TaskMail status/result delivery still remains on the retained mail path today; this pass does not widen the
+  validated direct scope beyond current `new task`
+
+No additional Gradle rerun was required for this device/documentation closeout; it reused the already-recorded focused
+automated coverage for direct classification, durable evidence persistence, and latest-evidence review.
+
+## 2026-03-22 Phase 5 Fresh Closeout Workflow Reuse
+
+在 2026-03-22 的后续 formal-host closeout 里，附着 Android 真机与当前 PC closeout helper 一起跑通了 freeze 之后第一条
+fresh `daily_closeout_bundle` 复用。
+
+这轮补充验证确认了：
+
+- 一条新的 formal-host `New task` `Phase 5 fresh closeout 20260322 E` 在 PC 侧闭环为
+  `thread_097 / runs/20260322_184156_afc8`
+- PC `thread_state.json` 与 `canonical_summary.json` 都把同一 run 收敛到
+  `PHASE5_FRESH_CLOSEOUT_20260322_E`
+- Android app-private send-record 持久化 `files/taskmail/taskmail_new_task_send_records.json` 把同一 run 记录为：
+  - `bootstrapStatus = hello_ack`
+  - `outcome = DirectAccepted`
+  - `switchGate = KeepDirectDefault`
+  - `receiptId = relay-receipt:android-taskmail:new-task:req_c8c28c6db7394e3bbde73935461b38c9:232ada8a`
+  - `transportMessageId = <177417609933.472093.14011859041567057941@mail-runner.local>`
+- 但同次拉取到的 fresh Android latest send record 仍然 **没有** 带出 `requestId`
+- Android app-private `taskmail_session_details.json` 仍把同一 run 闭环为：
+  - `sessionId = thread_097`
+  - `status = Done`
+  - `lastSummary = PHASE5_FRESH_CLOSEOUT_20260322_E`
+- 相邻 PC helper `scripts/build_taskmail_closeout_bundle.py` 随后写出了
+  `thread_097/runs/20260322_184156_afc8/taskmail_daily_closeout_bundle.json`，其中：
+  - all four required bundle-presence fields were `true`
+  - `pc_canonical_outcome.ingress_type = direct_bridge`
+  - `same_run_bind.effective_bind_level = transport_message_id`
+  - `same_run_bind.matched_fields = ["transport_message_id", "last_summary"]`
+  - `same_run_bind.strong_bind = true`
+  - `same_run_bind.notes = ["android_request_id_missing"]`
+
+当前最佳解读：
+
+- 冻结后的 `daily_closeout_bundle` workflow 不再只是文档计划；`thread_097` 已提供一条 fresh formal-host rerun
+- latest direct evidence 到 canonical outcome 已不再只是 summary-only weak bind，因为同一 run 已通过
+  `transportMessageId <-> ingress_message_id` 完成强绑定
+- 但这仍**没有**关闭目标中的 `request_id -> transportMessageId / ingress_message_id -> last_summary` 顺序，因为 fresh
+  Android latest send record 仍未带出 `requestId`
+- 因此当前 `new_task` switch-review 仍应保持 `not_ready_keep_mail_default`，直到后续 fresh sample 在设备上闭环
+  `request_id`
+
+这轮 device / documentation closeout 没有新增 Gradle 重跑；它复用了先前已记录的 Android focused coverage 与当前
+PC-side closeout helper。
+
+## 2026-03-22 Phase 5 Fresh `requestId`-First Bind Closeout
+
+在 2026-03-22 的后续验证里，先安装了当前仓库构建出的 formal-host APK，然后又跑了一条新的 fresh direct-accepted sample，
+用来确认 Android latest send evidence 是否终于在设备上带出 `requestId`，并按目标顺序闭环。
+
+这轮补充验证确认了：
+
+- `.\gradlew.bat :app-thunderbird:installFullDebug` 已把当前仓库的 formal-host build 装到附着设备
+- 随后新的 formal-host `New task` `Phase 5 fresh closeout 20260322 F` 在 PC 侧闭环为
+  `thread_098 / runs/20260322_190954_7e1f`
+- Android app-private `taskmail_new_task_send_records.json` 的最新记录现在已带出：
+  - `bootstrapStatus = hello_ack`
+  - `outcome = DirectAccepted`
+  - `switchGate = KeepDirectDefault`
+  - `requestId = req_2a1e0790bdd54194bdce17e96c378e5e`
+  - `receiptId = relay-receipt:android-taskmail:new-task:req_2a1e0790bdd54194bdce17e96c378e5e:ddf5624a`
+  - `transportMessageId = <177417776437.472093.5957744132826889915@mail-runner.local>`
+- 同一 run 的 PC canonical outcome 记录为：
+  - `ingress_type = direct_bridge`
+  - `request_id = req_2a1e0790bdd54194bdce17e96c378e5e`
+  - `ingress_message_id = <177417776437.472093.5957744132826889915@mail-runner.local>`
+  - `last_summary = PHASE5_FRESH_CLOSEOUT_20260322_F`
+  - `terminal_mail_subject = [DONE][S:thread_098] Phase 5 fresh closeout 20260322 F`
+- 同一 run 的 `taskmail_daily_closeout_bundle.json` 现已记录：
+  - `android_latest_send_evidence.selection = request_id`
+  - `same_run_bind.effective_bind_level = request_id`
+  - `same_run_bind.matched_fields = ["request_id", "transport_message_id", "last_summary"]`
+  - `same_run_bind.strong_bind = true`
+  - `same_run_bind.notes = []`
+
+当前最佳解读：
+
+- 当前 formal-host build 上，Android latest send evidence 到 PC canonical outcome 的目标顺序
+  `request_id -> transportMessageId / ingress_message_id -> last_summary` 已在 fresh sample 上闭环
+- 先前 `thread_097` 暴露的 `android_request_id_missing` 已不再成立；它更像是旧安装包 / 旧设备构建状态下的 live gap
+- 因此当前 `new_task` switch-review 已具备进入 `ready_for_direct_default_review` 的证据条件
+- 这仍不等于“立即切换 direct-default 已被授权”；mail fallback 仍必须保持可执行，`reply` / `/status` 仍不进入当前 review scope
+
+这轮验证没有新增生产代码，也没有新增测试代码；新增的是 `installFullDebug` 安装和后续 formal-host / helper closeout。
+
+## 2026-03-22 Phase 5 `new_task` Activation / Config Verdict
+
+在 2026-03-22 的同日后续判断里，Android 侧把 rollout / activation note 留下的更窄问题真正收口到了代码与可执行验证：
+
+> 当前 Android 是否还需要单独的 `new_task` flow-scoped activation / config change，才能把 guarded
+> `direct-default` activation 边界表达清楚？
+
+这轮补充判断确认了：
+
+- `TaskNewTaskViewModel` 仍是 formal-host `new_task` business send 唯一进入
+  `RunTaskMailDirectOrFallback.execute(...)` 的代码路径；direct bootstrap、direct send、mail fallback 与 hard
+  rejection stop 只在这条 `new_task` flow 上发生
+- `TaskSessionDetailViewModel` 里的 `reply`、quick answer 与 `/status` 仍继续通过 `SendTaskMailReply` 走 mail
+  语义，当前没有复用 `RunTaskMailDirectOrFallback` 或 `SendTaskMailDirectNewTask`
+- 当前保存的 `taskmail.relay_enabled` 字段仍主要服务于 retained debug config / debug UI；formal `new task`
+  direct bootstrap 与 direct detail observer 的实际 gate 仍是 relay config 是否满足 `isConfigured()`，而不是该 flag
+
+当前最佳解读：
+
+- 当前 Android 实现已经把 guarded direct-default 的 business activation 边界天然限制在 formal-host `new_task`
+  flow，本轮没有发现会把 `reply` / `/status` 顺手拉进 direct-default 的发送 gate
+- 因此当前结论是：`no_additional_new_task_activation_config_needed`
+- 在这个结论下，下一步不是新增 Android flag / config 或再做一轮最小生产实现，而是把 verdict 同步回 authority /
+  handoff，并继续保持：
+  - mail fallback 可执行
+  - hard rejection = local stop + draft retention
+  - `reply` / `/status` 留在当前 scope 外
+
+The following narrow validation was re-run cleanly after this verdict:
+
+- `$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot'; .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest :feature:taskmail:internal:detekt :feature:taskmail:internal:lintDebug`
+
+This follow-up made no Android production or test code change.
+
+This follow-up does **not** yet establish:
+
+- authorization to switch the production default immediately
+- any new formal-host live rollout closeout, because no Android runtime behavior changed in this pass
 
 ## 2026-03-21 Phase 0 Representative Consumer-Sample Follow-up
 
@@ -892,7 +1295,8 @@ This task was not re-run in the 2026-03-16 slice1 follow-up, so the captured evi
 | Workspace refresh and live update | `RefreshTaskMail`, `ObserveTaskMailStoreChanges`, `TaskMailForegroundRefreshLifecycleEffect`, `TaskWorkspaceViewModelTest`, `TaskSessionDetailViewModelTest`, `TaskWorkspaceScreenKtTest`, `TaskSessionDetailScreenKtTest` | Revalidated in focused ViewModel reruns for manual refresh, foreground loop start/stop, account-targeted sync resolution, stale-content retention, local-change reload, and detail draft/attachment preservation, plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`; a later 2026-03-18 rerun of the full `:feature:taskmail:internal:testDebugUnitTest` suite is now clean; later live closeout then covered post-sync workspace/detail summary freshness, and a later smoke pass confirmed draft / attachment retention while editing | Refresh-failure warning visibility and wider passive foreground-refresh smoke are currently deferred rather than blocking the frozen Phase 3 boundary |
 | Dual-mailbox reply target | `StorageBackedTaskMailDestinationAddressProviderTest`, `LegacyTaskMailMimeMessageFactoryTest` | Revalidated in a focused `:feature:taskmail:internal:testDebugUnitTest` rerun plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`, including explicit bot-mailbox `To` targeting, empty `Cc`, preserved reply headers/subject tokens, and fail-fast behavior for missing or invalid bot-mailbox configuration | Real mailbox smoke that proves Android now delivers TaskMail replies to a configured bot mailbox is still pending |
 | Runtime bot-mailbox settings | `TaskMailNavigationTest`, `FeatureLauncherTargetTest`, `FeatureLauncherActivityIntentTest`, `FeatureLauncherNavHostTaskMailFlowTest`, `StorageBackedTaskMailDestinationAddressProviderTest`, `DefaultTaskMailBotMailboxSettingsRepositoryTest`, `TaskMailSettingsViewModelTest`, `TaskMailSettingsScreenKtTest` | Revalidated in focused `:feature:taskmail:api:testDebugUnitTest`, `:feature:launcher:testDebugUnitTest`, `:feature:taskmail:internal:testDebugUnitTest`, and `:legacy:ui:legacy:testDebugUnitTest` reruns plus clean `:feature:taskmail:api:detekt`, `:feature:taskmail:api:lintDebug`, `:feature:launcher:detekt`, `:feature:launcher:lintDebug`, `:feature:taskmail:internal:detekt`, `:feature:taskmail:internal:lintDebug`, `:legacy:ui:legacy:detekt`, and `:legacy:ui:legacy:lintDebug`, including formal settings-route wiring, Android general-settings entry plumbing, trimmed save behavior, build-default fallback display, and immediate post-save visibility to TaskMail send-path destination resolution without restart; a 2026-03-18 device rerun then confirmed the save-then-send path on the installed Thunderbird debug APK | Happy-path device smoke is now closed; invalid-address and clear-address edge behavior still relies on focused automated coverage rather than broad device sweeps |
-| Guided new-thread MVP | `TaskMailNavigationTest`, `TaskNewTaskViewModelTest`, `TaskNewTaskScreenKtTest`, `TaskMailNewTaskSubjectBuilderTest`, `TaskMailNewTaskBodySerializerTest`, `SendTaskMailNewTaskTest`, `GetTaskMailSenderAccountsTest`, `LegacyTaskMailSenderAccountSourceTest`, `LegacyTaskMailNewTaskMimeMessageFactoryTest`, `RealTaskMailNewTaskSenderTest` | Revalidated in a focused `:feature:taskmail:internal:testDebugUnitTest` rerun plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`, including zero / one / multiple sender-account states, title derivation from the first non-empty `Task:` line, canonical `[OC]` / `[CX]` subject plus body serialization, non-reply bot-mailbox `To` targeting without reply headers, and user-visible surfacing of missing or invalid bot-mailbox configuration; later device smoke also closed the single-account success path through canonical bot-mailbox delivery plus mailbox-side `[ACCEPTED] -> [RUNNING] -> [DONE]` on `thread_054` | Current manual/device smoke is still missing for opening the first-task screen from the formal TaskMail workspace host rather than the debug deep link, and for verifying the explicit multi-account sender-selection path on-device |
+| Guided new-thread MVP | `TaskMailNavigationTest`, `TaskNewTaskViewModelTest`, `TaskNewTaskScreenKtTest`, `TaskMailNewTaskSubjectBuilderTest`, `TaskMailNewTaskBodySerializerTest`, `SendTaskMailNewTaskTest`, `GetTaskMailSenderAccountsTest`, `LegacyTaskMailSenderAccountSourceTest`, `LegacyTaskMailNewTaskMimeMessageFactoryTest`, `RealTaskMailNewTaskSenderTest` | Revalidated in a focused `:feature:taskmail:internal:testDebugUnitTest` rerun plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`, including zero / one / multiple sender-account states, title derivation from the first non-empty `Task:` line, canonical `[OC]` / `[CX]` subject plus body serialization, non-reply bot-mailbox `To` targeting without reply headers, and user-visible surfacing of missing or invalid bot-mailbox configuration; later device smoke also closed the single-account success path through canonical bot-mailbox delivery plus mailbox-side `[ACCEPTED] -> [RUNNING] -> [DONE]` on `thread_054`, and a later formal-host live pass confirmed `New task` latest-evidence review survives recent-tasks cold start | Current manual/device smoke is still missing for verifying the explicit multi-account sender-selection path on-device and for raw first-task body verification on a live mailbox |
+| Phase 4 `new task` durable direct evidence | `RunTaskMailDirectOrFallbackTest`, `TaskNewTaskViewModelTest`, `TaskNewTaskScreenKtTest`, `RelayTaskMailDirectNewTaskSenderTest`, `RelayProtocolJsonCodecTest`, `FileBackedTaskMailNewTaskSendRecordRepositoryTest`, `TaskMailDirectSendEvidence`, `TaskMailNewTaskSendRecordRepository`, `TaskNewTaskDirectEvidenceCard` | Revalidated in focused `:feature:taskmail:internal:testDebugUnitTest` reruns plus clean `:feature:taskmail:internal:detekt` and `:feature:taskmail:internal:lintDebug`, including machine-readable `outcome` / `switchGate` / optional `requestId` / `receiptId` / optional `transportMessageId` evidence, sender-account-scoped persistence of the latest `new task` direct-or-fallback result, evidence rehydration after sender-account resolution or reselection, Android-side `packet_ack` hard-rejection / fallback classification coverage, a later documentation reconciliation that maps the current Android evidence into the shared Phase 4 parity / mismatch / rollback artifacts, a stable in-repo `New task` review surface for the latest persisted evidence, a later live fallback sample on `thread_093` that stayed reviewable after screen reload plus recent-tasks cold start, a later same-run summary readout that positively closes `thread_083`, `thread_093`, and `thread_094` while relegating `thread_084` to a historical retained-artifact gap, a later relay re-provision / fresh direct closeout on `thread_095` that revalidated `hello_ack -> DirectAccepted` plus PC `canonical_summary.json` consumption, a later formal-host fresh closeout rerun on `thread_097` that generated `taskmail_daily_closeout_bundle.json` and closed strong `transport_message_id` bind against PC canonical outcome, a subsequent formal-host rerun on `thread_098` that closed `request_id`-first bind on the current installed build, and a later Android code-path verdict rerun that confirmed no standalone `new_task` activation/config flag is currently needed to keep the guarded direct boundary scoped to formal-host `new_task` | The first Android-side shared-artifact readout now exists, the latest persisted evidence now has live-device review proof after screen reload plus recent-tasks cold start, same-run summary parity now has positive samples for `thread_083`, `thread_093`, `thread_094`, `thread_095`, and later `thread_098`, the frozen `daily_closeout_bundle` workflow has been re-used on fresh samples, the narrow `request_id`-first bind blocker is now closed, and the current Android verdict is to keep code unchanged rather than adding another `new_task` activation/config switch |
 | Bootstrap discovery and repo-path handoff | `TaskMailNavigationTest`, `FeatureLauncherNavHostTaskMailCallbackTest`, `FeatureLauncherNavHostTaskMailFlowTest`, `TaskMailProjectSyncResultParserTest`, `TaskProjectSyncViewModelTest`, `TaskNewTaskViewModelTest`, `TaskNewTaskScreenKtTest` | Revalidated in focused `:feature:taskmail:api:testDebugUnitTest`, `:feature:launcher:testDebugUnitTest`, and `:feature:taskmail:internal:testDebugUnitTest` reruns plus clean `:feature:launcher:detekt`, `:feature:launcher:lintDebug`, `:feature:taskmail:internal:detekt`, and `:feature:taskmail:internal:lintDebug`, including dedicated `Project list` routing, `[SYNC] Project Folder List` parsing, zero / one / multiple sender-account handling on the discovery screen, explicit sync request plus refresh, and formal-host `Use this repo` handoff coverage that prefills `Repo:` in `New task` | Current manual/device smoke is still missing for issuing `[SYNC]` from the formal TaskMail host, rendering the returned project list on-device, and verifying `Use this repo` round-trips back into the composer while `[SYNC]` stays outside TaskMail session/detail projection |
 | Session detail reply surface | `SendTaskMailReplyTest`, `TaskMailReplyBodySerializerTest`, `RealTaskMailReplySenderTest`, `TaskSessionDetailViewModelTest`, `TaskSessionDetailUiStateStructuredReplyValidationTest`, `TaskSessionDetailScreenKtTest` | Revalidated in `:feature:taskmail:internal:testDebugUnitTest`, including plain-text reply, attachment-only continuation reply, `/status`, single-question quick answers, multi-question structured template gating, local blocking of incomplete required answers, unknown `question_id`, and non-canonical choice values, plus paused-session `/resume` prefixing; later manually re-smoked on-device against live threads `thread_042`, `thread_043`, `thread_044`, and `thread_026`, where plain-text continuation stayed anchored to `thread_042`, `/status` produced `[STATUS][S:thread_042] ...`, single-question quick answer `Ship it` sent canonical `approve`, multi-question detail exposed the `Answers:` template without quick-answer shortcuts, paused-session send emitted an actual `/resume` continuation before completing successfully, and attachment-only continuation on `thread_026` succeeded with mailbox-side evidence on the existing session thread | Dedicated UI for protocol-superset fields/commands remains intentionally absent; live coverage is still concentrated on a few known threads rather than a broad corpus |
 | Timeline attachment UX | `TaskSessionDetailViewModelTest`, `TaskSessionDetailScreenKtTest`, `TaskMessageAttachmentDisplayPolicyTest` | Revalidated in `:feature:taskmail:internal:testDebugUnitTest`, including timeline attachment metadata mapping, open/save effect plumbing, reply attachment selection/removal, and `/status` blocked while reply attachments are selected; later manually re-smoked on-device against live `thread_026 / 时间线测试`, where selecting a reply attachment disabled `/status` and allowed attachment-only send, the outgoing `2026-03-16 19:34` card exposed `Open` and `Save`, `Open` launched Android `ResolverActivity` through `ACTION_VIEW`, `Save` launched DocumentsUI `PickActivity` through `ACTION_CREATE_DOCUMENT`, historical `multipart/alternative` reply-like mail at `23:24` and `22:49` showed no pseudo-attachment rows, and the historical `18:56`, `18:34`, and `18:31` outgoing timestamps each appeared once | Broader device coverage beyond these focused live threads remains limited |
@@ -980,7 +1384,7 @@ The following areas remain outside the current executable validation boundary:
 - refresh/live-update device closeout on items 14-16 in the checklist, especially refresh-warning visibility, confirmed
   post-sync summary freshness, and detail auto-refresh while editing
 - guided new-thread and bootstrap discovery device/manual smoke, especially sender-account selection behavior,
-  formal-host entry, `Project list` rendering plus repo prefill, and raw first-task body verification on a live mailbox
+  `Project list` rendering plus repo prefill, and raw first-task body verification on a live mailbox
 - full repo-wide `lint`
 - full repo-wide `detekt`
 - full repo-wide `spotlessCheck`
@@ -997,6 +1401,18 @@ The safest current interpretation is:
   `X-TaskMail-Direct: 1`, correctly routed fallback-classified rejection back to mail on `thread_084`, and correctly
   stopped on hard rejection `invalid_payload` without creating any new adjacent-runtime thread after `thread_085`.
   Later status/result mail still continues over the retained mail path today.
+- That evidence now also includes a formal-host Phase 4 fallback review sample on `thread_093`: after reinstall left
+  relay bootstrap unconfigured, Android surfaced `[Mail fallback]`, persisted the exact fallback evidence
+  (`not_configured` / `MailFallbackSucceeded` / `FallbackRequired`), kept that evidence visible after screen reload and
+  recent-tasks cold start, and still reached mailbox-side `[DONE]` with the expected reply token.
+- Same-run Android / PC summary parity is no longer blocked on a missing fallback-row positive sample:
+  `thread_083` direct accepted, `thread_093` bootstrap-unavailable fallback, and later `thread_094` fallback parity
+  replacement sample now all have retained Android `Done + token` workspace evidence that matches PC-side
+  `last_summary`, while `thread_084` is now only a historical retained-Android artifact gap rather than a current
+  blocker or confirmed mismatch.
+- The Android-side manual `parity checklist -> mismatch ledger -> rollback trigger` consumption order is now explicitly
+  documented, but repeated use of that workflow across future runs is still thin and not yet a substitute for automatic
+  evidence binding.
 - Manual device evidence now also confirms the workspace refresh success path keeps loaded content visible and can surface the newest local outgoing entry after reply, while the refresh-warning failure path, confirmed backend-fed summary updates, and detail auto-refresh while editing remain open.
 - The rich-text detail body slice now has executable evidence for controlled HTML projection, minimal detail
   rendering, a focused live-device inline-image placeholder pass on `thread_071`, fresh-build controlled device preview
@@ -1005,7 +1421,10 @@ The safest current interpretation is:
   controlled representative-sample coverage for `External Deliveries`, `Attachment Notices`, and long-error `FAILED`
   mail. Fresh device validation for the raster preview path and broader live-mailbox rich-text coverage still remain
   outside the current validation boundary.
-- Release confidence is still incomplete because device coverage is still concentrated on a few targeted live threads, guided new-thread and bootstrap discovery host-level smoke are not yet closed on-device, and full build plus repo-wide quality validation have not been closed.
+- Release confidence is still incomplete because device coverage is still concentrated on a few targeted live threads,
+  guided new-thread smoke still lacks multi-account sender-selection plus raw-body verification, bootstrap discovery
+  still lacks `Project list` / repo-prefill closeout, and full build plus repo-wide quality validation have not been
+  closed.
 
 ## 2026-03-21 Phase 3 Detail Live-Smoke Update
 

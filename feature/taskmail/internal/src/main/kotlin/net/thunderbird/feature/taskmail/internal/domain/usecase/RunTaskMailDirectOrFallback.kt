@@ -3,6 +3,10 @@ package net.thunderbird.feature.taskmail.internal.domain.usecase
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 
 internal class RunTaskMailDirectOrFallback(
     private val relayBootstrapManager: RelayBootstrapManager,
@@ -11,9 +15,14 @@ internal class RunTaskMailDirectOrFallback(
         directSend: suspend () -> TaskMailDirectAttemptResult<T>,
         mailFallback: suspend () -> Result<Unit>,
     ): TaskMailDirectOrFallbackResult<T> {
-        val bootstrapStatus = runDirectBootstrapAttempt().status
+        val bootstrapResult = runDirectBootstrapAttempt()
+        val bootstrapStatus = bootstrapResult.status
         if (bootstrapStatus != RelayBootstrapStatus.HelloAck) {
-            return sendMailFallback(bootstrapStatus, mailFallback)
+            return sendMailFallback(
+                bootstrapStatus = bootstrapStatus,
+                fallbackReason = bootstrapResult.detailMessage,
+                mailFallback = mailFallback,
+            )
         }
 
         val directResult = try {
@@ -28,19 +37,35 @@ internal class RunTaskMailDirectOrFallback(
         return when (directResult) {
             is TaskMailDirectAttemptResult.Accepted -> {
                 TaskMailDirectOrFallbackResult.DirectAccepted(
-                    bootstrapStatus = bootstrapStatus,
                     payload = directResult.payload,
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = bootstrapStatus,
+                        outcome = TaskMailDirectOutcome.DirectAccepted,
+                        switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                        requestId = directResult.acceptedEvidence.requestId,
+                        receiptId = directResult.acceptedEvidence.receiptId,
+                        transportMessageId = directResult.acceptedEvidence.transportMessageId,
+                    ),
                 )
             }
 
             is TaskMailDirectAttemptResult.FallbackToMail -> {
-                sendMailFallback(bootstrapStatus, mailFallback)
+                sendMailFallback(
+                    bootstrapStatus = bootstrapStatus,
+                    fallbackReason = directResult.detailMessage,
+                    mailFallback = mailFallback,
+                )
             }
 
             is TaskMailDirectAttemptResult.Rejected -> {
                 TaskMailDirectOrFallbackResult.DirectRejected(
-                    bootstrapStatus = bootstrapStatus,
                     errorMessage = directResult.errorMessage,
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = bootstrapStatus,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        errorMessage = directResult.errorMessage,
+                    ),
                 )
             }
         }
@@ -59,18 +84,30 @@ internal class RunTaskMailDirectOrFallback(
 
     private suspend fun sendMailFallback(
         bootstrapStatus: RelayBootstrapStatus,
+        fallbackReason: String?,
         mailFallback: suspend () -> Result<Unit>,
     ): TaskMailDirectOrFallbackResult<Nothing> {
         return mailFallback().fold(
             onSuccess = {
                 TaskMailDirectOrFallbackResult.MailFallbackSucceeded(
-                    bootstrapStatus = bootstrapStatus,
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = bootstrapStatus,
+                        outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
+                        switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                        fallbackReason = fallbackReason,
+                    ),
                 )
             },
             onFailure = { error ->
                 TaskMailDirectOrFallbackResult.MailFallbackFailed(
-                    bootstrapStatus = bootstrapStatus,
                     errorMessage = error.message,
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = bootstrapStatus,
+                        outcome = TaskMailDirectOutcome.MailFallbackFailed,
+                        switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                        fallbackReason = fallbackReason,
+                        errorMessage = error.message,
+                    ),
                 )
             },
         )
@@ -80,6 +117,7 @@ internal class RunTaskMailDirectOrFallback(
 internal sealed interface TaskMailDirectAttemptResult<out T> {
     data class Accepted<T>(
         val payload: T,
+        val acceptedEvidence: TaskMailDirectAcceptedEvidence = TaskMailDirectAcceptedEvidence(),
     ) : TaskMailDirectAttemptResult<T>
 
     data class FallbackToMail(
@@ -92,24 +130,26 @@ internal sealed interface TaskMailDirectAttemptResult<out T> {
 }
 
 internal sealed interface TaskMailDirectOrFallbackResult<out T> {
+    val evidence: TaskMailDirectSendEvidence
     val bootstrapStatus: RelayBootstrapStatus
+        get() = evidence.bootstrapStatus
 
     data class DirectAccepted<T>(
-        override val bootstrapStatus: RelayBootstrapStatus,
         val payload: T,
+        override val evidence: TaskMailDirectSendEvidence,
     ) : TaskMailDirectOrFallbackResult<T>
 
     data class MailFallbackSucceeded(
-        override val bootstrapStatus: RelayBootstrapStatus,
+        override val evidence: TaskMailDirectSendEvidence,
     ) : TaskMailDirectOrFallbackResult<Nothing>
 
     data class MailFallbackFailed(
-        override val bootstrapStatus: RelayBootstrapStatus,
         val errorMessage: String?,
+        override val evidence: TaskMailDirectSendEvidence,
     ) : TaskMailDirectOrFallbackResult<Nothing>
 
     data class DirectRejected(
-        override val bootstrapStatus: RelayBootstrapStatus,
         val errorMessage: String,
+        override val evidence: TaskMailDirectSendEvidence,
     ) : TaskMailDirectOrFallbackResult<Nothing>
 }

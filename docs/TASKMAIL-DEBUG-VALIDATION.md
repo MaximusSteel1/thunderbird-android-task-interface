@@ -1,29 +1,35 @@
-# TaskMail Debug Validation
+# TaskMail Debug 验证路径
 
-This document captures the retained debug-host validation path for Android TaskMail.
+本文记录 Android TaskMail 仍保留的 debug-host 验证路径。
 
-Use it together with `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`:
+请与 `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md` 配合阅读：
 
-- formal launcher and drawer entry are now part of the real TaskMail surface
-- the debug activity remains valuable as a focused validation and fallback path when you want to isolate TaskMail internals
+- formal launcher 与 drawer entry 现在已经属于真实 TaskMail 表面的一部分
+- 当你需要隔离 TaskMail internals 时，debug activity 仍然是有价值的 focused validation / fallback 路径
 
-## Goal
+## 文档维护约定
 
-Use the existing debug activity to verify that:
+- 本文件主要承载调试路径、设备路径与易复现 pitfall，不承担实现状态 authority
+- Markdown 编码、换行与文件结尾遵循仓库 `.editorconfig`：`utf-8`、`lf`、保留 final newline
+- 后续新增或更新说明默认使用中文；报错原文、命令行、包名、类名与 deep link 保持原文
 
-- TaskMail can open from a deep link
-- The workspace screen loads real TaskMail data from the repository
-- Session detail can open from the workspace list
-- Body extraction and grouping look reasonable with real mail data
+## 目标
 
-## Debug Packages
+使用现有 debug activity 主要验证以下事项：
+
+- TaskMail 可以通过 deep link 打开
+- workspace screen 会从 repository 加载真实 TaskMail 数据
+- session detail 可以从 workspace 列表打开
+- body extraction 与 grouping 在真实邮件数据上看起来合理
+
+## Debug 包名
 
 - Thunderbird debug: `net.thunderbird.android.debug`
 - K-9 Mail debug: `com.fsck.k9.debug`
 
-## Build Commands
+## 构建命令
 
-Use the narrowest build that matches the app you want to validate:
+优先使用与你要验证的 app 对应的最窄构建命令：
 
 ```powershell
 .\gradlew.bat :app-thunderbird:assembleFossDebug
@@ -100,6 +106,20 @@ On this workstation, PowerShell redirection can corrupt raw `adb exec-out screen
 - workaround: write the screenshot on-device first with `adb shell screencap -p /sdcard/...`, then `adb pull` it to the
   workstation before inspection or conversion
 
+## PowerShell Binary ADB Pull Pitfall
+
+On this workstation, PowerShell redirection can also corrupt raw binary SQLite payloads read through
+`adb exec-out run-as ... cat ...`.
+
+- symptom: the pulled file exists with the expected size, but SQLite readers fail immediately with errors such as
+  `sqlite3.DatabaseError: file is not a database`
+- trigger: using PowerShell redirection on raw binary output, for example
+  `adb exec-out run-as net.thunderbird.android.debug cat databases/preferences_storage > local.db`
+- cause: this redirection path can wrap the raw stream into text-transformed output instead of preserving the original
+  SQLite bytes
+- workaround: use `cmd /c` for the redirection step, or first write the binary file on-device and then `adb pull` it
+  back to the workstation
+
 ## Install Note
 
 Before device smoke, check whether the device already has an older local debug build installed.
@@ -130,6 +150,21 @@ leave the user looking at an already-running Thunderbird task instead of the new
   smoke step even though the package resolves the deep link correctly
 - workaround: `adb shell am force-stop net.thunderbird.android.debug` first, then cold-start the relay route with
   `adb shell am start -W -a android.intent.action.VIEW -d "app://taskmail/debug/relay" net.thunderbird.android.debug`
+
+## Formal Host Cold-Start Pitfall
+
+On this workstation, the formal TaskMail launcher host cannot be cold-started directly from adb in the same way as the
+debug deep-link host.
+
+- symptom: `adb shell am start -W -n net.thunderbird.android.debug/app.k9mail.feature.launcher.FeatureLauncherActivity`
+  fails with `SecurityException: Permission Denial`, or an adb launch through `MainActivity` lands in
+  `MessageHomeActivity` instead of reopening the formal `Tasks` flow
+- trigger: trying to automate formal-host process-death or recent-tasks cold-start validation only through adb start
+  commands
+- cause: `FeatureLauncherActivity` is not exported, and the current `MainActivity` / startup routing does not recreate
+  the same TaskMail host flow from arbitrary route data
+- workaround: for formal-host cold-start smoke, relaunch Thunderbird from the desktop launcher and manually enter
+  `Tasks`; keep debug deep links for debug-host-only validation
 
 ## 2026-03-20 Relay Bootstrap Device Note
 
@@ -263,6 +298,39 @@ Current best reading:
 - later TaskMail status/result delivery still remains on the retained mail path today
 - reply, `/status`, and read-side direct transport remain outside the validated scope
 
+## 2026-03-22 Phase 4 Relay Re-Provision / Direct Closeout Note
+
+Later on 2026-03-22, a focused follow-up on the same attached device re-provisioned the saved relay config after an
+earlier reinstall had left the formal host in `not_configured`.
+
+That pass verified all of the following:
+
+- the saved Android relay config was brought back to the current live plaintext boundary:
+  - `host = 124.223.41.153`
+  - `port = 8787`
+  - `path = /relay`
+  - `useTls = false`
+  - bot mailbox `sgjcc@qq.com`
+  - relay transport token fingerprint `6f05b17d957d`
+- the retained debug relay screen again reached:
+  - `Healthz -> status=ok | ... | token_id=6f05b17d957d`
+  - `Connect -> connection=connected`
+- after force-stop plus desktop-launch return into the formal host, a fresh `New task`
+  `Phase 4 direct parity 20260322 C` surfaced user-visible `[Relay]`
+- the adjacent PC runtime then closed that same run on `thread_095`, where
+  `runs/20260322_163746_d160/canonical_summary.json` records:
+  - `ingress_type = direct_bridge`
+  - `request_id = req_f8f52bd45be6445185c0553b4b248fb0`
+  - `terminal_mail_subject = [DONE][S:thread_095] Phase 4 direct parity 20260322 C`
+
+Current best reading:
+
+- the debug-host path is still a valid retained preflight route for relay `Healthz` plus `hello_ack`
+- the formal host now also has a fresh relay-accepted sample after live re-provision, not only the earlier 2026-03-21
+  direct smoke
+- later status/result delivery still remains mail-based today; this note does not widen the validated scope beyond the
+  current `new task` direct boundary
+
 ## 2026-03-21 Phase 2 Hard-Reject Stale-APK Pitfall
 
 在 2026-03-21 的 hard-rejection smoke 里，live relay 已经返回了正确的 `error_code = invalid_payload`，但设备第一次
@@ -376,7 +444,7 @@ adb shell am start `
   com.fsck.k9.debug
 ```
 
-On debug builds, these deep links currently land in `TaskMailDebugActivity` because the debug manifest declares the `app://taskmail/*` intent filter. Use the in-app drawer `Tasks` entry when you need to validate the formal launcher host on a device.
+On debug builds, these deep links currently land in `TaskMailDebugActivity` because the debug manifest declares the `app://taskmail/*` intent filter. Use the in-app drawer `Tasks` entry when you need to validate the formal launcher host on a device; for cold-start/process-death smoke, relaunch from the desktop launcher first instead of treating this deep link as an equivalent substitute.
 
 ### Open TaskMail Debug Activity directly
 
@@ -432,6 +500,7 @@ adb shell am start `
 - Live `/status` replies currently use the label `STATUS`; polling helpers that only wait for terminal labels will need a path-specific exception
 - Real data quality still depends on local message availability and sync state
 - Formal launcher and drawer entry should be treated as the primary product-facing smoke path; use the debug activity when isolating TaskMail-specific issues
+- Formal-host cold-start validation is still launcher-first/manual-`Tasks`; adb deep links and direct activity starts do not recreate the same host boundary
 - Some real-message datasets may still surface noisy fallback text if the stored mail body lacks clean reply/capsule boundaries
 - Console output from the JSON validation suite may still show text encoding issues for some Chinese content
 - Some devices may refuse to install a freshly built debug APK over an older local install if the signing key changed; uninstall the old package first in that case

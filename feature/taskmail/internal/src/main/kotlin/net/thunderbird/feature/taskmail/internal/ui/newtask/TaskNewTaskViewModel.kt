@@ -5,16 +5,19 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
-import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskResult
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectOrFallbackResult
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
+import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
+import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectOrFallbackResult
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.State
@@ -31,12 +34,15 @@ private const val TITLE_REQUIRED_ERROR = "Title is required."
 private const val TIMEOUT_INVALID_ERROR = "Timeout must be a positive integer."
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail task request."
 private const val SEND_SUCCESS_MESSAGE =
-    "Task request sent. It will appear after the first TaskMail status mail arrives."
+    "[Relay] Task request sent. It will appear after the first TaskMail status mail arrives."
 private const val SEND_FALLBACK_SUCCESS_MESSAGE =
-    "Task request sent over mail fallback. It will appear after the first TaskMail status mail arrives."
+    "[Mail fallback] Task request sent. It will appear after the first TaskMail status mail arrives."
 
+@Suppress("TooManyFunctions")
 internal class TaskNewTaskViewModel(
     private val getTaskMailSenderAccounts: GetTaskMailSenderAccounts,
+    private val getLatestTaskMailNewTaskSendRecord: GetLatestTaskMailNewTaskSendRecord,
+    private val recordTaskMailNewTaskSendRecord: RecordTaskMailNewTaskSendRecord,
     private val sendTaskMailDirectNewTask: SendTaskMailDirectNewTask,
     private val sendTaskMailNewTask: SendTaskMailNewTask,
     private val runTaskMailDirectOrFallback: RunTaskMailDirectOrFallback,
@@ -89,13 +95,7 @@ internal class TaskNewTaskViewModel(
 
     private fun handleRequiredFieldEvent(event: Event) {
         when (event) {
-            is Event.SenderAccountSelected -> updateState {
-                it.copy(
-                    selectedSenderAccountId = event.accountUuid,
-                    senderAccountError = null,
-                    sendError = null,
-                )
-            }
+            is Event.SenderAccountSelected -> handleSenderAccountSelected(event.accountUuid)
 
             is Event.BackendSelected -> updateState {
                 it.copy(
@@ -199,30 +199,34 @@ internal class TaskNewTaskViewModel(
 
     private fun loadSenderAccounts() {
         updateState {
-                it.copy(
-                    isLoading = true,
-                    senderAccountBlockingError = null,
-                    senderAccountError = null,
-                    sendError = null,
-                    lastDirectBootstrapStatus = null,
-                )
-            }
+            it.copy(
+                isLoading = true,
+                senderAccountBlockingError = null,
+                senderAccountError = null,
+                sendError = null,
+                lastDirectSendEvidence = null,
+            )
+        }
 
         viewModelScope.launch {
             runCatching {
                 getTaskMailSenderAccounts()
             }.onSuccess { accounts ->
+                val selectedSenderAccountId = resolveSelectedSenderAccountId(
+                    existingSelection = state.value.selectedSenderAccountId,
+                    accounts = accounts,
+                )
                 updateState { current ->
                     current.copy(
                         isLoading = false,
                         senderAccountBlockingError = accounts.blockingErrorOrNull(),
                         senderAccounts = accounts.toImmutableList(),
-                        selectedSenderAccountId = resolveSelectedSenderAccountId(
-                            existingSelection = current.selectedSenderAccountId,
-                            accounts = accounts,
-                        ),
+                        selectedSenderAccountId = selectedSenderAccountId,
                         senderAccountError = null,
                     )
+                }
+                if (selectedSenderAccountId != null) {
+                    loadLatestSendEvidence(selectedSenderAccountId)
                 }
             }.onFailure {
                 updateState {
@@ -232,6 +236,7 @@ internal class TaskNewTaskViewModel(
                         senderAccounts = persistentListOf(),
                         selectedSenderAccountId = null,
                         senderAccountError = null,
+                        lastDirectSendEvidence = null,
                     )
                 }
             }
@@ -256,7 +261,7 @@ internal class TaskNewTaskViewModel(
                 it.copy(
                     isSending = true,
                     sendError = null,
-                    lastDirectBootstrapStatus = null,
+                    lastDirectSendEvidence = null,
                     senderAccountError = null,
                     backendError = null,
                     repoError = null,
@@ -274,6 +279,12 @@ internal class TaskNewTaskViewModel(
                         sendTaskMailNewTask(draft).toMailFallbackResult()
                     },
                 )
+                runCatching {
+                    recordTaskMailNewTaskSendRecord(
+                        draft = draft,
+                        evidence = sendResult.evidence,
+                    )
+                }
                 handleSendResult(sendResult)
             }
         }
@@ -288,7 +299,7 @@ internal class TaskNewTaskViewModel(
                     it.copy(
                         isSending = false,
                         sendError = null,
-                        lastDirectBootstrapStatus = sendResult.bootstrapStatus,
+                        lastDirectSendEvidence = sendResult.evidence,
                     )
                 }
                 emitEffect(Effect.ShowMessage(SEND_SUCCESS_MESSAGE))
@@ -300,7 +311,7 @@ internal class TaskNewTaskViewModel(
                     it.copy(
                         isSending = false,
                         sendError = null,
-                        lastDirectBootstrapStatus = sendResult.bootstrapStatus,
+                        lastDirectSendEvidence = sendResult.evidence,
                     )
                 }
                 emitEffect(Effect.ShowMessage(SEND_FALLBACK_SUCCESS_MESSAGE))
@@ -311,7 +322,7 @@ internal class TaskNewTaskViewModel(
                 updateState {
                     it.copy(
                         isSending = false,
-                        lastDirectBootstrapStatus = sendResult.bootstrapStatus,
+                        lastDirectSendEvidence = sendResult.evidence,
                         sendError = sendResult.errorMessage ?: SEND_FAILURE_MESSAGE,
                     )
                 }
@@ -321,7 +332,7 @@ internal class TaskNewTaskViewModel(
                 updateState {
                     it.copy(
                         isSending = false,
-                        lastDirectBootstrapStatus = sendResult.bootstrapStatus,
+                        lastDirectSendEvidence = sendResult.evidence,
                         sendError = sendResult.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
                     )
                 }
@@ -375,6 +386,37 @@ internal class TaskNewTaskViewModel(
             normalizedTimeoutMinutes = timeoutMinutes,
         )
     }
+
+    private fun handleSenderAccountSelected(accountUuid: String?) {
+        updateState {
+            it.copy(
+                selectedSenderAccountId = accountUuid,
+                senderAccountError = null,
+                sendError = null,
+                lastDirectSendEvidence = null,
+            )
+        }
+
+        if (accountUuid != null) {
+            loadLatestSendEvidence(accountUuid)
+        }
+    }
+
+    private fun loadLatestSendEvidence(senderAccountId: String) {
+        viewModelScope.launch {
+            val latestEvidence = runCatching {
+                getLatestTaskMailNewTaskSendRecord(senderAccountId)?.evidence
+            }.getOrNull()
+
+            updateState { current ->
+                if (current.selectedSenderAccountId == senderAccountId) {
+                    current.copy(lastDirectSendEvidence = latestEvidence)
+                } else {
+                    current
+                }
+            }
+        }
+    }
 }
 
 private fun deriveSubjectTitle(taskText: String): String {
@@ -395,7 +437,16 @@ private fun List<TaskMailSenderAccount>.blockingErrorOrNull(): String? {
 private fun TaskMailDirectNewTaskResult.toDirectAttemptResult():
     TaskMailDirectAttemptResult<TaskMailDirectNewTaskResult.Accepted> {
     return when (this) {
-        is TaskMailDirectNewTaskResult.Accepted -> TaskMailDirectAttemptResult.Accepted(this)
+        is TaskMailDirectNewTaskResult.Accepted -> {
+            TaskMailDirectAttemptResult.Accepted(
+                payload = this,
+                acceptedEvidence = TaskMailDirectAcceptedEvidence(
+                    requestId = requestId,
+                    receiptId = receiptId,
+                    transportMessageId = transportMessageId,
+                ),
+            )
+        }
         is TaskMailDirectNewTaskResult.FallbackToMail -> TaskMailDirectAttemptResult.FallbackToMail(detailMessage)
         is TaskMailDirectNewTaskResult.Rejected -> TaskMailDirectAttemptResult.Rejected(errorMessage)
     }
