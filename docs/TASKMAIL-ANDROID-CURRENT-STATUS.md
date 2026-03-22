@@ -531,9 +531,9 @@ For documentation and planning purposes, the safest current interpretation is:
 - **Lifecycle / progress timestamp compatibility**: implemented internally in parser/repository models for
   `lifecycle`, `last_active_at`, and `last_progress_at`
 - **Refresh and live update**: implemented in repository on workspace/detail, including focused automated coverage for
-  foreground-only account-scoped refresh while visible and a clean current `:feature:taskmail:internal:testDebugUnitTest`
-  rerun; refresh-warning failure behavior, confirmed post-sync summary freshness, and detail auto-refresh while editing
-  still remain open on device
+  foreground-only account-scoped refresh while visible, later live closeout for post-sync workspace/detail summary
+  freshness, and a later smoke pass for draft / attachment retention while editing; refresh-warning failure behavior and
+  broader passive foreground-refresh smoke are currently deferred
 - **Paused / multi-question protocol compatibility**: implemented at the Android repository level
 - **Dedicated UI for full protocol superset**: not implemented
 - **Full validation / release confidence**: not fully established
@@ -667,3 +667,14 @@ slice now closed, the next engineering focus should be:
 - direct websocket 合同对齐现在有更强的自动化证据
 - 但“真实设备上 direct websocket update 明确早于 durable mail sync 驱动 UI”这条 live 优先级证据仍可继续补抓
 - duplicate pending question 目前应作为独立的 source-mail / extractor 输入问题继续处理，而不是先把它读成 Phase 3 merge 回归
+
+## 2026-03-22 Phase 3 Freeze Note
+
+在同日后续的跨仓库收口里，Phase 3 的冻结边界进一步明确为：
+
+- duplicate pending question / duplicate answer line 现象现已按 PC 侧 source `[QUESTION]` 输入问题处理，并已在上游修正；
+  Android 端当前不再把它视为 Phase 3 本地实现 blocker
+- `detail` 编辑态下 refresh 期间的 draft / attachment 保持已补过烟测，不再作为 Phase 3 收尾阻塞项
+- refresh-warning failure 可见性、更宽的 passive foreground-refresh smoke，以及 direct-vs-mail ordering 的更强
+  live 证据都明确后延，不再阻塞当前阶段冻结
+- 因此，当前 Android 侧决策是先冻结 Phase 3，在现有 mail fallback 仍保留的前提下继续推进 Phase 4
