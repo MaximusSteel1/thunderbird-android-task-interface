@@ -25,6 +25,7 @@ internal interface TaskWorkspaceContract {
         data object ProjectListClicked : Event
         data object NewTaskClicked : Event
         data class SessionClicked(
+            val workspaceId: String?,
             val sessionId: String?,
             val threadId: String,
         ) : Event
@@ -34,6 +35,7 @@ internal interface TaskWorkspaceContract {
         data object OpenProjectSync : Effect
         data object OpenNewTask : Effect
         data class OpenSessionDetail(
+            val workspaceId: String?,
             val sessionId: String?,
             val threadId: String,
         ) : Effect

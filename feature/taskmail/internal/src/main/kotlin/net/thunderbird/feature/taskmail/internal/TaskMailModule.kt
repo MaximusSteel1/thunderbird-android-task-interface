@@ -45,10 +45,12 @@ import net.thunderbird.feature.taskmail.internal.data.cache.CachedTaskMailMessag
 import net.thunderbird.feature.taskmail.internal.data.cache.EmailIngressPayloadJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.cache.FileBackedMessageSyncStateRepository
 import net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskMailNewTaskSendRecordRepository
+import net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskMailSessionActionSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.data.cache.FileBackedTaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.data.cache.FileBackedUnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailNewTaskSendRecordJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailSessionActionSendRecordJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskSessionDetailJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
@@ -63,6 +65,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManage
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayHealthProbe
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectNewTaskSender
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.transport.EmailTaskMailNewTaskTransport
@@ -81,12 +84,15 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailBotMa
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTaskSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailProjectSyncRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailSessionActionSendRecordRepository
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.DefaultObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailProjectSyncResult
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
@@ -94,11 +100,13 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskWorkspace
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RequestTaskMailProjectSync
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SaveTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
@@ -152,6 +160,11 @@ val taskMailModule: Module = module {
             relayConnectionClient = get(),
         )
     }
+    single<TaskMailDirectSessionActionSender> {
+        RelayTaskMailDirectSessionActionSender(
+            relayConnectionClient = get(),
+        )
+    }
     single { TaskMailDirectSessionProjector() }
     single {
         RelayTaskMailDirectSessionDetailSubscriber(
@@ -194,6 +207,7 @@ val taskMailModule: Module = module {
     single { TaskMailMessageJsonCodec() }
     single { TaskSessionDetailJsonCodec() }
     single { TaskMailNewTaskSendRecordJsonCodec() }
+    single { TaskMailSessionActionSendRecordJsonCodec() }
     single { TaskMailSessionProjector(bodyExtractor = get()) }
     single { TaskWorkspaceSummaryProjector() }
     single<UnifiedMessageRepository> {
@@ -214,6 +228,12 @@ val taskMailModule: Module = module {
     }
     single<TaskMailNewTaskSendRecordRepository> {
         FileBackedTaskMailNewTaskSendRecordRepository(
+            storageDirectory = File(androidContext().filesDir, "taskmail"),
+            codec = get(),
+        )
+    }
+    single<TaskMailSessionActionSendRecordRepository> {
+        FileBackedTaskMailSessionActionSendRecordRepository(
             storageDirectory = File(androidContext().filesDir, "taskmail"),
             codec = get(),
         )
@@ -430,6 +450,12 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        GetLatestTaskMailSessionActionSendRecord(
+            repository = get(),
+        )
+    }
+
+    factory {
         RefreshTaskMail(
             syncRequester = get(),
             syncTaskMailCache = get(),
@@ -461,6 +487,12 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        SendTaskMailDirectSessionAction(
+            directSessionActionSender = get(),
+        )
+    }
+
+    factory {
         SendTaskMailNewTask(
             newTaskSender = get(),
         )
@@ -468,6 +500,12 @@ val taskMailModule: Module = module {
 
     factory {
         RecordTaskMailNewTaskSendRecord(
+            repository = get(),
+        )
+    }
+
+    factory {
+        RecordTaskMailSessionActionSendRecord(
             repository = get(),
         )
     }
@@ -498,9 +536,13 @@ val taskMailModule: Module = module {
             observeTaskMailStoreChanges = get(),
             foregroundRefreshTickerFactory = get(),
             sendTaskMailReply = get(),
+            sendTaskMailDirectSessionAction = get(),
+            getLatestTaskMailSessionActionSendRecord = get(),
+            recordTaskMailSessionActionSendRecord = get(),
             replyAttachmentResolver = get(),
             timelineAttachmentHandler = get(),
             logger = get(),
+            runTaskMailDirectOrFallback = get(),
             syncTaskMailCache = get(),
             observeTaskMailDirectSessionDetail = get(),
         )

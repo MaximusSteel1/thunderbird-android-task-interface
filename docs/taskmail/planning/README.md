@@ -20,13 +20,23 @@
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
+- `docs/taskmail/planning/android/taskmail-phase4-closeout-and-phase5-narrow-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-new-task-switch-review-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-new-task-direct-default-review-decision-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-new-task-direct-default-rollout-activation-note-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-direct-contract-prerequisites-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-coordination-checklist-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-message-template-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-alignment-readout-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-phase4-dual-stack-boundary-freeze-v0.1.md`
 - `docs/taskmail/planning/android/phase4_dual_stack_parity_checklist.md`
 - `docs/taskmail/planning/android/phase4_mismatch_ledger.md`
 - `docs/taskmail/planning/android/phase4_rollback_trigger_note.md`
 - `docs/taskmail/planning/android/taskmail-phase0-public-plaintext-baseline-v1.md`
 - `docs/taskmail/planning/android/taskmail-phase2-direct-outbound-contract-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`
+- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase5-android-implementation-plan.md`
 
 这些文档当前的使用方式是：
 
@@ -34,6 +44,20 @@
 - `taskmail-android-public-plaintext-direct-connect-plan-v0.1.md` 用于 Android 侧分阶段执行计划
 - `taskmail-next-development-plan-v0.2.md`、`taskmail-phase4-dual-stack-boundary-freeze-v0.1.md` 与三份 `phase4_*`
   文档共同构成当前 Android 侧 Phase 4 planning 集
+- `taskmail-phase4-closeout-and-phase5-narrow-plan-v0.1.md` 与当前一组 `taskmail-phase5-new-task-*.md`
+  文档共同构成当前 Android 侧 `new_task` guarded direct-default review / observation planning 集
+- `taskmail-phase5-reply-status-direct-contract-prerequisites-v0.1.md` 用于把 `reply` / `/status` 进入 direct contract
+  freeze 之前必须先关闭的协议前提、范围切分与 PC 配合项显式写清
+- `taskmail-phase5-reply-status-pc-coordination-checklist-v0.1.md` 用于把上面那份 prerequisites 压缩成可直接发给
+  相邻 PC 侧的短版 review checklist
+- `taskmail-phase5-reply-status-pc-message-template-v0.1.md` 用于把 checklist 再压缩成可直接发给相邻 PC 侧的
+  短消息模板
+- `taskmail-phase5-reply-status-pc-alignment-readout-v0.1.md` 用于回写相邻 PC 侧已经给出的 repo-side reading 与
+  shared planning-layer contract，并明确哪些点已对齐、哪些点仍未成为 Layer 1 authority、Android 为什么可以进入
+  实现规划但还不能误写成 current protocol
+- `taskmail-phase5-reply-status-android-implementation-plan-v0.1.md` 用于把 shared contract 落到 Android 侧
+  实现规划，并记录同日后续 `Batch A` / `Batch B` / `Batch C` 的 guarded code 落地状态与 2026-03-23 的
+  `Batch D` durable evidence 首段；当前剩余工作已收敛到 live / closeout 边界
 - `taskmail-phase0-public-plaintext-baseline-v1.md` 用于记录 public IP、端口、endpoint 与 fallback freeze
 - `taskmail-phase2-direct-outbound-contract-v0.1.md` 用于记录第一版 direct `new task` payload 与 fallback freeze
 - 最新 handoff note 只用于短周期续接上下文，不应提升为长期 authority

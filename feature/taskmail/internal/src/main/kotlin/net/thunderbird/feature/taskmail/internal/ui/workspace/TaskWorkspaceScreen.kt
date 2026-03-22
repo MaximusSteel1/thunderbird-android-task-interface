@@ -9,7 +9,7 @@ import org.koin.androidx.compose.koinViewModel
 
 @Composable
 internal fun TaskWorkspaceScreen(
-    onOpenSession: (sessionId: String?, threadId: String) -> Unit,
+    onOpenSession: (workspaceId: String?, sessionId: String?, threadId: String) -> Unit,
     onOpenProjectSync: () -> Unit,
     onOpenNewTask: () -> Unit,
     modifier: Modifier = Modifier,
@@ -20,7 +20,7 @@ internal fun TaskWorkspaceScreen(
             TaskWorkspaceContract.Effect.OpenProjectSync -> onOpenProjectSync()
             TaskWorkspaceContract.Effect.OpenNewTask -> onOpenNewTask()
             is TaskWorkspaceContract.Effect.OpenSessionDetail -> {
-                onOpenSession(effect.sessionId, effect.threadId)
+                onOpenSession(effect.workspaceId, effect.sessionId, effect.threadId)
             }
         }
     }

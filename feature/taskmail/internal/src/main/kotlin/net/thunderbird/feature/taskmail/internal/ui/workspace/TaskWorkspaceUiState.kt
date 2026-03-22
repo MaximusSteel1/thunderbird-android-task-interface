@@ -8,6 +8,7 @@ internal data class TaskWorkspaceItemUi(
 )
 
 internal data class TaskSessionItemUi(
+    val workspaceId: String? = null,
     val sessionId: String? = null,
     val threadId: String,
     val sessionName: String,

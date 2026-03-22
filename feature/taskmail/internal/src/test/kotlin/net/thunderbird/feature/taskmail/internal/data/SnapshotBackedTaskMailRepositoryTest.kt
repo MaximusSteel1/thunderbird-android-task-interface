@@ -78,6 +78,36 @@ class SnapshotBackedTaskMailRepositoryTest {
     }
 
     @Test
+    fun `getTaskWorkspaceSummaries should propagate workspace id into session summary key`() = runTest {
+        val repository = SnapshotBackedTaskMailRepository(
+            taskSessionDetailRepository = InMemoryTaskSessionDetailRepository(
+                sessionDetails = listOf(
+                    sampleDetail(
+                        sessionId = "session-1",
+                        threadId = "thread-1",
+                        sessionName = "Wire repository",
+                        summary = "Repository wiring is waiting for input.",
+                        timestamp = 200L,
+                    ).copy(
+                        key = TaskSessionKey(
+                            sessionId = "session-1",
+                            threadId = "thread-1",
+                        ),
+                        workspace = TaskWorkspaceKey(
+                            workspaceId = "workspace_cb2404bf828c",
+                            repoPath = "E:/projects/android_task_manager",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val result = repository.getTaskWorkspaceSummaries()
+
+        assertThat(result.single().sessions.single().key.workspaceId).isEqualTo("workspace_cb2404bf828c")
+    }
+
+    @Test
     fun `getTaskSessionDetail should delegate to snapshot repository`() = runTest {
         val detail = sampleDetail(
             sessionId = "session-1",

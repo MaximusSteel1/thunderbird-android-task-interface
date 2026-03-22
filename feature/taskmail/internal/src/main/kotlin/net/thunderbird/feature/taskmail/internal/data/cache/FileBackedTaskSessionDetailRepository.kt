@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 
 internal class FileBackedTaskSessionDetailRepository(
@@ -29,6 +30,7 @@ internal class FileBackedTaskSessionDetailRepository(
 
     override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
         return sessionDetails.firstOrNull { detail -> detail.key == key }
+            ?: sessionDetails.firstOrNull { detail -> detail.key.isCompatibleWith(key) }
     }
 
     override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> {
@@ -45,15 +47,26 @@ internal class FileBackedTaskSessionDetailRepository(
         if (details.isEmpty()) return
 
         writeMutex.withLock {
-            val mergedDetails = sessionDetails
-                .associateBy(TaskSessionDetail::key)
-                .toMutableMap()
+            val mergedDetails = sessionDetails.toMutableList()
 
             details.forEach { detail ->
-                mergedDetails[detail.key] = detail
+                val exactIndex = mergedDetails.indexOfFirst { existing -> existing.key == detail.key }
+                val compatibleIndex = if (exactIndex >= 0) {
+                    -1
+                } else {
+                    mergedDetails.indexOfFirst { existing -> existing.key.isCompatibleWith(detail.key) }
+                }
+
+                if (exactIndex >= 0) {
+                    mergedDetails[exactIndex] = detail
+                } else if (compatibleIndex >= 0) {
+                    mergedDetails[compatibleIndex] = detail
+                } else {
+                    mergedDetails += detail
+                }
             }
 
-            persistSessionDetails(mergedDetails.values.toList())
+            persistSessionDetails(mergedDetails)
         }
     }
 
@@ -61,9 +74,10 @@ internal class FileBackedTaskSessionDetailRepository(
         if (keys.isEmpty()) return
 
         writeMutex.withLock {
-            val keysToRemove = keys.toSet()
             val remainingDetails = sessionDetails.filterNot { detail ->
-                detail.key in keysToRemove
+                keys.any { key ->
+                    detail.key == key || detail.key.isCompatibleWith(key)
+                }
             }
 
             if (remainingDetails.size == sessionDetails.size) return@withLock
@@ -114,7 +128,11 @@ internal class FileBackedTaskSessionDetailRepository(
 
     private fun persistSessionDetails(details: List<TaskSessionDetail>) {
         val persistedDetails = details.sortedWith(
-            compareBy<TaskSessionDetail>({ it.key.sessionId.orEmpty() }, { it.key.threadId }),
+            compareBy<TaskSessionDetail>(
+                { it.key.workspaceId.orEmpty() },
+                { it.key.sessionId.orEmpty() },
+                { it.key.threadId },
+            ),
         )
         writeSessionDetails(persistedDetails)
         sessionDetails = persistedDetails

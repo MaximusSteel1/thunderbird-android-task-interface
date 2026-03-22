@@ -32,10 +32,21 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserve
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
@@ -51,12 +62,22 @@ import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyReque
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySender
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailSessionActionSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionType
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
@@ -159,10 +180,60 @@ class TaskSessionDetailViewModelTest {
             loadDetail(sessionId = null, threadId = "thread_321")
             assertThat(repository.requestedKey).isEqualTo(
                 TaskSessionKey(
+                    workspaceId = "workspace_001",
                     sessionId = null,
                     threadId = "thread_321",
                 ),
             )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should preserve workspace id in requested key`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+
+        with(TaskSessionDetailViewModelRobot(this, repository)) {
+            start()
+            loadDetail(workspaceId = "workspace_direct_001")
+            assertThat(repository.requestedKey).isEqualTo(
+                TaskSessionKey(
+                    workspaceId = "workspace_direct_001",
+                    sessionId = "session_001",
+                    threadId = "thread_001",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should restore latest direct session-action record for current session target`() = runMviTest {
+        val latestRecord = TaskMailSessionActionSendRecord(
+            recordedAt = 200L,
+            actionType = TaskMailDirectSessionActionRequest.Status(
+                target = sampleDirectTarget(),
+            ).actionType,
+            target = sampleDirectTarget(),
+            evidence = TaskMailDirectSendEvidence(
+                bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                outcome = TaskMailDirectOutcome.DirectAccepted,
+                switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+                requestId = "req_rehydrated",
+                receiptId = "receipt-rehydrated",
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                sessionActionSendRecordRepository = FakeTaskMailSessionActionSendRecordRepository(latestRecord),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertThat(viewModelState().latestDirectSessionActionRecord).isEqualTo(latestRecord)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -631,6 +702,123 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `send reply should use direct lane for plain reply when canonical workspace id is available`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = "ship it",
+                ).actionType,
+                requestId = "req_001",
+                receiptId = "receipt-1",
+                transportMessageId = "transport-1",
+            ),
+        )
+
+        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(mailSender.requests.size).isEqualTo(0)
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = "ship it",
+                ),
+            )
+            assertThat(viewModelState().draftText).isEqualTo("")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.actionType).isEqualTo(
+                TaskMailDirectSessionActionType.Reply,
+            )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.target).isEqualTo(sampleDirectTarget())
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId).isEqualTo("req_001")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.transportMessageId).isEqualTo(
+                "transport-1",
+            )
+            assertShowMessageEffect(
+                "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should fall back to mail when direct lane is temporarily unavailable`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.FallbackToMail("direct lane is temporarily unavailable"),
+        )
+
+        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(directSender.requests.size).isEqualTo(1)
+            assertThat(mailSender.requests.single().body).isEqualTo("ship it")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.actionType).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = "ship it",
+                ).actionType,
+            )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.outcome).isEqualTo(
+                TaskMailDirectOutcome.MailFallbackSucceeded,
+            )
+            assertShowMessageEffect("[Mail fallback] Reply sent.")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should preserve draft when direct lane hard rejects`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Rejected(
+                errorMessage = "session identity mismatch",
+            ),
+        )
+
+        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(directSender.requests.size).isEqualTo(1)
+            assertThat(mailSender.requests.size).isEqualTo(0)
+            assertThat(viewModelState().draftText).isEqualTo("ship it")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.switchGate).isEqualTo(
+                TaskMailDirectSwitchGate.SwitchBlocker,
+            )
+            assertThat(viewModelState().sendError).isEqualTo("session identity mismatch")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should keep mail path when canonical workspace id is unavailable`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+            start()
+            loadDetail(workspaceId = null)
+            changeDraft("ship it")
+            sendReply()
+            assertThat(directSender.requests.size).isEqualTo(0)
+            assertThat(mailSender.requests.single().body).isEqualTo("ship it")
+            assertShowMessageEffect("[Mail] Reply sent.")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `send reply should send structured answers for multi question sessions`() = runMviTest {
         val sender = FakeTaskMailReplySender()
         val repository = FakeTaskSessionDetailRepository(detail = multiQuestionDetail())
@@ -736,6 +924,48 @@ class TaskSessionDetailViewModelTest {
             sendStatusQuery()
             assertThat(sender.requests.single().body).isEqualTo("/status")
             assertShowMessageEffect("[Mail] /status sent.")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `status query should use direct lane when canonical workspace id is available`() = runMviTest {
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionRequest.Status(
+                    target = sampleDirectTarget(),
+                ).actionType,
+                requestId = "req_002",
+                receiptId = "receipt-2",
+                transportMessageId = "transport-2",
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                mailSender,
+                directSessionActionSender = directSender,
+            ),
+        ) {
+            start()
+            loadDetail()
+            sendStatusQuery()
+            assertThat(mailSender.requests.size).isEqualTo(0)
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Status(
+                    target = sampleDirectTarget(),
+                ),
+            )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.actionType).isEqualTo(
+                TaskMailDirectSessionActionType.Status,
+            )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId).isEqualTo("req_002")
+            assertShowMessageEffect(
+                "[Relay] /status sent. Final state will refresh after the canonical [STATUS] mail arrives.",
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -979,13 +1209,21 @@ private class TaskSessionDetailViewModelRobot(
     attachmentResolver: TaskMailReplyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
     timelineAttachmentHandler: TaskMailTimelineAttachmentHandler = FakeTaskMailTimelineAttachmentHandler(),
     syncRequester: FakeTaskMailSyncRequester = FakeTaskMailSyncRequester(),
+    private val sessionActionSendRecordRepository: FakeTaskMailSessionActionSendRecordRepository =
+        FakeTaskMailSessionActionSendRecordRepository(),
     private val changeObserver: FakeTaskMailStoreChangeObserver = FakeTaskMailStoreChangeObserver(),
     private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
         FakeTaskMailForegroundRefreshTickerFactory(),
     syncTaskMailCache: SyncTaskMailCache? = null,
     private val directObserver: FakeObserveTaskMailDirectSessionDetail = FakeObserveTaskMailDirectSessionDetail(),
     logger: DetailViewModelFakeLogger = DetailViewModelFakeLogger(),
+    directSessionActionSender: FakeTaskMailDirectSessionActionSender? = null,
+    relayBootstrapManager: RelayBootstrapManager = FakeDetailRelayBootstrapManager(),
 ) {
+    private val getLatestTaskMailSessionActionSendRecord =
+        GetLatestTaskMailSessionActionSendRecord(sessionActionSendRecordRepository)
+    private val recordTaskMailSessionActionSendRecord =
+        RecordTaskMailSessionActionSendRecord(sessionActionSendRecordRepository)
     private val viewModel = TaskSessionDetailViewModel(
         detailRepository = repository,
         getTaskSessionDetail = GetTaskSessionDetail(repository),
@@ -993,9 +1231,15 @@ private class TaskSessionDetailViewModelRobot(
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
         foregroundRefreshTickerFactory = foregroundRefreshTickerFactory,
         sendTaskMailReply = SendTaskMailReply(replySender),
+        sendTaskMailDirectSessionAction = directSessionActionSender?.let(::SendTaskMailDirectSessionAction),
+        getLatestTaskMailSessionActionSendRecord = getLatestTaskMailSessionActionSendRecord,
+        recordTaskMailSessionActionSendRecord = recordTaskMailSessionActionSendRecord,
         replyAttachmentResolver = attachmentResolver,
         timelineAttachmentHandler = timelineAttachmentHandler,
         logger = logger,
+        runTaskMailDirectOrFallback = directSessionActionSender?.let {
+            RunTaskMailDirectOrFallback(relayBootstrapManager)
+        },
         syncTaskMailCache = syncTaskMailCache,
         observeTaskMailDirectSessionDetail = directObserver,
     )
@@ -1006,11 +1250,13 @@ private class TaskSessionDetailViewModelRobot(
     }
 
     suspend fun loadDetail(
+        workspaceId: String? = "workspace_001",
         sessionId: String? = "session_001",
         threadId: String = "thread_001",
     ) {
         viewModel.event(
             TaskSessionDetailContract.Event.LoadDetail(
+                workspaceId = workspaceId,
                 sessionId = sessionId,
                 threadId = threadId,
             ),
@@ -1179,6 +1425,26 @@ private class FakeTaskSessionDetailRepository(
     override suspend fun removeSessionDetails(keys: List<TaskSessionKey>) = Unit
 }
 
+private class FakeTaskMailSessionActionSendRecordRepository(
+    latestRecord: TaskMailSessionActionSendRecord? = null,
+) : TaskMailSessionActionSendRecordRepository {
+    private var records = listOfNotNull(latestRecord)
+
+    override suspend fun getLatestRecord(
+        target: TaskMailDirectSessionActionTarget,
+    ): TaskMailSessionActionSendRecord? {
+        return records.firstOrNull { record ->
+            record.target.workspaceId == target.workspaceId &&
+                record.target.sessionId == target.sessionId
+        }
+    }
+
+    override suspend fun saveRecord(record: TaskMailSessionActionSendRecord) {
+        records = (listOf(record) + records)
+            .sortedByDescending(TaskMailSessionActionSendRecord::recordedAt)
+    }
+}
+
 private class FakeTaskMailSyncRequester(
     private val result: Result<Unit> = Result.success(Unit),
 ) : TaskMailSyncRequester {
@@ -1253,6 +1519,25 @@ private class FakeTaskMailReplySender(
     }
 }
 
+private class FakeTaskMailDirectSessionActionSender(
+    private val result: TaskMailDirectSessionActionResult = TaskMailDirectSessionActionResult.Accepted(
+        actionType = TaskMailDirectSessionActionRequest.Reply(
+            target = sampleDirectTarget(),
+            replyText = "ship it",
+        ).actionType,
+        requestId = "req_001",
+        receiptId = "receipt-1",
+        transportMessageId = "transport-1",
+    ),
+) : TaskMailDirectSessionActionSender {
+    val requests = mutableListOf<TaskMailDirectSessionActionRequest>()
+
+    override suspend fun send(request: TaskMailDirectSessionActionRequest): TaskMailDirectSessionActionResult {
+        requests += request
+        return result
+    }
+}
+
 private class FakeTaskMailReplyAttachmentResolver(
     private val attachmentsToReturn: List<TaskReplyAttachment> = emptyList(),
 ) : TaskMailReplyAttachmentResolver {
@@ -1295,6 +1580,53 @@ private class FakeTaskMailTimelineAttachmentHandler(
     ): Result<Unit> {
         savedAttachments += attachment to destinationUriString
         return saveResult
+    }
+}
+
+private class FakeDetailRelayBootstrapManager(
+    private val bootstrapResult: RelayBootstrapResult =
+        RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck),
+) : RelayBootstrapManager {
+    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
+
+    override val connectionState = mutableConnectionState
+
+    override fun loadConfig(): RelayTransportConfig = RelayTransportConfig()
+
+    override fun saveConfig(config: RelayTransportConfig): Boolean = true
+
+    override suspend fun probeHealth(config: RelayTransportConfig): Result<RelayHealthStatus> {
+        return Result.success(
+            RelayHealthStatus(
+                status = "ok",
+                service = "mail-runner-relay",
+                listenHost = "0.0.0.0",
+                listenPort = 8787,
+                sessionCount = 0,
+                packetCount = 0,
+                tlsEnabled = false,
+                transportTokenId = "token-id",
+            ),
+        )
+    }
+
+    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
+        return Result.success(
+            RelayHelloAck(
+                messageType = "hello_ack",
+                connectionId = "connection-1",
+                serverTime = "2026-03-21T12:00:00Z",
+                heartbeatSeconds = 30,
+            ),
+        )
+    }
+
+    override suspend fun disconnect() {
+        mutableConnectionState.value = RelayConnectionState.Idle
+    }
+
+    override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
+        return bootstrapResult
     }
 }
 
@@ -1404,6 +1736,14 @@ private fun pausedSingleQuestionDetail(): TaskSessionDetail {
     return singleQuestionDetailWithChoiceLabels().copy(
         status = TaskMailSessionStatus.Paused,
         pausedFromStatus = TaskMailSessionStatus.WaitingUser,
+    )
+}
+
+private fun sampleDirectTarget(): TaskMailDirectSessionActionTarget {
+    return TaskMailDirectSessionActionTarget(
+        workspaceId = "workspace_001",
+        sessionId = "session_001",
+        threadId = "thread_001",
     )
 }
 

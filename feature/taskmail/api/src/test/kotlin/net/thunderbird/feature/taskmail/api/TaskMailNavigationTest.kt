@@ -26,7 +26,7 @@ class TaskMailNavigationTest {
     }
 
     @Test
-    fun `given SessionDetail route then basePath and route are correct`() {
+    fun `given SessionDetail route without workspace id then basePath and route are correct`() {
         val route = TaskMailRoute.SessionDetail(
             sessionId = "session_001",
             threadId = "thread_001",
@@ -40,6 +40,19 @@ class TaskMailNavigationTest {
         assertThat(constBase).isEqualTo(expectedBase)
         assertThat(basePath).isEqualTo(expectedBase)
         assertThat(routePath).isEqualTo("$expectedBase/session_001/thread_001")
+    }
+
+    @Test
+    fun `given SessionDetail route with workspace id then route keeps canonical workspace query`() {
+        val route = TaskMailRoute.SessionDetail(
+            workspaceId = "workspace_001",
+            sessionId = "session_001",
+            threadId = "thread_001",
+        )
+
+        assertThat(route.route()).isEqualTo(
+            "${TaskMailRoute.TASKMAIL_BASE_PATH}/session/session_001/thread_001?workspaceId=workspace_001",
+        )
     }
 
     @Test

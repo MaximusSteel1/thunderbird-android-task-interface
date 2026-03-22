@@ -483,7 +483,61 @@ The debug-specific path still exists and remains useful:
   - hard direct rejection (`invalid_payload`) 保留 draft、本地显示错误，并且在 `thread_085` 之后不再创建新的 PC 线程
 
 因此，当前仓库里实际实现的 Phase 2 `new task` slice 可以视为已完成主路径与负路径的 live closeout；后续
-status/result 仍走 mail，reply、`/status` 和 read-side direct transport 仍不在本 slice 范围内。
+status/result 仍走 mail；同日更晚些时候，`reply` / `/status` 的 Phase 5 guarded direct slice 已在独立
+planning-layer contract 下开始实现，但它不属于这里描述的 Phase 2 `new task` slice，也还没有把 current protocol /
+direct-default authority 一并改写。
+
+Later on 2026-03-22, and then again on 2026-03-23, the first Android-side Phase 5 post-creation session-action
+implementation slices landed under the shared planning-layer `post_creation_session_action_contract_v1` boundary.
+
+That follow-up implemented all of the following in-repo:
+
+- canonical `workspace_id` plumbing from workspace/detail navigation into `TaskMailRoute.SessionDetail`,
+  `TaskSessionKey`, cache JSON, snapshot-backed repository summaries, and detail lookup compatibility fallbacks
+- a dedicated relay `RelayTaskMailDirectSessionActionSender` plus `SendTaskMailDirectSessionAction` use case that maps
+  the frozen v1 packet wrapper for:
+  - `current-session plain reply`
+  - `current-session /status`
+- guarded `TaskSessionDetailViewModel` direct-lane gating that now reuses `RunTaskMailDirectOrFallback` only when:
+  - canonical `workspace_id + session_id` is available from the current detail route
+  - the action is current-session plain reply or current-session `/status`
+- file-backed `TaskMailSessionActionSendRecord` persistence keyed by canonical current-session target, so the latest
+  post-creation direct-or-fallback result is no longer only transient ViewModel state
+- `TaskSessionDetailViewModel` latest-record rehydration plus a detail review surface for the latest post-creation
+  direct evidence, including `outcome`, `switchGate`, `bootstrapStatus`, and optional send identifiers / fallback
+  reasons
+
+That same follow-up explicitly keeps these boundaries:
+
+- quick answer, multi-question `Answers:`, paused `/resume`, and attachment-bearing continuation still stay on the
+  retained mail path
+- direct `reply` / direct `/status` accepted still does not mean final task outcome; canonical mail truth remains the
+  user-visible source of status/result convergence
+- the new guarded detail lane does not by itself promote `reply` / `/status` into current Layer 1 protocol authority or
+  direct-default behavior
+- live mailbox / device closeout for that latest-record review surface is now positively evidenced on the current installed build, but shared-artifact strong-bind closeout is still open
+
+### 2026-03-23 Live/Manual Closeout Update
+
+2026-03-23 这轮 closeout 先处理了两个设备前置条件，然后只保留了 v1 scope 的两条 formal-host live/manual 样本：
+
+- 旧的 `net.thunderbird.android.debug` 与当前工作站 debug keystore 签名不一致，必须先卸载，再用 `.\gradlew.bat :app-thunderbird:installFullDebug` 重装当前 build
+- relay 目前没有正式设置入口，只能通过 debug deep link `app://taskmail/debug/relay` 手动恢复 `Relay transport token`；恢复后已确认 `Healthz` 和 `Connect` 都成功，再回正式 `Tasks` 做验证
+- 本轮样本固定为 `thread_019 / Phase5 status closeout 20260323 A` 与 `thread_020 / Phase5 reply closeout 20260323 B`
+
+本轮已经补齐的 live/manual 结论如下：
+
+- `thread_019` 的 current-session `/status` 在 Android 侧留下了 `actionType=Status`、`target=workspace_cb2404bf828c/thread_019`、`bootstrapStatus=hello_ack`、`outcome=MailFallbackSucceeded`、`switchGate=FallbackRequired` 的 latest direct evidence，同时 PC mailbox 侧收敛到 canonical `[STATUS][S:thread_019] Phase5 status closeout 20260323 A`
+- `thread_019` detail 实际返回重开后，`Latest direct result` 卡仍能恢复为 `Status query / Mail fallback succeeded / Fallback required / Hello ack`
+- `thread_020` 的 current-session plain reply `PHASE5_REPLY_CLOSEOUT_20260323_B` 在 Android 侧留下了 `actionType=Reply`、`target=workspace_cb2404bf828c/thread_020`、`bootstrapStatus=hello_ack`、`outcome=MailFallbackSucceeded`、`switchGate=FallbackRequired` 的 latest direct evidence；PC mailbox 侧先收到 reply ingress，然后因原线程为 `FAILED` 触发 fresh recovery run `20260323_020701_9913`，最终收敛到 canonical `[DONE][S:thread_020] Phase5 reply closeout 20260323 B`
+- `thread_020` 发送后曾瞬时出现 `Unable to load session`，但返回重开 detail 后即可恢复；按 formal-host 要求从桌面图标冷启动 Thunderbird，再经 `Tasks` 回到 detail 后，`Latest direct result` 卡仍能恢复为 `Plain reply / Mail fallback succeeded / Fallback required / Hello ack`
+- 当前 live closeout bundle 已能选中 Android `session_action` 记录并显示 `action_type` / `target_session_identity`，但 same-run bind 仍只有 `last_summary`，因为 Android fallback 记录还没有 `requestId` / `transportMessageId`，PC 当前 post-creation fallback canonical artifacts 也还没有保留 `action_type` / `target_session_identity` / action-specific ingress anchors
+
+因此当前最准确的状态判断是：
+
+- 设备侧 durable evidence / persistence 不再是 blocker
+- shared-artifact / strong-bind 才是 `Batch D` 剩余主线
+- `thread_020` 的 `Unable to load session` 更像 post-send UI drift 候选，而不是持久性丢失
 
 The debug path should still be treated as:
 
@@ -574,7 +628,10 @@ For documentation and planning purposes, the safest current interpretation is:
   sender-selection on-device coverage is still open
 - **Phase 2 direct `new task`**: implemented in repository, and the current `new task` slice now has live evidence for
   accepted direct ingress, fallback-to-mail, and hard rejection with draft retention; later status/result delivery
-  remains mail-based today, while reply, `/status`, and read-side direct transport remain future work
+  remains mail-based today, while the later Phase 5 guarded detail slice now allows canonical-target
+  `current-session plain reply` and `current-session /status` to attempt a non-default direct lane under shared
+  planning-layer contract gating; quick answer, structured reply, paused `/resume`, attachment continuation, and
+  current-protocol authority/default promotion remain outside that guarded slice
 - **Phase 4 `new task` durable direct evidence**: implemented in repository through machine-readable
   `TaskMailDirectSendEvidence` plus per-sender-account local record persistence and rehydration; the first Android/PC
   three-scenario matrix readout is now documented in the shared Phase 4 artifacts, and the formal `New task` screen
@@ -585,6 +642,7 @@ For documentation and planning purposes, the safest current interpretation is:
   `transport_message_id` 对齐；再之后的 `thread_098` 则在安装当前 formal-host build 后进一步闭环了
   `request_id`-first bind。当前剩余工作已不再是 narrow evidence blocker，而是基于现有 rollback / mismatch guardrails
   做显式 `new_task` direct-default review
+- **Phase 5 `reply` / `/status` guarded durable evidence**: 仓库实现已落地，并已在正式 host 上拿到首组 live/manual closeout 样本 `thread_019` 与 `thread_020`；当前安装 build 已有正向设备证据表明 latest post-creation direct evidence card 能跨 detail reload 与 formal-host desktop-launch cold start 还原，`/status` 可在当前 fallback gate 下收敛到 canonical `[STATUS]`，plain reply 可在 failed thread 上经 fresh recovery run 收敛到 canonical `[DONE]`；但当前 live bundles 仍只有 weak `last_summary` bind，因为 Android fallback `TaskMailSessionActionSendRecord` 还缺 `requestId` / `transportMessageId`，PC 当前 post-creation fallback canonical artifacts 也还没有保留 `action_type` / `target_session_identity` / action-specific ingress anchors
 - **TaskMail bot-mailbox runtime settings**: implemented in repository with focused automated coverage and a closed live-device save-then-send smoke from Android general settings
 - **Bootstrap discovery / repo-path assist**: implemented in repository with focused automated coverage, but current manual/device smoke for `Project list -> Use this repo -> Repo:` prefill is still open
 - **Session detail interaction**: implemented in repository, including attachments and structured multi-question replies
@@ -704,38 +762,22 @@ At the same time, Android should not overstate its own parity yet:
 
 ## Current Next Step
 
-With Phase 3 now frozen and the first Android-side Phase 4 matrix readout written down, the next engineering focus
-should be:
+With Phase 3 now frozen, the Phase 4 `new task` parity baseline already narrowed to guarded review, and the first
+Android-side Phase 5 `reply` / `/status` guarded lane plus durable-evidence slice now landed, the next engineering
+focus should be:
 
-- continue the Android / PC `new task` three-scenario matrix reconciliation around:
-  - `direct accepted`
-  - `fallback_to_mail`
-  - `hard_rejection_stop`
-- apply the now-documented `parity checklist -> mismatch ledger -> rollback trigger` order on each new Phase 4 sample,
-  so evidence consumption stops depending on one-off readouts
-- preserve the positive same-run parity rows already captured for `thread_083`, `thread_093`, `thread_094`, and
-  `thread_095`, while treating `thread_084` only as a historical retained-artifact gap rather than a current blocker
-  before any `new task` direct-default switch discussion
-- `hard_rejection_stop` 当前也不应再被读取为 Android 仓内待补实现：
-  - 2026-03-21 的 `Phase2 hard reject smoke B` 已经在 formal-host 路径上证明 ack-level hard rejection 会本地
-    stop、保留 draft、并且在 `thread_085` 之后不再创建新的 adjacent-runtime thread
-  - 当前仓头的 `RunTaskMailDirectOrFallbackTest`、`RelayTaskMailDirectNewTaskSenderTest`、
-    `TaskNewTaskViewModelTest`、`TaskNewTaskScreenKtTest` 也继续锁定 hard rejection 分类、draft retention、
-    latest-evidence review 与 no implicit mail fallback
-  - 因此如果后续 Phase 5 planning 仍把 `ack-level hard rejection live closeout` 写成剩余尾项，应先把它读成
-    shared / PC planning drift，而不是回头补 Android direct-send 代码或新增开关
-- keep mail fallback executable and reviewable while the shared parity checklist / mismatch ledger / rollback trigger
-  artifacts continue daily use；冻结后的 workflow 已在 `thread_097` 上通过生成的
-  `taskmail_daily_closeout_bundle.json` 重跑一次，`thread_098` 又补上了当前 formal-host build 上的
-  `request_id`-first bind；switch-review、decision note 与 rollout / activation note 现已补齐，因此下一步不再是
-  重复追 fresh bind 样本，也不再停留在“应该起草哪份文档”；同日后续的 Android 窄代码判断与 TaskMail-internal
-  窄验证现已确认：当前 formal-host `new_task` 的 guarded direct-default 边界已经由现有实现表达清楚，不需要再单独新增
-  `new_task` flow-scoped activation / config change。更近的一步只是把这个 verdict 同步回 authority / handoff，
-  并继续把 `reply` / `/status` 留在 scope 外
-- preserve the formal-host cold-start validation path as launcher-first/manual-`Tasks` smoke, because debug deep links
-  and direct adb activity starts do not exercise the same host boundary
-- only after those boundaries close, re-evaluate whether `reply` or `/status` are ready for a separate direct contract
-  freeze
+- keep the current `new_task` reading in observation mode rather than re-opening the already-closed narrow bind blocker,
+  unless fresh same-run evidence regresses from the current `request_id`-first readout
+- treat Phase 5 `Batch D` as strong-bind closeout work now, not as another sample-collection pass
+- do not rerun `thread_019` / `thread_020` unless the installed build or fallback behavior changes
+- close the remaining shared-artifact gap on the Android side by adding `requestId` and/or `transportMessageId` to fallback `TaskMailSessionActionSendRecord`
+- close the remaining shared-artifact gap on the PC side by preserving post-creation fallback `action_type`, `target_session_identity`, action-specific `ingress_message_id`, and `terminal_mail_subject` in canonical artifacts
+- after those artifacts exist, rerun the same narrow live/manual pair only to upgrade the current `last_summary` weak bind into a stronger same-run bind readout
+- treat `thread_020` post-send `Unable to load session` as a narrow UI drift candidate after the strong-bind gap is closed, rather than reopening the already-closed persistence question
+- preserve mail fallback, quick answer, structured `Answers:`, paused `/resume`, attachment continuation, and any
+  targeted-session variant outside this guarded Phase 5 scope
+- keep the formal-host cold-start validation path as launcher-first/manual-`Tasks` smoke, because debug deep links and
+  direct adb activity starts do not exercise the same host boundary
 
 ## 2026-03-22 Phase 3 Validation Note
 

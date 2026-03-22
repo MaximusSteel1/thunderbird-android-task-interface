@@ -138,6 +138,7 @@ private fun TaskSessionDetailLoadedContent(
         ) {
             overviewItems(detail = detail)
             refreshErrorItem(refreshError = state.refreshError)
+            latestDirectSessionActionItem(state = state)
             replyItem(
                 state = replyComposerState,
                 onEvent = onEvent,

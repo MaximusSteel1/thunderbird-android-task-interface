@@ -6,6 +6,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionSummary
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.withWorkspaceIdFallback
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 
@@ -56,7 +57,7 @@ internal class TaskWorkspaceSummaryProjector {
 
 private fun TaskSessionDetail.toSessionSummary(): TaskSessionSummary {
     return TaskSessionSummary(
-        key = key,
+        key = key.withWorkspaceIdFallback(workspace.workspaceId),
         sessionName = sessionName,
         status = status,
         lifecycle = lifecycle,

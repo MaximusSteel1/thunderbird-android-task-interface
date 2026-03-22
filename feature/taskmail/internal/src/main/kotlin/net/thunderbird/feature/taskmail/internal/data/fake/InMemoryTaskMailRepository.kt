@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.data.fake
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
@@ -18,9 +19,8 @@ internal class InMemoryTaskMailRepository(
     }
 
     override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
-        return sessionDetails.firstOrNull { detail ->
-            detail.key.threadId == key.threadId && detail.key.sessionId == key.sessionId
-        }
+        return sessionDetails.firstOrNull { detail -> detail.key == key }
+            ?: sessionDetails.firstOrNull { detail -> detail.key.isCompatibleWith(key) }
     }
 
     override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> = sessionDetails

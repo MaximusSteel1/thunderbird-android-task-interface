@@ -79,6 +79,7 @@ internal class TaskWorkspaceViewModel(
             is Event.SessionClicked -> {
                 emitEffect(
                     Effect.OpenSessionDetail(
+                        workspaceId = event.workspaceId,
                         sessionId = event.sessionId,
                         threadId = event.threadId,
                     ),
@@ -305,12 +306,15 @@ private fun TaskWorkspaceSummary.toUiState(): TaskWorkspaceItemUi {
         title = title,
         subtitle = subtitle.toDisplayWorkdir(),
         sessionCountLabel = "$sessionCount session${if (sessionCount == 1) "" else "s"}",
-        sessions = sessions.map(TaskSessionSummary::toUiState),
+        sessions = sessions.map { session ->
+            session.toUiState(workspaceId = key.workspaceId)
+        },
     )
 }
 
-private fun TaskSessionSummary.toUiState(): TaskSessionItemUi {
+private fun TaskSessionSummary.toUiState(workspaceId: String?): TaskSessionItemUi {
     return TaskSessionItemUi(
+        workspaceId = key.workspaceId ?: workspaceId,
         sessionId = key.sessionId,
         threadId = key.threadId,
         sessionName = sessionName,

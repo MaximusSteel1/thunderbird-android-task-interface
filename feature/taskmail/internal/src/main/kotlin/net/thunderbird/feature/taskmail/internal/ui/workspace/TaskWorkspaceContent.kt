@@ -155,6 +155,7 @@ private fun WorkspaceList(
                         onClick = {
                             onEvent(
                                 TaskWorkspaceContract.Event.SessionClicked(
+                                    workspaceId = session.workspaceId,
                                     sessionId = session.sessionId,
                                     threadId = session.threadId,
                                 ),

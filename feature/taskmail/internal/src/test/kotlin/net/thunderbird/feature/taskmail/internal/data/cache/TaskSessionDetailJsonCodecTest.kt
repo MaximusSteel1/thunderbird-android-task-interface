@@ -41,6 +41,7 @@ class TaskSessionDetailJsonCodecTest {
             required = false,
         )
         val detail = TaskMailPreviewData.sessionDetails.first().copy(
+            key = TaskMailPreviewData.sessionDetails.first().key.copy(workspaceId = "workspace_001"),
             question = secondQuestion,
             pendingQuestions = listOf(firstQuestion, secondQuestion),
             timeline = listOf(

@@ -34,37 +34,10 @@ internal class DefaultTaskMailNavigation : TaskMailNavigation {
         onFinish: (TaskMailRoute) -> Unit,
         onRepoSelected: (String) -> Unit,
     ) {
-        with(navGraphBuilder) {
-            deepLinkComposable<TaskMailRoute.Workspace>(TaskMailRoute.Workspace.BASE_PATH) {
-                TaskWorkspaceScreen(
-                    onOpenSession = { sessionId, threadId ->
-                        onFinish(
-                            TaskMailRoute.SessionDetail(
-                                sessionId = encodeTaskMailSessionId(sessionId),
-                                threadId = threadId,
-                            ),
-                        )
-                    },
-                    onOpenProjectSync = {
-                        onFinish(TaskMailRoute.ProjectSync)
-                    },
-                    onOpenNewTask = {
-                        onFinish(TaskMailRoute.NewTask)
-                    },
-                )
-            }
-        }
+        navGraphBuilder.registerWorkspaceRoute(onFinish)
 
         with(navGraphBuilder) {
-            deepLinkComposable<TaskMailRoute.SessionDetail>(TaskMailRoute.SessionDetail.BASE_PATH) { backStackEntry ->
-                val route = backStackEntry.toRoute<TaskMailRoute.SessionDetail>()
-
-                TaskSessionDetailScreen(
-                    sessionId = decodeTaskMailSessionId(route.sessionId),
-                    threadId = route.threadId,
-                    onBack = onBack,
-                )
-            }
+            registerSessionDetailRoute(onBack)
 
             deepLinkComposable<TaskMailRoute.NewTask>(TaskMailRoute.NewTask.BASE_PATH) { backStackEntry ->
                 val selectedRepoPath by backStackEntry.savedStateHandle
@@ -97,4 +70,51 @@ internal class DefaultTaskMailNavigation : TaskMailNavigation {
             }
         }
     }
+}
+
+private fun NavGraphBuilder.registerWorkspaceRoute(onFinish: (TaskMailRoute) -> Unit) {
+    deepLinkComposable<TaskMailRoute.Workspace>(TaskMailRoute.Workspace.BASE_PATH) {
+        TaskWorkspaceScreen(
+            onOpenSession = { workspaceId, sessionId, threadId ->
+                onFinish(
+                    createSessionDetailRoute(
+                        workspaceId = workspaceId,
+                        sessionId = sessionId,
+                        threadId = threadId,
+                    ),
+                )
+            },
+            onOpenProjectSync = {
+                onFinish(TaskMailRoute.ProjectSync)
+            },
+            onOpenNewTask = {
+                onFinish(TaskMailRoute.NewTask)
+            },
+        )
+    }
+}
+
+private fun NavGraphBuilder.registerSessionDetailRoute(onBack: () -> Unit) {
+    deepLinkComposable<TaskMailRoute.SessionDetail>(TaskMailRoute.SessionDetail.BASE_PATH) { backStackEntry ->
+        val route = backStackEntry.toRoute<TaskMailRoute.SessionDetail>()
+
+        TaskSessionDetailScreen(
+            workspaceId = route.workspaceId,
+            sessionId = decodeTaskMailSessionId(route.sessionId),
+            threadId = route.threadId,
+            onBack = onBack,
+        )
+    }
+}
+
+private fun createSessionDetailRoute(
+    workspaceId: String?,
+    sessionId: String?,
+    threadId: String,
+): TaskMailRoute.SessionDetail {
+    return TaskMailRoute.SessionDetail(
+        workspaceId = workspaceId,
+        sessionId = encodeTaskMailSessionId(sessionId),
+        threadId = threadId,
+    )
 }

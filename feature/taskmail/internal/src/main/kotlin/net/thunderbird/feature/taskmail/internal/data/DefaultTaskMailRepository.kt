@@ -23,6 +23,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirect
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailDetection
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskStateCapsule
@@ -64,7 +65,12 @@ internal class TaskMailSessionProjector(
         messages: List<TaskMailMessage>,
         key: TaskSessionKey,
     ): TaskSessionDetail? {
-        return buildSessionRecords(messages).firstOrNull { it.sessionKey == key }?.toDetail()
+        return buildSessionRecords(messages)
+            .let { records ->
+                records.firstOrNull { it.sessionKey == key }
+                    ?: records.firstOrNull { it.sessionKey.isCompatibleWith(key) }
+            }
+            ?.toDetail()
     }
 
     fun projectSessionDetails(messages: List<TaskMailMessage>): List<TaskSessionDetail> {
@@ -78,7 +84,10 @@ internal class TaskMailSessionProjector(
         if (keys.isEmpty()) return emptyList()
 
         return buildSessionRecords(messages)
-            .filter { sessionRecord -> sessionRecord.sessionKey in keys }
+            .filter { sessionRecord ->
+                sessionRecord.sessionKey in keys ||
+                    keys.any { key -> sessionRecord.sessionKey.isCompatibleWith(key) }
+            }
             .map { sessionRecord -> sessionRecord.toDetail() }
     }
 
@@ -397,6 +406,7 @@ private fun buildSessionRecordMetadata(
 
     return SessionRecordMetadata(
         sessionKey = TaskSessionKey(
+            workspaceId = workspaceId,
             sessionId = sessionId,
             threadId = representative,
         ),

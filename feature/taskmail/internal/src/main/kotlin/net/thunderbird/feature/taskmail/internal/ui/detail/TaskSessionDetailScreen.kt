@@ -22,6 +22,7 @@ import org.koin.androidx.compose.koinViewModel
 
 @Composable
 internal fun TaskSessionDetailScreen(
+    workspaceId: String?,
     sessionId: String?,
     threadId: String,
     onBack: () -> Unit,
@@ -63,9 +64,10 @@ internal fun TaskSessionDetailScreen(
         )
     }
 
-    LaunchedEffect(sessionId, threadId) {
+    LaunchedEffect(workspaceId, sessionId, threadId) {
         dispatch(
             TaskSessionDetailContract.Event.LoadDetail(
+                workspaceId = workspaceId,
                 sessionId = sessionId,
                 threadId = threadId,
             ),

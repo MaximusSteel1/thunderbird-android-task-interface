@@ -67,6 +67,7 @@ internal class TaskSessionDetailWorkdirDisplayTest {
 
         testSubject.event(
             TaskSessionDetailContract.Event.LoadDetail(
+                workspaceId = "workspace_001",
                 sessionId = "session_001",
                 threadId = "thread_001",
             ),

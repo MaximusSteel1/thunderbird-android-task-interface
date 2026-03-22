@@ -243,6 +243,8 @@ private fun TaskMailMessage.toTaskSessionKey(): TaskSessionKey {
         ?.takeIf(String::isNotBlank)
 
     return TaskSessionKey(
+        workspaceId = detection.stateCapsule?.workspaceId
+            ?.takeIf(String::isNotBlank),
         sessionId = detection.stateCapsule?.sessionId
             ?.takeIf(String::isNotBlank)
             ?: subjectSessionId,

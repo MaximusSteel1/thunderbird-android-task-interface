@@ -49,6 +49,7 @@ class FeatureLauncherNavHostTaskMailCallbackTest {
     fun `taskMailOnFinish navigates to taskmail route`() {
         var navigatedRoute: TaskMailRoute? = null
         val targetRoute = TaskMailRoute.SessionDetail(
+            workspaceId = "workspace-1",
             sessionId = "session-1",
             threadId = "thread-1",
         )

@@ -239,6 +239,7 @@ private class FakeTaskMailNavigation : TaskMailNavigation {
                     modifier = Modifier.clickable {
                         onFinish(
                             TaskMailRoute.SessionDetail(
+                                workspaceId = "workspace-1",
                                 sessionId = "session-1",
                                 threadId = "thread-1",
                             ),

@@ -129,6 +129,7 @@ class TaskWorkspaceScreenKtTest {
     @Test
     fun `content should dispatch session clicked when session row is pressed`() {
         var clickedSessionId: String? = null
+        var clickedWorkspaceId: String? = null
 
         composeTestRule.setContent {
             K9MailTheme2 {
@@ -141,6 +142,7 @@ class TaskWorkspaceScreenKtTest {
                                 sessionCountLabel = "1 session",
                                 sessions = listOf(
                                     TaskSessionItemUi(
+                                        workspaceId = "workspace_001",
                                         sessionId = "session_001",
                                         threadId = "thread_001",
                                         sessionName = "Build TaskMail Phase 1",
@@ -155,6 +157,7 @@ class TaskWorkspaceScreenKtTest {
                     ),
                     onEvent = { event ->
                         if (event is TaskWorkspaceContract.Event.SessionClicked) {
+                            clickedWorkspaceId = event.workspaceId
                             clickedSessionId = event.sessionId
                         }
                     },
@@ -165,6 +168,7 @@ class TaskWorkspaceScreenKtTest {
         composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).performClick()
 
         assertThat(clickedSessionId).isEqualTo("session_001")
+        assertThat(clickedWorkspaceId).isEqualTo("workspace_001")
     }
 
     @Test
@@ -182,6 +186,7 @@ class TaskWorkspaceScreenKtTest {
                                 sessionCountLabel = "1 session",
                                 sessions = listOf(
                                     TaskSessionItemUi(
+                                        workspaceId = "workspace_001",
                                         sessionId = null,
                                         threadId = "thread_321",
                                         sessionName = "Fallback thread session",
@@ -222,6 +227,7 @@ class TaskWorkspaceScreenKtTest {
                                 sessionCountLabel = "1 session",
                                 sessions = listOf(
                                     TaskSessionItemUi(
+                                        workspaceId = "workspace_001",
                                         sessionId = "session_001",
                                         threadId = "thread_001",
                                         sessionName = "Build TaskMail Phase 1",

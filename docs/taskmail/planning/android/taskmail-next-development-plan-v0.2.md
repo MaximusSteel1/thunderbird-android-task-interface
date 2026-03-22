@@ -11,6 +11,30 @@
   `docs/taskmail/planning/android/taskmail-phase4-closeout-and-phase5-narrow-plan-v0.1.md`。
 - 当前已额外产出 `docs/taskmail/planning/android/taskmail-phase5-new-task-switch-review-v0.1.md`；最新读法已从
   `not_ready_keep_mail_default` 推进到 `ready_for_direct_default_review`，但这仍不等于立即切换 `direct-default`。
+- 当前已额外产出 `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`；
+  这份 note 继续把 Phase 5 推进到 guarded rollout / observation 边界，并显式写出 Android 侧后续 closeout
+  discipline 与需要 PC 侧配合提供的 artifact / contract 要求。
+- 当前已额外产出 `docs/taskmail/planning/android/taskmail-phase5-reply-status-direct-contract-prerequisites-v0.1.md`；
+  这份 note 不把 `reply` / `/status` 提前拉进实现，而是先把进入 direct contract freeze 之前必须关闭的
+  current-protocol 前提、范围裁剪与 PC 配合项显式写清。
+- 当前已额外产出 `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-coordination-checklist-v0.1.md`；
+  这份短版 checklist 把 Android 侧希望相邻 PC 侧先冻结到 `docs/current/*` 的问题压缩成可直接 review 的输入，
+  仍不等于已经授权 Android 进入 direct `reply` / `/status` 实现。
+- 当前已额外产出 `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-message-template-v0.1.md`；
+  这份模板把 checklist 进一步压缩成可直接发给相邻 PC 侧的沟通文本，方便后续协作，但仍不替代 protocol freeze 本身。
+- 相邻 PC 侧现已不仅回给 repo-side reading，还已在
+  `E:\projects\mail_based_task_manager\docs\plans\post_creation_session_action_contract_v1.md`
+  落地 shared planning-layer contract；当前 Android 仓已把这轮对齐与 shared contract 收口到
+  `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-alignment-readout-v0.1.md`。
+- 当前因此不再是“继续等待 shared contract”，而是“基于 shared contract 进入 Android 实现规划”；对应 note 为
+  `docs/taskmail/planning/android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`。同日后续代码
+  已继续关闭 `Batch A` / `Batch B` / `Batch C`：
+  - detail route / `TaskSessionKey` 已补 canonical `workspace_id + session_id`
+  - session-action direct sender / result mapping 已落地
+  - `TaskSessionDetailViewModel` 已对 `current-session plain reply` 与 `current-session /status` 接入 guarded
+    direct lane
+  - `TaskMailSessionActionSendRecord` durable evidence / latest-review surface 已落地
+  当前剩余主线已收敛到 `Batch D` 的后半段：live / mailbox closeout 与 shared-artifact closeout 读法。
 - 本文不替代以下当前 authority：
   - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
   - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
@@ -31,10 +55,17 @@
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-phase4-dual-stack-boundary-freeze-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-phase2-direct-outbound-contract-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-direct-contract-prerequisites-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-coordination-checklist-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-message-template-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-pc-alignment-readout-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
 - `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-dual-stack-start.md`
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/current/android_reply_method_rules.md`
+- `E:\projects\mail_based_task_manager\docs\plans\post_creation_session_action_contract_v1.md`
 
 ## 当前规划基线
 
@@ -268,9 +299,19 @@ Phase 4 期间必须持续遵守以下边界：
 
 1. 先把当前 Phase 4 读成 `new_task parity baseline` 收口，而不是继续扩旧样本范围。
 2. `thread_097` 已经用冻结后的 shared-artifact 流程完成第一条 post-freeze fresh closeout，`thread_098` 又在当前 formal-host build 上闭环了 `request_id` 首键 bind；下一轮不要回到 old-style 人工拼接，也不需要默认再先追同类样本。
-3. 当前 `new_task` 已具备进入 guarded direct-default review 的 evidence 条件，对应 decision note 与 rollout / activation note 现已落地；下一步不再是补 bind blocker，也不再是补这两份 note，而是先判断 Android 当前是否还需要单独的 `new_task` flow-scoped activation / config change。
+3. 当前 `new_task` 已具备进入 guarded direct-default review 的 evidence 条件，对应 decision note 与 rollout / activation note 现已落地；同日后续 authority / validation 也已把更窄问题收口为 `no_additional_new_task_activation_config_needed`，因此下一步不再是补 bind blocker、补这两份 note，或再单独新增 `new_task` flow-scoped activation / config change。
 4. 如果后续 fresh sample 再次退回到 `transportMessageId` / `ingress_message_id` 才能闭环，或 helper 重新出现 `android_request_id_missing`，再把结论回退到 `not_ready_keep_mail_default`。
-5. 只有在 `new_task` rollout / activation 边界稳定后，才评估 `reply` 或 `/status` 的 direct contract 冻结。
+5. `reply` / `/status` 的 shared post-creation session-action contract 现已在相邻 PC 仓 planning/shared 层落地；
+   当前下一步不再是继续追问 contract ownership / scope，而是进入 Android 实现规划，对应主文档为
+   `taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`。
+6. 同日后续实现已继续把这条线推进到 guarded code slice：
+   - canonical target identity plumbing 已闭环
+   - `RelayTaskMailDirectSessionActionSender` 已按 shared contract 落地
+   - `TaskSessionDetailViewModel` 现已只对 `current-session plain reply` 与 `current-session /status` 尝试 guarded
+     direct lane
+   - latest direct session-action evidence 持久化、重建与 review surface 已落地
+   当前下一步不再是写 sender / gating，而是继续 Batch D 的 live / mailbox closeout，并把记录字段对齐到 shared
+   closeout artifacts。
 
 这比“同时推进 `new task`、`reply`、`/status` 的 direct 化”更稳，因为它尊重了当前 repository 已闭环的唯一 direct business slice，也避免把未冻结的 post-creation control actions 过早拉进实现范围。
 
@@ -278,10 +319,15 @@ Phase 4 期间必须持续遵守以下边界：
 
 截至本文更新时，仍需显式保留的开放问题包括：
 
-- `reply` direct contract 应扩展现有 `phase2-direct-outbound-contract-v1`，还是另起 session-action contract。
-- `reply` direct 化时，`Answers:`、single-question、paused `/resume`、attachment-only continuation 是否共用同一 transport envelope。
-- `new task` 切为 direct-default 后，哪些 parity mismatch 只记录证据，哪些应立即让该 flow 暂退回 mail-default。
-- direct accepted 后的“后续状态通过 mail 到达较慢”应如何与真正的 parity failure 区分，避免把 mail-latency 误判成 direct regression。
+- latest direct session-action evidence 已能在 Android 本地持久化与重建，但它尚未进入 shared-artifact closeout；
+  live closeout 时应如何把 `action_type`、`target_session_identity`、`request_id`、`ingress_message_id`、
+  `terminal_mail_subject`、`last_summary` 与 same-run bind readout 对齐到 shared contract，仍待后续实跑收口。
+- accepted direct `reply` 与 accepted direct `/status` 目前只有 focused automated evidence；二者如何在 live mailbox
+  上稳定收敛到 canonical mail outcome，仍需后续 closeout。
+- latest direct evidence review surface 现已具备仓内 UI / ViewModel / repository 证据，但它在真实设备上的 screen reload /
+  recent-tasks cold start 保持可 review 仍待后续手工验证。
+- 更宽的 `:feature:taskmail:internal:testDebugUnitTest` 仍会被 `TaskMailValidationRunner` 对相邻 PC 仓
+  `scripts/test_fetch_latest_100.json` 的本地依赖阻塞；当前不应把该失败误读为本轮 Phase 5 guarded slice 回归。
 
 ## 当前结论
 
@@ -292,5 +338,10 @@ Phase 4 期间必须持续遵守以下边界：
 - 而是先把 Phase 4 收口成 `new_task parity baseline`，再进入 Phase 5 的窄范围 hardening：沿用已在 `thread_097`
   / `thread_098` 上跑通的 shared-artifact closeout 流程，把 `new_task` 的 guarded direct-default review 结论、
   decision note 与 rollout / activation 边界显式写清楚；在没有新的 evidence 回退前，不继续为同类 bind blocker
-  反复补样本，也不提前扩大到 `reply` / `/status`；更近的一步是先判断是否真的需要 Android 侧 flow-scoped activation /
-  config change。
+  反复补样本，也不提前扩大到 `reply` / `/status`；当前 Android 侧的更近一步已经明确为保持
+  `no_additional_new_task_activation_config_needed` 这个 verdict 同步在 authority / handoff 中，而不是再造新的
+  activation/config 实现；而 `reply` / `/status` 这条线也已经从 prerequisites / PC coordination 推进到 shared
+  planning-layer contract 已落地、Android 可进入实现规划的阶段：第一批 scope 固定为
+  `current-session plain reply` + `current-session /status`；canonical `workspace_id + session_id`、guarded direct
+  sender / gating、以及 latest direct session-action evidence 首段已经落地，当前下一步是保持 Layer 1 mail truth
+  layer 不变，继续补 live / mailbox closeout 与 shared-artifact evidence 读法，而不是再扩写 sender scope。

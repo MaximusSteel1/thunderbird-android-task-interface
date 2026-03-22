@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.ui.detail
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.ui.contract.mvi.UnidirectionalViewModel
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 
 internal interface TaskSessionDetailContract {
@@ -17,12 +18,14 @@ internal interface TaskSessionDetailContract {
         val draftText: String = "",
         val isSending: Boolean = false,
         val sendError: String? = null,
+        val latestDirectSessionActionRecord: TaskMailSessionActionSendRecord? = null,
         val replyAttachments: ImmutableList<TaskReplyAttachment> = persistentListOf(),
         val detail: TaskSessionDetailUiState? = null,
     )
 
     sealed interface Event {
         data class LoadDetail(
+            val workspaceId: String?,
             val sessionId: String?,
             val threadId: String,
         ) : Event

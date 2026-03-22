@@ -347,6 +347,7 @@ private class TaskWorkspaceViewModelRobot(
         assertThat(state.error).isEqualTo(null)
         assertThat(state.workspaces).hasSize(1)
         assertThat(state.workspaces.first().sessions).hasSize(1)
+        assertThat(state.workspaces.first().sessions.first().workspaceId).isEqualTo("workspace_001")
     }
 
     suspend fun assertEmptyState() {
@@ -364,6 +365,7 @@ private class TaskWorkspaceViewModelRobot(
     fun clickSession() {
         viewModel.event(
             TaskWorkspaceContract.Event.SessionClicked(
+                workspaceId = "workspace_001",
                 sessionId = "session_001",
                 threadId = "thread_001",
             ),
@@ -381,6 +383,7 @@ private class TaskWorkspaceViewModelRobot(
     suspend fun assertOpenDetailEffect() {
         assertThat(turbines.awaitEffectItem()).isEqualTo(
             TaskWorkspaceContract.Effect.OpenSessionDetail(
+                workspaceId = "workspace_001",
                 sessionId = "session_001",
                 threadId = "thread_001",
             ),

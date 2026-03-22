@@ -80,6 +80,7 @@ private fun TaskSessionDetail.toJsonObject(): JsonObject {
 
 private fun TaskSessionKey.toJsonObject(): JsonObject {
     return buildJsonObject {
+        putNullable("workspaceId", workspaceId)
         putNullable("sessionId", sessionId)
         put("threadId", threadId)
     }
@@ -336,6 +337,7 @@ private fun JsonObject.toTaskSessionDetail(): TaskSessionDetail {
 
 private fun JsonObject.toTaskSessionKey(): TaskSessionKey {
     return TaskSessionKey(
+        workspaceId = optionalString("workspaceId"),
         sessionId = optionalString("sessionId"),
         threadId = string("threadId"),
     )
