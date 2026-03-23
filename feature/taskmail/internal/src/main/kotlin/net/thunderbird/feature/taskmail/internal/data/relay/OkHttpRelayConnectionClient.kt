@@ -19,11 +19,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import net.thunderbird.core.logging.Logger
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayError
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHello
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayServerMessage
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -41,6 +43,7 @@ private const val CONNECT_TIMEOUT_SECONDS = 15L
 private const val PING_INTERVAL_SECONDS = 30L
 private const val MILLIS_PER_SECOND = 1000L
 
+@Suppress("TooManyFunctions")
 internal class OkHttpRelayConnectionClient(
     private val codec: RelayProtocolJsonCodec,
     private val logger: Logger,
@@ -55,12 +58,16 @@ internal class OkHttpRelayConnectionClient(
 
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
     private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 32)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 32)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 32)
     private var webSocket: WebSocket? = null
     private var helloAckDeferred: CompletableDeferred<Result<RelayHelloAck>>? = null
     private var packetAckDeferred: CompletableDeferred<Result<RelayPacketAck>>? = null
 
     override val connectionState: StateFlow<RelayConnectionState> = mutableConnectionState.asStateFlow()
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates.asSharedFlow()
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents.asSharedFlow()
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults.asSharedFlow()
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
         return withContext(ioDispatcher) {
@@ -103,7 +110,10 @@ internal class OkHttpRelayConnectionClient(
         }
     }
 
-    override suspend fun sendPacket(packet: RelayPacket): Result<RelayPacketAck> {
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> {
         return withContext(ioDispatcher) {
             val activeWebSocket = webSocket
             if (activeWebSocket == null || mutableConnectionState.value !is RelayConnectionState.Connected) {
@@ -132,7 +142,7 @@ internal class OkHttpRelayConnectionClient(
             }
 
             try {
-                withTimeout(CONNECT_TIMEOUT_SECONDS * MILLIS_PER_SECOND) {
+                withTimeout(ackTimeoutMillis) {
                     deferred.await()
                 }
             } catch (error: TimeoutCancellationException) {
@@ -162,6 +172,107 @@ internal class OkHttpRelayConnectionClient(
         helloAckDeferred = null
         packetAckDeferred?.cancel()
         packetAckDeferred = null
+    }
+
+    private fun handleHelloAck(message: RelayHelloAck) {
+        mutableConnectionState.value = RelayConnectionState.Connected(
+            connectionId = message.connectionId,
+            serverTime = message.serverTime,
+            heartbeatSeconds = message.heartbeatSeconds,
+        )
+        helloAckDeferred?.let { helloDeferred ->
+            if (!helloDeferred.isCompleted) {
+                helloDeferred.complete(Result.success(message))
+            }
+        }
+        helloAckDeferred = null
+    }
+
+    private fun handlePacketAck(message: RelayPacketAck) {
+        if (message.accepted) {
+            logger.debug(TAG) {
+                "Received relay packet ack for packetId=${message.packetId}"
+            }
+        } else {
+            logger.warn(TAG) {
+                "Relay packet ack rejected for packetId=${message.packetId} " +
+                    "code=${message.errorCode.orEmpty()} " +
+                    "error=${message.errorMessage.orEmpty()}"
+            }
+        }
+
+        packetAckDeferred?.let { packetDeferred ->
+            if (!packetDeferred.isCompleted) {
+                packetDeferred.complete(Result.success(message))
+            }
+        }
+        packetAckDeferred = null
+    }
+
+    private fun handleSessionUpdate(message: RelaySessionUpdate) {
+        val emitted = mutableSessionUpdates.tryEmit(message)
+        if (!emitted) {
+            logger.warn(TAG) {
+                "Dropping relay session_update updateId=${message.updateId} because no collector is ready."
+            }
+        }
+    }
+
+    private fun handleEvent(message: RelayEvent) {
+        val emitted = mutableServerEvents.tryEmit(message)
+        if (!emitted) {
+            logger.warn(TAG) {
+                "Dropping relay event type=${message.eventType} requestId=${message.requestId.orEmpty()} " +
+                    "because no collector is ready."
+            }
+        }
+    }
+
+    private fun handleResult(message: RelayResult) {
+        val emitted = mutableServerResults.tryEmit(message)
+        if (!emitted) {
+            logger.warn(TAG) {
+                "Dropping relay result type=${message.resultType.orEmpty()} " +
+                    "requestId=${message.requestId.orEmpty()} because no collector is ready."
+            }
+        }
+    }
+
+    private fun handleServerError(message: RelayError) {
+        logger.warn(TAG) {
+            "Relay server error code=${message.code} message=${message.message}"
+        }
+        failCurrentOperation(
+            RelayServerException(
+                code = message.code,
+                message = message.message,
+            ),
+        )
+    }
+
+    private fun failCurrentOperation(error: Throwable) {
+        if (
+            mutableConnectionState.value is RelayConnectionState.Failed &&
+            helloAckDeferred == null &&
+            packetAckDeferred == null
+        ) {
+            return
+        }
+
+        val message = error.message?.takeIf(String::isNotBlank) ?: "Relay websocket operation failed."
+        mutableConnectionState.value = RelayConnectionState.Failed(message)
+
+        if (helloAckDeferred?.isCompleted == false) {
+            helloAckDeferred?.complete(Result.failure(error))
+        }
+        helloAckDeferred = null
+
+        if (packetAckDeferred?.isCompleted == false) {
+            packetAckDeferred?.complete(Result.failure(error))
+        }
+        packetAckDeferred = null
+
+        webSocket?.cancel()
     }
 
     private inner class RelaySocketListener(
@@ -212,94 +323,27 @@ internal class OkHttpRelayConnectionClient(
             }
         }
 
-        private fun failCurrentOperation(error: Throwable) {
-            if (
-                mutableConnectionState.value is RelayConnectionState.Failed &&
-                helloAckDeferred == null &&
-                packetAckDeferred == null
-            ) {
-                return
-            }
-
-            val message = error.message?.takeIf(String::isNotBlank) ?: "Relay websocket operation failed."
-            mutableConnectionState.value = RelayConnectionState.Failed(message)
-
-            if (helloAckDeferred?.isCompleted == false) {
-                helloAckDeferred?.complete(Result.failure(error))
-            }
-            helloAckDeferred = null
-
-            if (packetAckDeferred?.isCompleted == false) {
-                packetAckDeferred?.complete(Result.failure(error))
-            }
-            packetAckDeferred = null
-
-            webSocket?.cancel()
-        }
-
         private fun handleServerMessage(message: RelayServerMessage) {
             when (message) {
-                is RelayServerMessage.HelloAck -> handleHelloAck(message.message)
-                is RelayServerMessage.PacketAck -> handlePacketAck(message.message)
-                is RelayServerMessage.SessionUpdate -> handleSessionUpdate(message.message)
-                is RelayServerMessage.Error -> handleServerError(message.message)
-            }
-        }
-
-        private fun handleHelloAck(message: RelayHelloAck) {
-            mutableConnectionState.value = RelayConnectionState.Connected(
-                connectionId = message.connectionId,
-                serverTime = message.serverTime,
-                heartbeatSeconds = message.heartbeatSeconds,
-            )
-            helloAckDeferred?.let { helloDeferred ->
-                if (!helloDeferred.isCompleted) {
-                    helloDeferred.complete(Result.success(message))
+                is RelayServerMessage.HelloAck -> {
+                    this@OkHttpRelayConnectionClient.handleHelloAck(message.message)
+                }
+                is RelayServerMessage.PacketAck -> {
+                    this@OkHttpRelayConnectionClient.handlePacketAck(message.message)
+                }
+                is RelayServerMessage.SessionUpdate -> {
+                    this@OkHttpRelayConnectionClient.handleSessionUpdate(message.message)
+                }
+                is RelayServerMessage.Event -> {
+                    this@OkHttpRelayConnectionClient.handleEvent(message.message)
+                }
+                is RelayServerMessage.Result -> {
+                    this@OkHttpRelayConnectionClient.handleResult(message.message)
+                }
+                is RelayServerMessage.Error -> {
+                    this@OkHttpRelayConnectionClient.handleServerError(message.message)
                 }
             }
-            helloAckDeferred = null
-        }
-
-        private fun handlePacketAck(message: RelayPacketAck) {
-            if (message.accepted) {
-                logger.debug(TAG) {
-                    "Received relay packet ack for packetId=${message.packetId}"
-                }
-            } else {
-                logger.warn(TAG) {
-                    "Relay packet ack rejected for packetId=${message.packetId} " +
-                        "code=${message.errorCode.orEmpty()} " +
-                        "error=${message.errorMessage.orEmpty()}"
-                }
-            }
-
-            packetAckDeferred?.let { packetDeferred ->
-                if (!packetDeferred.isCompleted) {
-                    packetDeferred.complete(Result.success(message))
-                }
-            }
-            packetAckDeferred = null
-        }
-
-        private fun handleSessionUpdate(message: RelaySessionUpdate) {
-            val emitted = mutableSessionUpdates.tryEmit(message)
-            if (!emitted) {
-                logger.warn(TAG) {
-                    "Dropping relay session_update updateId=${message.updateId} because no collector is ready."
-                }
-            }
-        }
-
-        private fun handleServerError(message: RelayError) {
-            logger.warn(TAG) {
-                "Relay server error code=${message.code} message=${message.message}"
-            }
-            failCurrentOperation(
-                RelayServerException(
-                    code = message.code,
-                    message = message.message,
-                ),
-            )
         }
     }
 

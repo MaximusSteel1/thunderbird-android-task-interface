@@ -7,9 +7,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.test.runTest
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -288,12 +290,16 @@ private class FakeRelayConnectionClient(
 ) : RelayConnectionClient {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
     private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
 
     var lastConnectConfig: RelayTransportConfig? = null
     var disconnectCallCount: Int = 0
 
     override val connectionState = mutableConnectionState
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
         lastConnectConfig = config
@@ -312,7 +318,10 @@ private class FakeRelayConnectionClient(
         return connectResult
     }
 
-    override suspend fun sendPacket(packet: RelayPacket): Result<RelayPacketAck> {
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> {
         return Result.failure(IllegalStateException("sendPacket is not used in bootstrap tests"))
     }
 

@@ -46,6 +46,18 @@ internal class RelayProtocolJsonCodec(
                 )
             }
 
+            RelayEvent.MESSAGE_TYPE -> {
+                RelayServerMessage.Event(
+                    json.decodeFromString(RelayEvent.serializer(), payload),
+                )
+            }
+
+            RelayResult.MESSAGE_TYPE -> {
+                RelayServerMessage.Result(
+                    json.decodeFromString(RelayResult.serializer(), payload),
+                )
+            }
+
             RelayError.MESSAGE_TYPE -> {
                 RelayServerMessage.Error(
                     json.decodeFromString(RelayError.serializer(), payload),
@@ -72,6 +84,14 @@ internal sealed interface RelayServerMessage {
 
     data class SessionUpdate(
         val message: RelaySessionUpdate,
+    ) : RelayServerMessage
+
+    data class Event(
+        val message: RelayEvent,
+    ) : RelayServerMessage
+
+    data class Result(
+        val message: RelayResult,
     ) : RelayServerMessage
 
     data class Error(

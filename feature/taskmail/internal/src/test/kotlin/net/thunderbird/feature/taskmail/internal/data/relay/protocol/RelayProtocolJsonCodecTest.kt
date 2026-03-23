@@ -189,6 +189,83 @@ class RelayProtocolJsonCodecTest {
     }
 
     @Test
+    fun `decodeServerMessage should decode event`() {
+        val message = testSubject.decodeServerMessage(
+            """
+            {
+              "message_type": "event",
+              "envelope_id": "env_001",
+              "sent_at": "2026-03-23T20:00:01Z",
+              "request_id": "req_001",
+              "packet_id": "pkt_001",
+              "event_type": "vps_probe_bridge_finished",
+              "payload_schema": "taskmail-transport-probe-payload-v1",
+              "payload": {
+                "probe_id": "probe_001"
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(message).isEqualTo(
+            RelayServerMessage.Event(
+                RelayEvent(
+                    envelopeId = "env_001",
+                    sentAt = "2026-03-23T20:00:01Z",
+                    requestId = "req_001",
+                    packetId = "pkt_001",
+                    eventType = "vps_probe_bridge_finished",
+                    payloadSchema = "taskmail-transport-probe-payload-v1",
+                    payload = Json.parseToJsonElement("""{"probe_id":"probe_001"}"""),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `decodeServerMessage should decode result`() {
+        val message = testSubject.decodeServerMessage(
+            """
+            {
+              "message_type": "result",
+              "envelope_id": "env_002",
+              "sent_at": "2026-03-23T20:00:03Z",
+              "request_id": "req_001",
+              "packet_id": "pkt_001",
+              "receipt_id": "receipt_001",
+              "result_id": "result_001",
+              "result_type": "transport_probe_result",
+              "status": "completed",
+              "payload_schema": "taskmail-transport-probe-payload-v1",
+              "payload": {
+                "probe_id": "probe_001",
+                "outcome": "observed"
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(message).isEqualTo(
+            RelayServerMessage.Result(
+                RelayResult(
+                    envelopeId = "env_002",
+                    sentAt = "2026-03-23T20:00:03Z",
+                    requestId = "req_001",
+                    packetId = "pkt_001",
+                    receiptId = "receipt_001",
+                    resultId = "result_001",
+                    resultType = "transport_probe_result",
+                    status = "completed",
+                    payloadSchema = "taskmail-transport-probe-payload-v1",
+                    payload = Json.parseToJsonElement(
+                        """{"probe_id":"probe_001","outcome":"observed"}""",
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     @Suppress("LongMethod")
     fun `decodeServerMessage should decode session_update snapshot`() {
         val message = testSubject.decodeServerMessage(

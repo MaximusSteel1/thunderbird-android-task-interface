@@ -90,6 +90,7 @@ class OkHttpRelayConnectionClientTest {
                 },
                 sentAt = "2026-03-20T19:00:00Z",
             ),
+            ackTimeoutMillis = DEFAULT_PACKET_ACK_TIMEOUT_MILLIS,
         )
 
         val request = server.takeRequest()
@@ -164,6 +165,7 @@ class OkHttpRelayConnectionClientTest {
                 },
                 sentAt = "2026-03-20T19:00:00Z",
             ),
+            ackTimeoutMillis = DEFAULT_PACKET_ACK_TIMEOUT_MILLIS,
         )
 
         assertThat(connectResult.isSuccess).isEqualTo(true)
@@ -244,6 +246,82 @@ class OkHttpRelayConnectionClientTest {
 
         assertThat(result.isSuccess).isEqualTo(true)
         assertThat(sessionUpdate.await().updateId).isEqualTo("sessupd:session_001:9")
+        assertThat((testSubject.connectionState.value as RelayConnectionState.Connected).connectionId)
+            .isEqualTo("connection-1")
+    }
+
+    @Test
+    fun `connect should emit generic event and result without failing connection`() = runTest {
+        val config = RelayTransportConfig(
+            host = server.hostName,
+            port = server.port,
+            useTls = false,
+            transportToken = "secret-token",
+        )
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        if (text.contains("\"message_type\":\"hello\"")) {
+                            webSocket.send(
+                                """
+                                {
+                                  "message_type": "hello_ack",
+                                  "connection_id": "connection-1",
+                                  "server_time": "2026-03-20T19:00:00Z",
+                                  "heartbeat_seconds": 30
+                                }
+                                """.trimIndent(),
+                            )
+                            webSocket.send(
+                                """
+                                {
+                                  "message_type": "event",
+                                  "request_id": "req_001",
+                                  "packet_id": "pkt_001",
+                                  "event_type": "vps_probe_bridge_finished",
+                                  "payload_schema": "taskmail-transport-probe-payload-v1",
+                                  "payload": {
+                                    "probe_id": "probe_001"
+                                  }
+                                }
+                                """.trimIndent(),
+                            )
+                            webSocket.send(
+                                """
+                                {
+                                  "message_type": "result",
+                                  "request_id": "req_001",
+                                  "packet_id": "pkt_001",
+                                  "receipt_id": "receipt_001",
+                                  "result_id": "result_001",
+                                  "result_type": "transport_probe_result",
+                                  "status": "completed",
+                                  "payload_schema": "taskmail-transport-probe-payload-v1",
+                                  "payload": {
+                                    "probe_id": "probe_001"
+                                  }
+                                }
+                                """.trimIndent(),
+                            )
+                        }
+                    }
+                },
+            ),
+        )
+        server.start()
+        val testSubject = OkHttpRelayConnectionClient(
+            codec = net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec(),
+            logger = RelayFakeLogger(),
+        )
+        val serverEvent = async { testSubject.serverEvents.first() }
+        val serverResult = async { testSubject.serverResults.first() }
+
+        val result = testSubject.connect(config)
+
+        assertThat(result.isSuccess).isEqualTo(true)
+        assertThat(serverEvent.await().eventType).isEqualTo("vps_probe_bridge_finished")
+        assertThat(serverResult.await().resultId).isEqualTo("result_001")
         assertThat((testSubject.connectionState.value as RelayConnectionState.Connected).connectionId)
             .isEqualTo("connection-1")
     }

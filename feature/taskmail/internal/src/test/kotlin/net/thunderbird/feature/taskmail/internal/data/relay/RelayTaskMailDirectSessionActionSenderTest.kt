@@ -11,9 +11,11 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
@@ -111,6 +113,7 @@ class RelayTaskMailDirectSessionActionSenderTest {
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.FallbackToMail(
                 detailMessage = "direct action is not available",
+                requestId = "req_001",
             ),
         )
     }
@@ -139,6 +142,8 @@ class RelayTaskMailDirectSessionActionSenderTest {
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.Rejected(
                 errorMessage = "workspace_id + session_id did not resolve to a current session",
+                requestId = "req_001",
+                receiptId = "receipt-1",
             ),
         )
     }
@@ -167,6 +172,8 @@ class RelayTaskMailDirectSessionActionSenderTest {
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.FallbackToMail(
                 detailMessage = "direct lane is temporarily unavailable",
+                requestId = "req_001",
+                receiptId = "receipt-1",
             ),
         )
     }
@@ -192,15 +199,22 @@ private class FakeSessionActionRelayConnectionClient(
 ) : RelayConnectionClient {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
     private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
 
     val sentPackets = mutableListOf<RelayPacket>()
 
     override val connectionState = mutableConnectionState
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> = connectResult
 
-    override suspend fun sendPacket(packet: RelayPacket): Result<RelayPacketAck> {
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> {
         sentPackets += packet
         return sendPacketResult
     }

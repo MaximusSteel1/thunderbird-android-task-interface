@@ -13,9 +13,11 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
@@ -212,15 +214,22 @@ private class FakeDirectRelayConnectionClient(
 ) : RelayConnectionClient {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
     private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
 
     val sentPackets = mutableListOf<RelayPacket>()
 
     override val connectionState = mutableConnectionState
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> = connectResult
 
-    override suspend fun sendPacket(packet: RelayPacket): Result<RelayPacketAck> {
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> {
         sentPackets += packet
         return sendPacketResult
     }

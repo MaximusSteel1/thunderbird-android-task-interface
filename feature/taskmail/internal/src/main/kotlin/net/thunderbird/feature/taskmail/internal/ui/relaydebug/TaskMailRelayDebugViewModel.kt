@@ -7,6 +7,11 @@ import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManage
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailProjectSyncDebugSettingsRepository
+import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchResult
+import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchStatus
+import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeRequest
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailTransportProbe
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.State
@@ -16,6 +21,8 @@ private const val PORT_INVALID_ERROR = "Enter a valid relay port."
 
 internal class TaskMailRelayDebugViewModel(
     private val relayBootstrapManager: RelayBootstrapManager,
+    private val projectSyncDebugSettingsRepository: TaskMailProjectSyncDebugSettingsRepository,
+    private val sendTaskMailTransportProbe: SendTaskMailTransportProbe,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskMailRelayDebugContract.ViewModel {
@@ -36,16 +43,28 @@ internal class TaskMailRelayDebugViewModel(
     override fun event(event: Event) {
         when (event) {
             Event.LoadData -> handleOneTimeEvent(event, ::loadData)
+            Event.SaveClicked -> saveConfig()
+            Event.ProbeHealthClicked -> probeHealth()
+            Event.SendDirectProbeClicked -> sendDirectProbe()
+            Event.ConnectClicked -> connect()
+            Event.DisconnectClicked -> disconnect()
+            Event.DismissErrors -> updateState { it.copy(healthError = null, actionError = null) }
+            else -> handleFormEvent(event)
+        }
+    }
+
+    private fun handleFormEvent(event: Event) {
+        when (event) {
             is Event.RelayEnabledChanged -> updateState { it.copy(relayEnabled = event.value) }
+            is Event.ProjectSyncDebugFileLoggingChanged -> {
+                updateState { it.copy(projectSyncDebugFileLoggingEnabled = event.value) }
+            }
             is Event.HostChanged -> updateState { it.copy(host = event.value) }
             is Event.PortChanged -> updateState { it.copy(port = event.value) }
             is Event.UseTlsChanged -> updateState { it.copy(useTls = event.value) }
             is Event.TransportTokenChanged -> updateState { it.copy(transportToken = event.value) }
-            Event.SaveClicked -> saveConfig()
-            Event.ProbeHealthClicked -> probeHealth()
-            Event.ConnectClicked -> connect()
-            Event.DisconnectClicked -> disconnect()
-            Event.DismissErrors -> updateState { it.copy(healthError = null, actionError = null) }
+            is Event.ProbePayloadTextChanged -> updateState { it.copy(probePayloadText = event.value) }
+            else -> Unit
         }
     }
 
@@ -54,6 +73,7 @@ internal class TaskMailRelayDebugViewModel(
         updateState {
             it.copy(
                 relayEnabled = config.enabled,
+                projectSyncDebugFileLoggingEnabled = projectSyncDebugSettingsRepository.isFileLoggingEnabled(),
                 host = config.host,
                 port = config.port.toString(),
                 useTls = config.useTls,
@@ -65,11 +85,18 @@ internal class TaskMailRelayDebugViewModel(
     private fun saveConfig() {
         val config = currentConfig() ?: return
         updateState { it.copy(isSaving = true, actionError = null) }
-        val isSaved = relayBootstrapManager.saveConfig(config)
+        val isRelayConfigSaved = relayBootstrapManager.saveConfig(config)
+        val isDebugSettingSaved = projectSyncDebugSettingsRepository.setFileLoggingEnabled(
+            state.value.projectSyncDebugFileLoggingEnabled,
+        )
         updateState { it.copy(isSaving = false) }
         emitEffect(
             Effect.ShowMessage(
-                if (isSaved) "Relay config saved." else "Unable to save relay config.",
+                if (isRelayConfigSaved && isDebugSettingSaved) {
+                    "Relay config saved."
+                } else {
+                    "Unable to save relay config."
+                },
             ),
         )
     }
@@ -122,6 +149,58 @@ internal class TaskMailRelayDebugViewModel(
                     updateState {
                         it.copy(
                             actionError = error.message ?: "Relay connection failed.",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    private fun sendDirectProbe() {
+        val config = currentConfig() ?: return
+        val payloadText = state.value.probePayloadText.trim()
+        if (payloadText.isEmpty()) {
+            updateState { it.copy(actionError = "Transport probe text is required.") }
+            return
+        }
+
+        updateState {
+            it.copy(
+                isSendingProbe = true,
+                actionError = null,
+                lastProbeSummary = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                sendTaskMailTransportProbe(
+                    config = config,
+                    request = TaskMailTransportProbeRequest(
+                        probeId = nextProbeId(),
+                        payloadText = payloadText,
+                    ),
+                )
+            }.fold(
+                onSuccess = { result ->
+                    updateState {
+                        it.copy(
+                            isSendingProbe = false,
+                            lastProbeSummary = result.toSummary(),
+                            lastProbeArtifactPath = result.artifactDirectoryPath,
+                        )
+                    }
+                    emitEffect(
+                        Effect.ShowMessage(
+                            "Transport probe ${result.status.name} (${result.probeId})",
+                        ),
+                    )
+                },
+                onFailure = { error ->
+                    updateState {
+                        it.copy(
+                            isSendingProbe = false,
+                            actionError = error.message ?: "Transport probe failed.",
                         )
                     }
                 },
@@ -182,4 +261,28 @@ private fun RelayHealthStatus.toSummary(): String {
         packetCount?.let { "packets=$it" },
         transportTokenId?.takeIf(String::isNotBlank)?.let { "token_id=$it" },
     ).joinToString(separator = " | ")
+}
+
+private fun TaskMailTransportProbeDispatchResult.toSummary(): String {
+    return buildList {
+        add("probe_id=$probeId")
+        add("status=${status.name}")
+        add("request_id=$requestId")
+        add("packet_id=$packetId")
+        receiptId?.takeIf(String::isNotBlank)?.let { add("receipt_id=$it") }
+        resultId?.takeIf(String::isNotBlank)?.let { add("result_id=$it") }
+        resultType?.takeIf(String::isNotBlank)?.let { add("result_type=$it") }
+        resultStatus?.takeIf(String::isNotBlank)?.let { add("result_status=$it") }
+        errorCode?.takeIf(String::isNotBlank)?.let { add("error_code=$it") }
+        errorMessage?.takeIf(String::isNotBlank)?.let { add("error=$it") }
+        if (status == TaskMailTransportProbeDispatchStatus.AcceptedAwaitingResult) {
+            add("note=accepted_without_result_window")
+        }
+    }.joinToString(separator = " | ")
+}
+
+private fun nextProbeId(): String {
+    return "probe_" + java.util.UUID.randomUUID()
+        .toString()
+        .replace("-", "")
 }

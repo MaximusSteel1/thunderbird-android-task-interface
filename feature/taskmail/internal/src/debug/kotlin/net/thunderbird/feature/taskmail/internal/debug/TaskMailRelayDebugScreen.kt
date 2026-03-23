@@ -94,6 +94,24 @@ internal fun TaskMailRelayDebugScreen(
                 )
             }
 
+            item {
+                SwitchInput(
+                    text = "Project sync debug file logging",
+                    checked = state.value.projectSyncDebugFileLoggingEnabled,
+                    onCheckedChange = {
+                        dispatch(TaskMailRelayDebugContract.Event.ProjectSyncDebugFileLoggingChanged(it))
+                    },
+                    contentPadding = PaddingValues(0.dp),
+                )
+            }
+
+            item {
+                TextBodySmall(
+                    text = "Writes project-sync-debug.log under app external files only when enabled.",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
+
             if (!state.value.relayEnabled) {
                 item {
                     WarningBannerInlineNotificationCard(
@@ -186,6 +204,35 @@ internal fun TaskMailRelayDebugScreen(
             }
 
             item {
+                TextFieldOutlined(
+                    value = state.value.probePayloadText,
+                    onValueChange = {
+                        dispatch(TaskMailRelayDebugContract.Event.ProbePayloadTextChanged(it))
+                    },
+                    label = "Probe text",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            state.value.lastProbeSummary?.let { summary ->
+                item {
+                    TextBodySmall(
+                        text = summary,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            state.value.lastProbeArtifactPath?.let { artifactPath ->
+                item {
+                    TextBodySmall(
+                        text = "Artifacts: $artifactPath",
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -203,6 +250,19 @@ internal fun TaskMailRelayDebugScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+
+            item {
+                ButtonFilled(
+                    text = if (state.value.isSendingProbe) {
+                        "Sending probe..."
+                    } else {
+                        "Send direct probe"
+                    },
+                    onClick = { dispatch(TaskMailRelayDebugContract.Event.SendDirectProbeClicked) },
+                    enabled = !state.value.isSendingProbe,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             item {

@@ -29,11 +29,13 @@ import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessi
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestion
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestionState
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionDelta
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionSnapshot
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
@@ -279,12 +281,16 @@ private class DirectDetailFakeRelayBootstrapManager(
 private class DirectDetailFakeRelayConnectionClient : RelayConnectionClient {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
     private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 16)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
     private val packetAcks = ArrayDeque<RelayPacketAck>()
 
     val sentPackets = mutableListOf<RelayPacket>()
 
     override val connectionState: StateFlow<RelayConnectionState> = mutableConnectionState.asStateFlow()
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates.asSharedFlow()
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents.asSharedFlow()
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults.asSharedFlow()
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
         mutableConnectionState.value = RelayConnectionState.Connected(
@@ -302,7 +308,10 @@ private class DirectDetailFakeRelayConnectionClient : RelayConnectionClient {
         )
     }
 
-    override suspend fun sendPacket(packet: RelayPacket): Result<RelayPacketAck> {
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> {
         sentPackets += packet
         val packetAck = packetAcks.removeFirstOrNull() ?: packetAck(packet.packetId)
         return Result.success(packetAck)
