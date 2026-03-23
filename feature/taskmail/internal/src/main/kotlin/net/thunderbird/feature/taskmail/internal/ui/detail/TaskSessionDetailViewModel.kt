@@ -17,9 +17,9 @@ import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
@@ -28,19 +28,19 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyCo
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
-import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
-import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
 import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectOrFallbackResult
@@ -913,7 +913,7 @@ internal class TaskSessionDetailViewModel(
             ?.firstOrNull { attachment -> attachment.id == attachmentId }
     }
 
-private data class DetailLoadContext(
+    private data class DetailLoadContext(
         val isSameKey: Boolean,
         val canKeepCurrentContent: Boolean,
     )
@@ -1182,8 +1182,18 @@ private fun TaskMailDirectSessionActionResult.toDirectAttemptResult():
         }
 
         is TaskMailDirectSessionActionResult.FallbackToMail ->
-            TaskMailDirectAttemptResult.FallbackToMail(detailMessage)
+            TaskMailDirectAttemptResult.FallbackToMail(
+                detailMessage = detailMessage,
+                requestId = requestId,
+                receiptId = receiptId,
+                transportMessageId = transportMessageId,
+            )
         is TaskMailDirectSessionActionResult.Rejected ->
-            TaskMailDirectAttemptResult.Rejected(errorMessage)
+            TaskMailDirectAttemptResult.Rejected(
+                errorMessage = errorMessage,
+                requestId = requestId,
+                receiptId = receiptId,
+                transportMessageId = transportMessageId,
+            )
     }
 }

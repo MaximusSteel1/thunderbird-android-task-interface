@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package net.thunderbird.feature.taskmail.internal.ui.projectsync
 
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +27,7 @@ import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlinedS
 import app.k9mail.core.ui.compose.designsystem.molecule.input.InputLayout
 import app.k9mail.core.ui.compose.designsystem.organism.TopAppBarWithBackButton
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
+import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.InfoBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
 import kotlinx.collections.immutable.toImmutableList
@@ -126,11 +129,52 @@ private fun LazyListScope.syncActionItems(
         )
     }
 
-    state.syncError?.let { syncError ->
+    awaitingResultItem(
+        state = state,
+        onEvent = onEvent,
+    )
+
+    syncErrorItem(
+        syncError = state.syncError,
+        onEvent = onEvent,
+    )
+
+    resultErrorItem(resultError = state.resultError)
+}
+
+private fun LazyListScope.awaitingResultItem(
+    state: TaskProjectSyncContract.State,
+    onEvent: (TaskProjectSyncContract.Event) -> Unit,
+) {
+    if (state.isAwaitingFreshResult) {
+        item {
+            InfoBannerInlineNotificationCard(
+                title = state.awaitingResultTitle(),
+                supportingText = state.awaitingResultSupportingText(),
+                actions = {
+                    if (state.canRetryWithMail) {
+                        ButtonText(
+                            text = "Try mail retry",
+                            onClick = { onEvent(TaskProjectSyncContract.Event.MailRetryRequested) },
+                            modifier = Modifier.testTag("TaskProjectSyncMailRetryButton"),
+                        )
+                    }
+                },
+                modifier = Modifier.testTag("TaskProjectSyncAwaitingResultBanner"),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.syncErrorItem(
+    syncError: String?,
+    onEvent: (TaskProjectSyncContract.Event) -> Unit,
+) {
+    syncError?.let { errorMessage ->
         item {
             ErrorBannerInlineNotificationCard(
                 title = "Project sync failed",
-                supportingText = syncError,
+                supportingText = errorMessage,
                 actions = {
                     ButtonText(
                         text = "Dismiss",
@@ -140,12 +184,14 @@ private fun LazyListScope.syncActionItems(
             )
         }
     }
+}
 
-    state.resultError?.let { resultError ->
+private fun LazyListScope.resultErrorItem(resultError: String?) {
+    resultError?.let { errorMessage ->
         item {
             WarningBannerInlineNotificationCard(
                 title = "Unable to read the latest project list",
-                supportingText = resultError,
+                supportingText = errorMessage,
                 actions = {},
             )
         }
@@ -357,6 +403,37 @@ private fun TaskMailProjectSyncRoot.supportingText(): String {
         } ?: "Available"
     } else {
         unavailableReason ?: "Unavailable"
+    }
+}
+
+private fun TaskProjectSyncContract.State.awaitingResultTitle(): String {
+    return if (latestResult == null) {
+        "Waiting for project list reply"
+    } else {
+        "Waiting for updated project list"
+    }
+}
+
+private fun TaskProjectSyncContract.State.awaitingResultSupportingText(): String {
+    return when {
+        latestResult == null && canRetryWithMail -> {
+            "The sync request was accepted, but the first [SYNC] reply is still delayed. " +
+                "You can try a mail retry if it still looks stuck."
+        }
+
+        latestResult == null -> {
+            "The sync request was accepted. This page keeps checking mail for the first [SYNC] reply."
+        }
+
+        canRetryWithMail -> {
+            "The sync request was accepted, but a newer [SYNC] reply has not arrived yet. " +
+                "You can try a mail retry if it still looks stuck."
+        }
+
+        else -> {
+            "The sync request was accepted, but a newer [SYNC] reply has not arrived yet. " +
+                "This page keeps checking mail for a short time."
+        }
     }
 }
 

@@ -94,6 +94,171 @@ class TaskProjectSyncViewModelTest {
 
             assertThat(requestedSyncAccounts()).containsExactly(primarySenderAccount.accountUuid)
             assertThat(syncRequester.requestCount).isEqualTo(1)
+            assertThat(viewModelState().pendingSyncRequestStartedAt).isEqualTo(2_000L)
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(true)
+            assertThat(viewModelState().canRequestSync).isEqualTo(false)
+            assertThat(viewModelState().canRetryWithMail).isEqualTo(false)
+            assertThat(awaitEffect()).isEqualTo(
+                TaskProjectSyncContract.Effect.ShowMessage(
+                    "Project list sync requested. The repo list updates when the [SYNC] reply arrives.",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `sync requested should offer mail retry after follow-up delay when latest result is still stale`() =
+        runMviTest {
+        val repository = FakeTaskMailProjectSyncRepository(
+            latestResult = sampleProjectSyncResult,
+            requestResult = Result.success(Unit),
+        )
+        val syncRequester = FakeTaskMailSyncRequester(result = Result.success(Unit))
+
+        with(
+            TaskProjectSyncViewModelRobot(
+                mviContext = this,
+                senderAccounts = listOf(primarySenderAccount),
+                overrideRepository = repository,
+                syncRequester = syncRequester,
+                enablePostSyncFollowUpRefresh = true,
+                postSyncFollowUpDelaysMillis = listOf(0L),
+                currentTimeProvider = { 1_000L },
+            ),
+        ) {
+            start()
+            loadData()
+            requestSync()
+
+            assertThat(syncRequester.requestCount).isEqualTo(2)
+            assertThat(viewModelState().latestResult).isEqualTo(sampleProjectSyncResult)
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(true)
+            assertThat(viewModelState().canRetryWithMail).isEqualTo(true)
+            assertThat(awaitEffect()).isEqualTo(
+                TaskProjectSyncContract.Effect.ShowMessage(
+                    "Project list sync requested. The repo list updates when the [SYNC] reply arrives.",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `sync requested should run a delayed follow-up refresh when latest result is still stale`() = runMviTest {
+        val repository = FakeTaskMailProjectSyncRepository(
+            latestResult = sampleProjectSyncResult,
+            requestResult = Result.success(Unit),
+        )
+        val syncRequester = FakeTaskMailSyncRequester(
+            result = Result.success(Unit),
+            onRequestSync = { requestCount ->
+                if (requestCount == 2) {
+                    repository.latestResult = sampleFollowUpProjectSyncResult
+                }
+            },
+        )
+
+        with(
+            TaskProjectSyncViewModelRobot(
+                mviContext = this,
+                senderAccounts = listOf(primarySenderAccount),
+                overrideRepository = repository,
+                syncRequester = syncRequester,
+                enablePostSyncFollowUpRefresh = true,
+                postSyncFollowUpDelaysMillis = listOf(0L),
+                currentTimeProvider = { 1_000L },
+            ),
+        ) {
+            start()
+            loadData()
+            requestSync()
+
+            assertThat(syncRequester.requestCount).isEqualTo(2)
+            assertThat(viewModelState().latestResult).isEqualTo(sampleFollowUpProjectSyncResult)
+            assertThat(viewModelState().pendingSyncRequestStartedAt).isEqualTo(null)
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(false)
+            assertThat(awaitEffect()).isEqualTo(
+                TaskProjectSyncContract.Effect.ShowMessage(
+                    "Project list sync requested. The repo list updates when the [SYNC] reply arrives.",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `mail retry requested should send canonical sync mail request`() = runMviTest {
+        val repository = FakeTaskMailProjectSyncRepository(
+            latestResult = sampleProjectSyncResult,
+            requestResult = Result.success(Unit),
+            mailRetryResult = Result.success(Unit),
+        )
+        val syncRequester = FakeTaskMailSyncRequester(result = Result.success(Unit))
+
+        with(
+            TaskProjectSyncViewModelRobot(
+                mviContext = this,
+                senderAccounts = listOf(primarySenderAccount),
+                overrideRepository = repository,
+                syncRequester = syncRequester,
+                enablePostSyncFollowUpRefresh = true,
+                postSyncFollowUpDelaysMillis = listOf(0L),
+                currentTimeProvider = { 1_000L },
+            ),
+        ) {
+            start()
+            loadData()
+            requestSync()
+            assertThat(awaitEffect()).isEqualTo(
+                TaskProjectSyncContract.Effect.ShowMessage(
+                    "Project list sync requested. The repo list updates when the [SYNC] reply arrives.",
+                ),
+            )
+
+            requestMailRetry()
+
+            assertThat(requestedMailRetryAccounts()).containsExactly(primarySenderAccount.accountUuid)
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(true)
+            assertThat(viewModelState().canRetryWithMail).isEqualTo(false)
+            assertThat(awaitEffect()).isEqualTo(
+                TaskProjectSyncContract.Effect.ShowMessage(
+                    "Mail retry requested. The repo list updates when the next [SYNC] reply arrives.",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `mail store change with a fresh result should clear awaiting state`() = runMviTest {
+        val repository = FakeTaskMailProjectSyncRepository(
+            latestResult = sampleProjectSyncResult,
+            requestResult = Result.success(Unit),
+        )
+        val changeObserver = FakeTaskMailStoreChangeObserver()
+
+        with(
+            TaskProjectSyncViewModelRobot(
+                mviContext = this,
+                senderAccounts = listOf(primarySenderAccount),
+                overrideRepository = repository,
+                changeObserver = changeObserver,
+                currentTimeProvider = { 1_000L },
+            ),
+        ) {
+            start()
+            loadData()
+            requestSync()
+
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(true)
+
+            repository.latestResult = sampleFollowUpProjectSyncResult
+            emitStoreChange()
+
+            assertThat(viewModelState().latestResult).isEqualTo(sampleFollowUpProjectSyncResult)
+            assertThat(viewModelState().pendingSyncRequestStartedAt).isEqualTo(null)
+            assertThat(viewModelState().isAwaitingFreshResult).isEqualTo(false)
             assertThat(awaitEffect()).isEqualTo(
                 TaskProjectSyncContract.Effect.ShowMessage(
                     "Project list sync requested. The repo list updates when the [SYNC] reply arrives.",
@@ -122,20 +287,28 @@ private class TaskProjectSyncViewModelRobot(
     senderAccounts: List<TaskMailSenderAccount>,
     projectSyncResult: TaskMailProjectSyncResult = sampleProjectSyncResult,
     requestResult: Result<Unit> = Result.success(Unit),
+    overrideRepository: FakeTaskMailProjectSyncRepository? = null,
     syncRequester: FakeTaskMailSyncRequester = FakeTaskMailSyncRequester(),
     changeObserver: FakeTaskMailStoreChangeObserver = FakeTaskMailStoreChangeObserver(),
+    enablePostSyncFollowUpRefresh: Boolean = false,
+    postSyncFollowUpDelaysMillis: List<Long> = listOf(30_000L, 60_000L),
+    currentTimeProvider: () -> Long = { 2_000L },
 ) {
     private val senderAccountSource = FakeProjectSyncSenderAccountSource(senderAccounts)
-    private val repository = FakeTaskMailProjectSyncRepository(
+    private val repository = overrideRepository ?: FakeTaskMailProjectSyncRepository(
         latestResult = projectSyncResult,
         requestResult = requestResult,
     )
+    private val storeChangeObserver = changeObserver
     private val viewModel = TaskProjectSyncViewModel(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(senderAccountSource),
         getLatestTaskMailProjectSyncResult = GetLatestTaskMailProjectSyncResult(repository),
         requestTaskMailProjectSync = RequestTaskMailProjectSync(repository),
         refreshTaskMail = RefreshTaskMail(syncRequester),
-        observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
+        observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(storeChangeObserver),
+        enablePostSyncFollowUpRefresh = enablePostSyncFollowUpRefresh,
+        postSyncFollowUpDelaysMillis = postSyncFollowUpDelaysMillis,
+        currentTimeProvider = currentTimeProvider,
     )
     private lateinit var turbines: MviTurbines<TaskProjectSyncContract.State, TaskProjectSyncContract.Effect>
 
@@ -153,11 +326,23 @@ private class TaskProjectSyncViewModelRobot(
         mviContext.advanceUntilIdle()
     }
 
+    suspend fun requestMailRetry() {
+        viewModel.event(TaskProjectSyncContract.Event.MailRetryRequested)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun emitStoreChange() {
+        storeChangeObserver.emitChange()
+        mviContext.advanceUntilIdle()
+    }
+
     fun useRepo(repoPath: String) {
         viewModel.event(TaskProjectSyncContract.Event.UseRepoClicked(repoPath))
     }
 
     fun requestedSyncAccounts(): List<String> = repository.requestedAccounts
+
+    fun requestedMailRetryAccounts(): List<String> = repository.requestedMailRetryAccounts
 
     suspend fun awaitEffect(): TaskProjectSyncContract.Effect {
         return turbines.awaitEffectItem()
@@ -182,8 +367,10 @@ private class FakeProjectSyncSenderAccountSource(
 private class FakeTaskMailProjectSyncRepository(
     var latestResult: TaskMailProjectSyncResult?,
     private val requestResult: Result<Unit>,
+    private val mailRetryResult: Result<Unit> = Result.success(Unit),
 ) : TaskMailProjectSyncRepository {
     val requestedAccounts = mutableListOf<String>()
+    val requestedMailRetryAccounts = mutableListOf<String>()
 
     override suspend fun getLatestResult(accountUuid: String): TaskMailProjectSyncResult? = latestResult
 
@@ -191,15 +378,22 @@ private class FakeTaskMailProjectSyncRepository(
         requestedAccounts += accountUuid
         return requestResult
     }
+
+    override suspend fun requestSyncViaMail(accountUuid: String): Result<Unit> {
+        requestedMailRetryAccounts += accountUuid
+        return mailRetryResult
+    }
 }
 
 private class FakeTaskMailSyncRequester(
     private val result: Result<Unit> = Result.success(Unit),
+    private val onRequestSync: (Int) -> Unit = {},
 ) : TaskMailSyncRequester {
     var requestCount: Int = 0
 
     override suspend fun requestSync(): Result<Unit> {
         requestCount += 1
+        onRequestSync(requestCount)
         return result
     }
 }
@@ -208,6 +402,10 @@ private class FakeTaskMailStoreChangeObserver : TaskMailStoreChangeObserver {
     private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     override fun changes(): Flow<Unit> = changes
+
+    fun emitChange() {
+        changes.tryEmit(Unit)
+    }
 }
 
 private val sampleProjectSyncResult = TaskMailProjectSyncResult(
@@ -223,6 +421,25 @@ private val sampleProjectSyncResult = TaskMailProjectSyncResult(
                 TaskMailProjectSyncProject(
                     displayName = "android_task_manager",
                     repoPath = "E:/projects/android_task_manager",
+                ),
+            ),
+        ),
+    ),
+)
+
+private val sampleFollowUpProjectSyncResult = TaskMailProjectSyncResult(
+    receivedAt = 5_000L,
+    scannedAt = "2026-03-23T15:06:30",
+    roots = listOf(
+        TaskMailProjectSyncRoot(
+            rootPath = "E:/projects",
+            isAvailable = true,
+            folderCount = 1,
+            unavailableReason = null,
+            projects = listOf(
+                TaskMailProjectSyncProject(
+                    displayName = "mail_based_task_manager",
+                    repoPath = "E:/projects/mail_based_task_manager",
                 ),
             ),
         ),

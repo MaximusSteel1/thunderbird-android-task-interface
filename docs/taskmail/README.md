@@ -1,69 +1,71 @@
-# TaskMail 文档导航与维护约定
+# TaskMail 主线入口
 
-更新时间：2026-03-22
+更新时间：2026-03-23
 
-本文用于收口 Android 仓库内的 TaskMail 文档入口，并统一后续维护约定。
+本文是 Android 仓库内 TaskMail 文档的默认入口。
 
-当前这条文档线的主要问题不是文件级坏编码，而是：
+默认阅读只回答三个问题：
 
-- authority 文档、planning 文档、handoff 文档混在一起读
-- 新旧文档的中英文风格不一致
-- 部分较长文档已经进入持续更新阶段，局部段落仍保留历史英文表述
+- Android TaskMail 现在已经做到什么程度
+- 当前为什么只能这样读，哪些边界不能误写
+- 接下来真正活跃的主线是什么
 
-## 1. 先读这些文档
+## 默认阅读顺序
 
-判断 Android TaskMail 当前事实、协议和验证状态时，先读以下文档：
+1. `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+2. `docs/TASKMAIL-MAIL-RULES.md`
+3. `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+4. `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
 
-- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
-- `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-- `docs/TASKMAIL-MAIL-RULES.md`
-- `docs/TASKMAIL-DEBUG-VALIDATION.md`
+只有在下列场景再继续扩展阅读：
 
-如需继续看规划或历史材料，再读：
+- 需要设备 / debug / adb 路径时：`docs/TASKMAIL-DEBUG-VALIDATION.md`
+- 需要背景上下文时：`docs/taskmail_project_overview.md`
+- 需要当前活跃 planning 细节时：`docs/taskmail/planning/README.md`
+- 需要追历史证据、handoff 或旧 planning 时：`docs/taskmail/archive/README.md`
 
-- `docs/taskmail/planning/README.md`
+## 当前 authority 分层
 
-## 2. 文档分层
+- 当前实现真相：`docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+- 协议与语义 authority：`docs/TASKMAIL-MAIL-RULES.md`
+- 当前验证摘要：`docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
+- 调试 / 设备路径：`docs/TASKMAIL-DEBUG-VALIDATION.md`
 
-当前建议把 TaskMail 文档按以下层次理解：
+这些文档共同回答当前事实；历史 planning 与 handoff 不再承担当前 authority。
 
-- 当前事实：`docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
-- 协议规则：`docs/TASKMAIL-MAIL-RULES.md`
-- 验证证据：`docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-- 调试/设备验证路径：`docs/TASKMAIL-DEBUG-VALIDATION.md`
-- 当前活跃 planning：`docs/taskmail/planning/android/` 中仍被 `planning/README.md` 点名为 active 的文档
-- 历史/归档材料：旧 `phase` 文档、旧 planning 文档、旧 handoff 文档
-- 补充规范与协作文档：如 `docs/TASKMAIL-GITHUB-SYNC-WORKFLOW.md`、`docs/taskmail/taskmail-reply-email-ideal-requirements.md`
+## 当前活跃主线
 
-历史文档可以保留上下文，但不能覆盖当前 authority 文档。
+- 总主线 roadmap：`docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
+- `new_task` 观察与 guardrail：`docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
+- `reply` / `/status` guarded direct closeout：`docs/taskmail/planning/android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
+- `[SYNC] Project list` direct-request 主线：`docs/taskmail/planning/android/taskmail-phase5-project-sync-android-implementation-plan-v0.1.md`
 
-## 3. 编码与语言基线
+## 仍有现实约束价值的 reference docs
 
-TaskMail 文档后续维护统一遵循以下约定：
+- `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase0-public-plaintext-baseline-v1.md`
+- `docs/taskmail/planning/android/taskmail-phase2-direct-outbound-contract-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-phase4-dual-stack-boundary-freeze-v0.1.md`
+- `docs/taskmail/planning/android/phase4_dual_stack_parity_checklist.md`
+- `docs/taskmail/planning/android/phase4_mismatch_ledger.md`
+- `docs/taskmail/planning/android/phase4_rollback_trigger_note.md`
 
-- Markdown 文件编码遵循仓库 `.editorconfig`：`utf-8`、`lf`、文件末尾保留换行
-- 新增或更新的仓库文档默认使用中文
-- 协议字段名、代码标识、文件路径、命令行、契约标题保持原文，不做意译
-- 历史长文在增量维护时，优先把被修改到的标题、导语和新增段落改成中文，不要求一次性全文重译
-- 不再新增“同一角色但重复命名”的平行说明文档，优先补到最近的 authority 或 index 文档
+这些文档可以帮助解释当前边界，但不再是默认阅读路径。
 
-## 4. 推荐更新顺序
+## archive 的用途
 
-当 TaskMail 行为或文档发生变化时，建议按这个顺序维护：
+`docs/taskmail/archive/` 只承接三类材料：
 
-1. 协议或语义变化：先改 `docs/TASKMAIL-MAIL-RULES.md`
-2. 实现状态变化：再改 `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
-3. 验证证据变化：再改 `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-4. 调试或设备路径变化：补 `docs/TASKMAIL-DEBUG-VALIDATION.md`
-5. 规划边界或下阶段工作变化：最后改 `docs/taskmail/planning/README.md` 与相关 planning / handoff 文档
+- 历史 handoff
+- 退役 planning / phase 文档
+- 长版验证历史
 
-如果只是历史理解或入口导航变更，不要反向改写 authority 文档的事实结论。
+如果你只是想知道“现在是什么”，不要先读 archive。
 
-## 5. 当前整理结论
+## 后续维护规则
 
-本次仓库内排查的直接结论是：
-
-- TaskMail 相关 Markdown 文件本身已经基本是标准 UTF-8，无明显坏编码或替换字符
-- 更需要收口的是“入口、角色、语言风格”
-- 当前 authority 文档可以继续沿用原文件名，避免打断已有引用
-- 较长文档中的历史英文段落可在后续实际维护时继续逐步中文化
+- 不再把 `taskmail-next-session-handoff-*` 放回默认阅读路径。
+- 同一条 active 主线只保留一份 owner planning 文档；状态变化直接回写 owner doc。
+- 文档更新顺序固定为：`MAIL-RULES -> CURRENT-STATUS -> VALIDATION-LEDGER -> active planning`。
+- 运行过程、重试过程、临时样本一律优先进入 archive，而不是继续堆进 authority 文档。

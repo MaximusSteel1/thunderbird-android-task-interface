@@ -36,8 +36,8 @@
 以 2026-03-14 标记的几份 Android 文档为例，存在如下错位：
 
 - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md` 将系统描述为 Phase 1.5 的 debug-only 原型
-- `docs/TASKMAIL-ANDROID-PHASE2.md` 将正式入口、FeatureLauncher、Drawer 接线视为下一阶段目标
-- `docs/TASKMAIL-ANDROID-PHASE3.md` 又将 formal launcher routing、formal drawer entry、reply composer、real sender integration 写成已实现并可 build
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE2.md` 将正式入口、FeatureLauncher、Drawer 接线视为下一阶段目标
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE3.md` 又将 formal launcher routing、formal drawer entry、reply composer、real sender integration 写成已实现并可 build
 - `docs/taskmail/planning/android/taskmail-android-refactor-plan-v0.1.md` 明确指出现状是“代码已前进，但基线文档未完全收口”
 
 这意味着当前最大问题不是“缺文档”，而是“文档没有共同基线”。
@@ -176,8 +176,8 @@
 
 建议保留但调整角色：
 
-- `docs/TASKMAIL-ANDROID-PHASE2.md`
-- `docs/TASKMAIL-ANDROID-PHASE3.md`
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE2.md`
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE3.md`
 
 这些文件应改为：
 

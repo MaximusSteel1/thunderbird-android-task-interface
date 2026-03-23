@@ -15,4 +15,8 @@ internal class DefaultTaskMailProjectSyncRepository(
     override suspend fun requestSync(accountUuid: String): Result<Unit> {
         return requester.requestSync(accountUuid)
     }
+
+    override suspend fun requestSyncViaMail(accountUuid: String): Result<Unit> {
+        return requester.requestSyncViaMail(accountUuid)
+    }
 }

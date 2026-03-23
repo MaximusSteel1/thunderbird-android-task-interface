@@ -15,7 +15,7 @@ bootstrap -> direct attempt -> mail fallback / hard rejection 编排抽成可复
 
 ## 先读这些文档
 
-1. `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-phase2-direct-outbound-contract.md`
+1. `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-phase2-direct-outbound-contract.md`
 2. `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
 3. `docs/taskmail/planning/android/taskmail-phase2-direct-outbound-contract-v0.1.md`
 4. `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`

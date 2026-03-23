@@ -104,7 +104,7 @@ Phase 2 不再意味着：
 
 1. `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 2. `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-3. `docs/TASKMAIL-ANDROID-PHASE2.md`
+3. `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE2.md`
 
 ## 推荐理解方式
 

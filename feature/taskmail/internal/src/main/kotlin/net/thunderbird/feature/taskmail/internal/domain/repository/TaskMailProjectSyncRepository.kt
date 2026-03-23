@@ -6,4 +6,6 @@ internal interface TaskMailProjectSyncRepository {
     suspend fun getLatestResult(accountUuid: String): TaskMailProjectSyncResult?
 
     suspend fun requestSync(accountUuid: String): Result<Unit>
+
+    suspend fun requestSyncViaMail(accountUuid: String): Result<Unit>
 }

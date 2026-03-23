@@ -95,7 +95,14 @@ class RunTaskMailDirectOrFallbackTest {
         var mailFallbackCallCount = 0
 
         val result = testSubject.execute(
-            directSend = { TaskMailDirectAttemptResult.FallbackToMail("unsupported_action") },
+            directSend = {
+                TaskMailDirectAttemptResult.FallbackToMail(
+                    detailMessage = "unsupported_action",
+                    requestId = "req_101",
+                    receiptId = "receipt-101",
+                    transportMessageId = "transport-101",
+                )
+            },
             mailFallback = {
                 mailFallbackCallCount += 1
                 Result.success(Unit)
@@ -108,6 +115,9 @@ class RunTaskMailDirectOrFallbackTest {
                     bootstrapStatus = RelayBootstrapStatus.HelloAck,
                     outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
                     switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                    requestId = "req_101",
+                    receiptId = "receipt-101",
+                    transportMessageId = "transport-101",
                     fallbackReason = "unsupported_action",
                 ),
             ),
@@ -125,7 +135,13 @@ class RunTaskMailDirectOrFallbackTest {
         var mailFallbackCallCount = 0
 
         val result = testSubject.execute(
-            directSend = { TaskMailDirectAttemptResult.Rejected("invalid_payload") },
+            directSend = {
+                TaskMailDirectAttemptResult.Rejected(
+                    errorMessage = "invalid_payload",
+                    requestId = "req_202",
+                    receiptId = "receipt-202",
+                )
+            },
             mailFallback = {
                 mailFallbackCallCount += 1
                 Result.success(Unit)
@@ -139,6 +155,8 @@ class RunTaskMailDirectOrFallbackTest {
                     bootstrapStatus = RelayBootstrapStatus.HelloAck,
                     outcome = TaskMailDirectOutcome.DirectRejected,
                     switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                    requestId = "req_202",
+                    receiptId = "receipt-202",
                     errorMessage = "invalid_payload",
                 ),
             ),

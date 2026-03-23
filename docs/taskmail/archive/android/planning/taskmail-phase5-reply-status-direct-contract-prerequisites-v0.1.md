@@ -6,7 +6,7 @@
 
 - 本文承接：
   - `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
-  - `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
+  - `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
 - 本文不把 `reply` / `/status` 提前拉进 direct 实现。
 - 本文只回答一个更窄的问题：
 
@@ -18,7 +18,7 @@
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
 - `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/current/android_reply_method_rules.md`
 

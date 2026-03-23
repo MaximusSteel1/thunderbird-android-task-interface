@@ -32,21 +32,21 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserve
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
-import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
+import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
-import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
@@ -70,8 +70,8 @@ import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDi
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionType
-import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
@@ -750,7 +750,12 @@ class TaskSessionDetailViewModelTest {
         val repository = FakeTaskSessionDetailRepository()
         val mailSender = FakeTaskMailReplySender()
         val directSender = FakeTaskMailDirectSessionActionSender(
-            result = TaskMailDirectSessionActionResult.FallbackToMail("direct lane is temporarily unavailable"),
+            result = TaskMailDirectSessionActionResult.FallbackToMail(
+                detailMessage = "direct lane is temporarily unavailable",
+                requestId = "req_fallback",
+                receiptId = "receipt-fallback",
+                transportMessageId = "transport-fallback",
+            ),
         )
 
         with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
@@ -769,6 +774,12 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.outcome).isEqualTo(
                 TaskMailDirectOutcome.MailFallbackSucceeded,
             )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId)
+                .isEqualTo("req_fallback")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.receiptId)
+                .isEqualTo("receipt-fallback")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.transportMessageId)
+                .isEqualTo("transport-fallback")
             assertShowMessageEffect("[Mail fallback] Reply sent.")
             ensureThatAllEventsAreConsumed()
         }
@@ -781,6 +792,8 @@ class TaskSessionDetailViewModelTest {
         val directSender = FakeTaskMailDirectSessionActionSender(
             result = TaskMailDirectSessionActionResult.Rejected(
                 errorMessage = "session identity mismatch",
+                requestId = "req_rejected",
+                receiptId = "receipt-rejected",
             ),
         )
 
@@ -795,6 +808,10 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.switchGate).isEqualTo(
                 TaskMailDirectSwitchGate.SwitchBlocker,
             )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId)
+                .isEqualTo("req_rejected")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.receiptId)
+                .isEqualTo("receipt-rejected")
             assertThat(viewModelState().sendError).isEqualTo("session identity mismatch")
             ensureThatAllEventsAreConsumed()
         }

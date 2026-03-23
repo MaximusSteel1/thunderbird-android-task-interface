@@ -14,7 +14,6 @@
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-dual-stack-start.md`
 - `docs/taskmail/planning/android/taskmail-phase2-direct-outbound-contract-v0.1.md`
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/current/android_reply_method_rules.md`

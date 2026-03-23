@@ -147,7 +147,7 @@ Phase 3 不再意味着：
 1. `docs/TASKMAIL-MAIL-RULES.md`
 2. `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 3. `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-4. `docs/TASKMAIL-ANDROID-PHASE3.md`
+4. `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE3.md`
 
 ## 推荐理解方式
 

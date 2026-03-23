@@ -64,7 +64,7 @@
 - `docs/taskmail/planning/android/taskmail-phase5-new-task-direct-default-review-decision-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-phase5-new-task-direct-default-rollout-activation-note-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/plans/phase4_dual_stack_parity_plan.md`
 - `E:\projects\mail_based_task_manager\scripts\build_taskmail_closeout_bundle.py`

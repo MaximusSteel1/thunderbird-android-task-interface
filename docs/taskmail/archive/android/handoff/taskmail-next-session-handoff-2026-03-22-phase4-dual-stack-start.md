@@ -17,8 +17,8 @@
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-phase2-direct-outbound-contract.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-reply-direct-send-seam.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-phase2-direct-outbound-contract.md`
 
 ## Phase 4 起点约束
 

@@ -53,6 +53,9 @@ internal class RunTaskMailDirectOrFallback(
                 sendMailFallback(
                     bootstrapStatus = bootstrapStatus,
                     fallbackReason = directResult.detailMessage,
+                    requestId = directResult.requestId,
+                    receiptId = directResult.receiptId,
+                    transportMessageId = directResult.transportMessageId,
                     mailFallback = mailFallback,
                 )
             }
@@ -64,6 +67,9 @@ internal class RunTaskMailDirectOrFallback(
                         bootstrapStatus = bootstrapStatus,
                         outcome = TaskMailDirectOutcome.DirectRejected,
                         switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        requestId = directResult.requestId,
+                        receiptId = directResult.receiptId,
+                        transportMessageId = directResult.transportMessageId,
                         errorMessage = directResult.errorMessage,
                     ),
                 )
@@ -85,6 +91,9 @@ internal class RunTaskMailDirectOrFallback(
     private suspend fun sendMailFallback(
         bootstrapStatus: RelayBootstrapStatus,
         fallbackReason: String?,
+        requestId: String? = null,
+        receiptId: String? = null,
+        transportMessageId: String? = null,
         mailFallback: suspend () -> Result<Unit>,
     ): TaskMailDirectOrFallbackResult<Nothing> {
         return mailFallback().fold(
@@ -94,6 +103,9 @@ internal class RunTaskMailDirectOrFallback(
                         bootstrapStatus = bootstrapStatus,
                         outcome = TaskMailDirectOutcome.MailFallbackSucceeded,
                         switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                        requestId = requestId,
+                        receiptId = receiptId,
+                        transportMessageId = transportMessageId,
                         fallbackReason = fallbackReason,
                     ),
                 )
@@ -105,6 +117,9 @@ internal class RunTaskMailDirectOrFallback(
                         bootstrapStatus = bootstrapStatus,
                         outcome = TaskMailDirectOutcome.MailFallbackFailed,
                         switchGate = TaskMailDirectSwitchGate.FallbackRequired,
+                        requestId = requestId,
+                        receiptId = receiptId,
+                        transportMessageId = transportMessageId,
                         fallbackReason = fallbackReason,
                         errorMessage = error.message,
                     ),
@@ -122,10 +137,16 @@ internal sealed interface TaskMailDirectAttemptResult<out T> {
 
     data class FallbackToMail(
         val detailMessage: String? = null,
+        val requestId: String? = null,
+        val receiptId: String? = null,
+        val transportMessageId: String? = null,
     ) : TaskMailDirectAttemptResult<Nothing>
 
     data class Rejected(
         val errorMessage: String,
+        val requestId: String? = null,
+        val receiptId: String? = null,
+        val transportMessageId: String? = null,
     ) : TaskMailDirectAttemptResult<Nothing>
 }
 

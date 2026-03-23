@@ -14,6 +14,8 @@ internal interface TaskProjectSyncContract {
         val isLoading: Boolean = false,
         val isSyncing: Boolean = false,
         val isLoadingResult: Boolean = false,
+        val pendingSyncRequestStartedAt: Long? = null,
+        val canRetryWithMail: Boolean = false,
         val senderAccountBlockingError: String? = null,
         val senderAccounts: ImmutableList<TaskMailSenderAccount> = persistentListOf(),
         val selectedSenderAccountId: String? = null,
@@ -31,8 +33,11 @@ internal interface TaskProjectSyncContract {
         val hasBlockingState: Boolean
             get() = !isLoading && senderAccountBlockingError != null
 
+        val isAwaitingFreshResult: Boolean
+            get() = pendingSyncRequestStartedAt != null
+
         val canRequestSync: Boolean
-            get() = !isLoading && !isSyncing && !hasBlockingState
+            get() = !isLoading && !isSyncing && !hasBlockingState && !isAwaitingFreshResult
     }
 
     sealed interface Event {
@@ -40,6 +45,7 @@ internal interface TaskProjectSyncContract {
         data object BackClicked : Event
         data class SenderAccountSelected(val accountUuid: String?) : Event
         data object SyncRequested : Event
+        data object MailRetryRequested : Event
         data class UseRepoClicked(val repoPath: String) : Event
         data object DismissSyncError : Event
     }

@@ -4,7 +4,7 @@
 
 ## 状态
 
-- 本文承接 `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`。
+- 本文承接 `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`。
 - 本文的作用是把当前这条 Android / PC / VPS 主线读成一个明确的“Phase 4 到哪里收口、Phase 5 第一刀做什么”判断。
 - 本文不重跑已经完成的 Phase 4 对账、`thread_095` direct fresh sample、或 relay re-provision 历史工作。
 - 本文不替代以下 authority：
@@ -22,7 +22,7 @@
 - `docs/taskmail/planning/android/phase4_dual_stack_parity_checklist.md`
 - `docs/taskmail/planning/android/phase4_mismatch_ledger.md`
 - `docs/taskmail/planning/android/phase4_rollback_trigger_note.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-22-phase4-new-task-matrix-reconciliation.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
 - `E:\projects\mail_based_task_manager\docs/current/mail_protocol.md`
 - `E:\projects\mail_based_task_manager\docs/plans/phase4_dual_stack_parity_plan.md`

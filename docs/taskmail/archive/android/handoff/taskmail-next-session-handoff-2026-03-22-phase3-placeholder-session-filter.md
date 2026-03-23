@@ -50,7 +50,7 @@
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-DEBUG-VALIDATION.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-22-phase3-durable-mail-closeout.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-22-phase3-durable-mail-closeout.md`
 
 ## 本次是否改代码 / 验证
 

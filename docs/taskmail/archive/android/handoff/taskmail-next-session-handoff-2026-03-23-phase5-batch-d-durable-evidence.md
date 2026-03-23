@@ -78,7 +78,7 @@
 - Android 测试代码改动：有
 - planning / status / ledger 文档改动：有
 - 新的 Gradle 验证：有
-- 新的设备验证：无
+- 新的设备验证：有（见上方 2026-03-23 live/manual closeout 记录）
 
 ## 本轮收口了什么
 

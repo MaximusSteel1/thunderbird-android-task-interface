@@ -15,8 +15,8 @@ Phase 0 的目标是：
 
 > 状态说明（2026-03-13）：本文保留为最初的 Phase 0 调研记录。
 > 仓库现在已经在 `feature/taskmail` 下包含了 Phase 1 TaskMail skeleton。
-> 当前 Android 实现状态请看 `docs/TASKMAIL-ANDROID-PHASE1.md`。
-> 下一步执行计划请看 `docs/TASKMAIL-ANDROID-PHASE1-5.md`。
+> 当前 Android 实现状态请看 `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE1.md`。
+> 下一步执行计划请看 `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE1-5.md`。
 
 ## 本地仓库状态
 
@@ -352,7 +352,7 @@ v1 可行但不推荐的替代方案：
 - `feature/taskmail/internal/src/main/kotlin/.../ui/detail/...`
 - `feature/taskmail/internal/src/test/kotlin/.../data/...`
 - `feature/taskmail/internal/src/test/kotlin/.../domain/...`
-- `docs/TASKMAIL-ANDROID-PHASE1-5.md`
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE1-5.md`
 
 ## Phase 2 可能涉及的文件
 

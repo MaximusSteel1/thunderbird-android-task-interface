@@ -41,8 +41,8 @@ workspace 侧：
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-DEBUG-VALIDATION.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-phase3-detail-live-smoke-retest.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-phase3-timeline-merge.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-phase3-detail-live-smoke-retest.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-phase3-timeline-merge.md`
 
 ## 下一步
 

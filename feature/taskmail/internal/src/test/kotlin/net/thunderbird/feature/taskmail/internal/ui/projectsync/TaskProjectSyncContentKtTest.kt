@@ -2,10 +2,10 @@ package net.thunderbird.feature.taskmail.internal.ui.projectsync
 
 import android.app.Application
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.toImmutableList
@@ -54,6 +54,34 @@ class TaskProjectSyncContentKtTest {
         composeTestRule.onNodeWithTag("TaskProjectSyncUseRepoButton").performClick()
 
         assertThat(selectedRepoPath).isEqualTo("E:/projects/android_task_manager")
+    }
+
+    @Test
+    fun `content should dispatch mail retry clicked`() {
+        var mailRetryClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskProjectSyncContent(
+                    state = TaskProjectSyncContract.State(
+                        senderAccounts = listOf(projectSyncSenderAccount).toImmutableList(),
+                        selectedSenderAccountId = projectSyncSenderAccount.accountUuid,
+                        latestResult = projectSyncResult,
+                        pendingSyncRequestStartedAt = 1_000L,
+                        canRetryWithMail = true,
+                    ),
+                    onEvent = { event ->
+                        if (event is TaskProjectSyncContract.Event.MailRetryRequested) {
+                            mailRetryClicked = true
+                        }
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("TaskProjectSyncMailRetryButton").performClick()
+
+        assertThat(mailRetryClicked).isEqualTo(true)
     }
 }
 

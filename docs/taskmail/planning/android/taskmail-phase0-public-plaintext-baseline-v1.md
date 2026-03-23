@@ -12,7 +12,6 @@
 
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-public-plaintext-direct-connect.md`
 - `E:\projects\mail_based_task_manager\docs\plans\phase0_relay_readiness_note.md`
 
 ## 冻结后的 Baseline
@@ -45,6 +44,6 @@
 - staged phase plan
 - 对冲突 Android planning 文档的清理
 - 本文这份精确 baseline freeze
-- 指向下一次实现会话进入 Phase 1 的当前 handoff
+- 指向 Phase 0 当时实现切换点的历史 handoff
 
 Android 下一条活跃阶段现在是 Phase 1：bootstrap promotion and reusable connection seam。

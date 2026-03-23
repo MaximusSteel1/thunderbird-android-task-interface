@@ -30,7 +30,7 @@
 - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
-- `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-21-phase3-direct-detail-overlay.md`
+- `docs/taskmail/archive/android/handoff/taskmail-next-session-handoff-2026-03-21-phase3-direct-detail-overlay.md`
 - `E:/projects/mail_based_task_manager/docs/plans/phase3_direct_inbound_wire_v1.md`
 - `E:/projects/mail_based_task_manager/docs/plans/phase3_direct_inbound_mapping_v1.md`
 - `E:/projects/mail_based_task_manager/docs/plans/phase3_direct_inbound_fixture_package_v1.md`

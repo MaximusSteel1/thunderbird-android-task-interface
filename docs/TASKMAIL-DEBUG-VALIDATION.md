@@ -120,6 +120,37 @@ On this workstation, PowerShell redirection can also corrupt raw binary SQLite p
 - workaround: use `cmd /c` for the redirection step, or first write the binary file on-device and then `adb pull` it
   back to the workstation
 
+## Project Sync File Debug Logging
+
+When you need a durable on-device trace for `Project list` / `[SYNC]` investigation, use the retained
+`project-sync-debug.log` switch on the debug relay screen instead of relying only on transient logcat windows.
+
+- entry: open `TaskMail relay debug`, turn on `Project sync debug file logging`, then tap `Save`
+- output path: `/sdcard/Android/data/net.thunderbird.android.debug/files/taskmail-debug/project-sync-debug.log`
+- current default: off
+- intended scope: focused investigation of `direct accepted` / `mail fallback` / `waiting for canonical reply`
+  sequencing on a real device
+- current payload policy: keep only timestamps plus non-PII identifiers such as `requestId`, `receiptId`,
+  `transportMessageId`, and error class / error message; do not treat this file as a place to add mailbox addresses,
+  tokens, or message content
+- recommended workflow: enable only for the specific repro window, pull the file immediately after reproduction, then
+  turn it off again and delete the old file if you no longer need it
+
+## Project Sync File Debug Logging Verification Note
+
+Later on 2026-03-23, the attached Thunderbird debug device verified both sides of this switch:
+
+- when the switch is enabled, `Project list -> Sync project list` writes `project-sync-debug.log` with `[SYNC]`
+  request/ack/waiting/follow-up/result events
+- after the switch is saved back to off and the old file is deleted, repeating `Sync project list` no longer recreates
+  `project-sync-debug.log`
+
+Current best reading:
+
+- this is a retained debug-only capability, not part of the product-facing TaskMail surface
+- the switch is reliable enough to keep as an important recurring investigation tool for future `[SYNC]` live-debug
+  sessions
+
 ## Install Note
 
 Before device smoke, check whether the device already has an older local debug build installed.

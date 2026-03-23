@@ -751,17 +751,17 @@ Optional note: 先保守处理
 - debug preview、debug activity 与 debug deep link 验证路径
 - `workspace -> detail -> workspace` 返回链路的真机冒烟验证
 
-当前 Android 端下一步应优先进入：
+这段 Android 阶段描述现在已经是历史快照。
 
-- `Phase 3`
-- 即：在 `session detail` 内补齐回复交互、问题选项回复与状态查询，再进入 Phase 4 的 Markdown 只读渲染
+当前 Android 端的默认入口和最新读法请改读：
 
-详细执行清单见：
+- `docs/taskmail/README.md`
+- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+- `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
 
-- `docs/TASKMAIL-ANDROID-PHASE1.md`
-- `docs/TASKMAIL-ANDROID-PHASE1-5.md`
-- `docs/TASKMAIL-ANDROID-PHASE2.md`
-- `docs/TASKMAIL-ANDROID-PHASE3.md`
+历史 phase 文档已迁到：
+
+- `docs/taskmail/archive/android/planning/`
 
 ---
 

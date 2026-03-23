@@ -11,7 +11,7 @@
 本文档与以下文档配套阅读：
 
 - `docs/taskmail_project_overview.md`
-- `docs/taskmail-phase0-research.md`
+- `docs/taskmail/archive/android/planning/taskmail-phase0-research.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
 
 如果本文档与后端当前邮件协议冲突，仍以 `docs/TASKMAIL-MAIL-RULES.md` 记录的规则为准。
@@ -432,7 +432,7 @@ TaskMail
 
 详细开工清单见：
 
-- `docs/TASKMAIL-ANDROID-PHASE1-5.md`
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE1-5.md`
 
 ---
 
@@ -746,7 +746,7 @@ TaskMail
 
 `Phase 1.5` 的详细执行清单见：
 
-- `docs/TASKMAIL-ANDROID-PHASE1-5.md`
+- `docs/taskmail/archive/android/planning/TASKMAIL-ANDROID-PHASE1-5.md`
 
 ---
 

@@ -8,4 +8,8 @@ internal class RequestTaskMailProjectSync(
     suspend operator fun invoke(accountUuid: String): Result<Unit> {
         return repository.requestSync(accountUuid)
     }
+
+    suspend fun viaMail(accountUuid: String): Result<Unit> {
+        return repository.requestSyncViaMail(accountUuid)
+    }
 }
