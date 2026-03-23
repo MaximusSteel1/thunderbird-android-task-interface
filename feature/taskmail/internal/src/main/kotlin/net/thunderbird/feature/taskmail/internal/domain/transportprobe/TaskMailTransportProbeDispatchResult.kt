@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.domain.transportprobe
 internal enum class TaskMailTransportProbeDispatchStatus {
     AcceptedAwaitingResult,
     ResultCompleted,
+    ResultPartial,
     ResultFailed,
     Rejected,
     Failed,

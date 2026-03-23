@@ -8,8 +8,8 @@
 
 ## 日期
 
-- 最后更新：2026-03-23
-- 当前摘要覆盖到的最新可执行验证会话：2026-03-23
+- 最后更新：2026-03-24
+- 当前摘要覆盖到的最新可执行验证会话：2026-03-24
 
 ## 文档维护约定
 
@@ -29,6 +29,7 @@
 | plain reply / attachment / quick answer / multi-question / paused `/resume` mail path | 已有 focused tests 和既有 live/manual smoke，当前仍应按 mail semantics 读取 | 更宽语料库覆盖不是当前摘要目标 |
 | `[SYNC] Project list` 渲染、repo prefill、projection boundary | formal-host smoke 已证明页面可读、`Use this repo` 可回填、`[SYNC]` 不进入 session/detail 投影 | “这次点击触发的 direct request”与“同轮 canonical `[SYNC] Project Folder List` 回流”仍需更强 closeout |
 | `[SYNC]` direct-first request path | 当前已证明 relay ack 恢复到亚秒级，waiting UI 生效，有限 follow-up refresh 生效，且当前未观察到新的本机 mail fallback | 上游 canonical reply 回流时间线仍可能超出当前有限窗口；是否需要更长 follow-up 仍取决于联调结论 |
+| `TaskMail relay debug` transport readiness / observability harness | 真机 + PC/VPS 联调已正向证明：`/control transport_probe` 可拿到同一 `probe_id` 的 `command_ack -> event* -> result`，accepted 后 same-id replay 稳定；`/v1/files` 单样本已走通 `POST -> GET metadata -> GET content -> sha256`，并已在设备侧落盘 artifact | 当前只覆盖 debug-only transport harness，不代表 `new_task` / `reply` / `[SYNC]` 已完成 `/control` 业务 cutover；`/v1/files` 目前也只拿到单样本文本文件 smoke |
 | `[SYNC]` device file debug trace switch | `TaskMail relay debug` 现可保存 `Project sync debug file logging` 开关；真机已证明开启时会写 `project-sync-debug.log`，关闭并删除旧文件后再次点 `Sync project list` 不会重建该文件 | debug-only retained capability；只应用于 focused repro，并在抓取后及时关闭 |
 | runtime bot-mailbox settings | 已有 focused repository/ViewModel/UI/navigation coverage，且设备 happy path 已有正向 smoke | invalid / clear edge 行为仍主要依赖 focused automated coverage |
 
@@ -37,6 +38,7 @@
 以下命令代表当前 TaskMail Android 近端验证的最新干净读法：
 
 ```powershell
+.\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*RelayProtocolJsonCodecTest" --tests "*OkHttpRelayConnectionClientTest" --tests "*RelayTaskMailTransportProbeSenderTest" --tests "*OkHttpRelayFileSurfaceClientTest" --tests "*RelayTaskMailFileSampleSenderTest" --tests "*TaskMailRelayDebugViewModelTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*RelayTaskMailDirectProjectSyncSenderTest" --tests "*TaskProjectSyncViewModelTest" --tests "*OkHttpRelayConnectionClientTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*TaskSessionDetailViewModelTest" --tests "*RelayTaskMailDirectSessionActionSenderTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:detekt --console=plain
@@ -46,11 +48,25 @@
 
 更细的历史命令与会话过程请回查 archive validation history。
 
+## 2026-03-24 代表性 live 样本
+
+- `/control transport_probe`
+  - 真机 smoke 已拿到 `probe_id=probe_6d89e1f6e1414c38be191aa8eed582af`
+  - Android artifact、VPS relay packet history、PC mailbox observation 已能按同一 `probe_id/request_id/packet_id` 对账
+  - same-id replay 已正向证明 `receipt_id`、`event_id`、`result_id` 语义稳定
+- `/v1/files` debug-only 单样本
+  - 首次 live smoke 因 current runtime 拒绝 `kind=text` 而返回 `error_code=invalid_metadata`
+  - 调整为 `kind=file` + `mime_type=text/plain; charset=utf-8` 后，真机已正向拿到 `sample_id=file_sample_1f40fb51c7fc4c1ea952c40921c33248`
+  - 当前成功样本的 `file_id=file_de286fc75208b7f8`
+  - 当前成功样本的 `sha256=35d5c0e3e30e13904657ad750e47c6fd40b8d7ba736bb2c4161d02bb96e5fad9`
+  - 设备 artifact 目录中已落盘 `manifest.json`、`request_metadata.json`、`upload_response.json`、`download_metadata.json`、源文件与下载副本
+
 ## 当前仍未完全闭环的点
 
 - `reply` / `/status`：需要继续收口 fallback artifact 的 stronger same-run bind，而不是继续扩 direct scope
 - `[SYNC]`：需要拿到 direct request、relay ingress、canonical `[SYNC] Project Folder List` reply 的同轮时间线，再判断是否需要扩大 Android follow-up refresh 窗口
 - `Project list` 当前 direct-first 只应按 single-account available 读取，多账号严格协商不在当前验证结论内
+- `/v1/files`：当前只完成 debug-only 单样本文本文件 smoke；更宽文件类型、业务链路接入与批量/异常矩阵不在本轮摘要内
 - repo-wide 更宽构建 / 质量门并不是当前摘要的一部分；本文件只保留 TaskMail 窄验证结论
 
 ## archive 使用说明

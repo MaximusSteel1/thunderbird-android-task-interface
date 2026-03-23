@@ -5,33 +5,31 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 @Serializable
-internal data class RelayEvent(
+internal data class RelayCommandAck(
     @SerialName("message_type")
     val messageType: String = MESSAGE_TYPE,
-    @SerialName("envelope_id")
-    val envelopeId: String? = null,
-    @SerialName("sent_at")
-    val sentAt: String? = null,
     @SerialName("request_id")
     val requestId: String? = null,
     @SerialName("packet_id")
     val packetId: String? = null,
     @SerialName("command_type")
     val commandType: String? = null,
-    @SerialName("receipt_id")
-    val receiptId: String? = null,
-    @SerialName("event_id")
-    val eventId: String? = null,
-    @SerialName("subscription_id")
-    val subscriptionId: String? = null,
-    @SerialName("event_type")
-    val eventType: String,
     @SerialName("payload_schema")
     val payloadSchema: String? = null,
-    val payload: JsonElement? = null,
+    val accepted: Boolean,
+    @SerialName("receipt_id")
+    val receiptId: String,
+    @SerialName("received_at")
+    val receivedAt: String,
+    @SerialName("transport_message_id")
+    val transportMessageId: String? = null,
     val related: JsonElement? = null,
+    @SerialName("error_code")
+    val errorCode: String? = null,
+    @SerialName("error_message")
+    val errorMessage: String? = null,
 ) {
     companion object {
-        const val MESSAGE_TYPE = "event"
+        const val MESSAGE_TYPE = "command_ack"
     }
 }

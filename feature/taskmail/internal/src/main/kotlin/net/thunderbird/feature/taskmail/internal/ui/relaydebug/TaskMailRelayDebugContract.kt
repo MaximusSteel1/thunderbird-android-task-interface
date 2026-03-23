@@ -21,9 +21,12 @@ internal interface TaskMailRelayDebugContract {
         val isProbingHealth: Boolean = false,
         val isConnecting: Boolean = false,
         val isSendingProbe: Boolean = false,
+        val isSendingFileSample: Boolean = false,
         val healthSummary: String? = null,
         val lastProbeSummary: String? = null,
         val lastProbeArtifactPath: String? = null,
+        val lastFileSampleSummary: String? = null,
+        val lastFileSampleArtifactPath: String? = null,
         val healthError: String? = null,
         val connectionState: RelayConnectionState = RelayConnectionState.Idle,
         val actionError: String? = null,
@@ -41,6 +44,7 @@ internal interface TaskMailRelayDebugContract {
         data object SaveClicked : Event
         data object ProbeHealthClicked : Event
         data object SendDirectProbeClicked : Event
+        data object SendFileSurfaceSampleClicked : Event
         data object ConnectClicked : Event
         data object DisconnectClicked : Event
         data object DismissErrors : Event

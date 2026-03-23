@@ -233,6 +233,14 @@ private fun List<TaskMailTransportProbeRecordedEvent>.toTimelineMarkdown(
                 append(" | result_id=")
                 append(resultId.sanitizeTimelineValue())
             }
+            event.relayResultType?.takeIf(String::isNotBlank)?.let { relayResultType ->
+                append(" | relay_result_type=")
+                append(relayResultType.sanitizeTimelineValue())
+            }
+            event.relayStatus?.takeIf(String::isNotBlank)?.let { relayStatus ->
+                append(" | relay_status=")
+                append(relayStatus.sanitizeTimelineValue())
+            }
             event.errorCode?.takeIf(String::isNotBlank)?.let { errorCode ->
                 append(" | error_code=")
                 append(errorCode.sanitizeTimelineValue())

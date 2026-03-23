@@ -8,8 +8,10 @@ import java.util.UUID
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeEventStore
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeManifest
@@ -17,10 +19,9 @@ import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportPro
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeRecordedEvent
 import net.thunderbird.feature.taskmail.internal.data.debug.buildTransportProbeManifest
 import net.thunderbird.feature.taskmail.internal.data.debug.currentTransportProbeTimestamp
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommand
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchResult
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchStatus
@@ -29,18 +30,23 @@ import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailT
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+private const val CONTROL_BOOTSTRAP_SCHEMA_VERSION = "taskmail-bootstrap-control-contract-v2"
 private const val TRANSPORT_PROBE_SCHEMA_VERSION = "taskmail-transport-probe-payload-v1"
 private const val DIRECT_ACTION_TRANSPORT_PROBE = "transport_probe"
-private const val ORIGIN_CLIENT = "android_taskmail"
-private const val PACKET_ID_PREFIX = "android-taskmail:transport-probe:"
-private const val REQUEST_ID_PREFIX = "req_"
-private const val DISPATCH_CHANNEL = "taskmail_android_probe"
-private const val FALLBACK_POLICY_NONE = "none"
+private const val CONTROL_PATH = "/control"
+private const val PACKET_ID_PREFIX = "android-control:transport-probe:"
+private const val REQUEST_ID_PREFIX = "probe_req_"
+private const val TRACE_ID_PREFIX = "trace_transport_probe_"
 private const val DIRECTION_ANDROID_TO_PC = "android_to_pc"
-private const val TRANSPORT_KIND_RELAY_DIRECT = "relay_direct"
-private const val RESULT_OBSERVE_WINDOW_MILLIS = 5_000L
+private const val TRANSPORT_KIND_MAIL = "mail"
+private const val RESULT_OBSERVE_WINDOW_MILLIS = 20_000L
+private const val MILLIS_PER_SECOND = 1_000L
 private const val MAX_PAYLOAD_TEXT_LENGTH = 1024
 private const val NANOS_PER_MILLISECOND = 1_000_000L
+private val CONTROL_SUPPORTED_PAYLOAD_SCHEMAS = listOf(
+    CONTROL_BOOTSTRAP_SCHEMA_VERSION,
+    TRANSPORT_PROBE_SCHEMA_VERSION,
+)
 
 @Suppress("TooManyFunctions")
 internal class RelayTaskMailTransportProbeSender(
@@ -49,6 +55,7 @@ internal class RelayTaskMailTransportProbeSender(
     private val requestIdFactory: () -> String = ::nextRequestId,
     private val wallClockProvider: () -> String = ::currentUtcTimestamp,
     private val monotonicTimeProvider: () -> Long = { System.nanoTime() / NANOS_PER_MILLISECOND },
+    private val resultObserveWindowMillis: Long = RESULT_OBSERVE_WINDOW_MILLIS,
 ) : TaskMailTransportProbeSender {
 
     override suspend fun send(
@@ -56,7 +63,7 @@ internal class RelayTaskMailTransportProbeSender(
         request: TaskMailTransportProbeRequest,
     ): TaskMailTransportProbeDispatchResult = coroutineScope {
         val context = createDispatchContext(request)
-        val connectedBeforeSend = relayConnectionClient.connectionState.value is RelayConnectionState.Connected
+        val controlConfig = config.copy(path = CONTROL_PATH)
 
         recordEvent(
             context = context,
@@ -64,22 +71,31 @@ internal class RelayTaskMailTransportProbeSender(
             summary = "Preparing relay transport probe.",
         )
 
-        connectIfNeeded(config = config, context = context, connectedBeforeSend = connectedBeforeSend)
-            ?.let { return@coroutineScope it }
-
-        val matchingResult = async {
-            relayConnectionClient.serverResults
-                .filter { result -> result.matchesProbe(requestId = context.requestId, packetId = context.packetId) }
-                .firstOrNull()
-        }
-
         try {
-            sendProbePacket(context = context, matchingResult = matchingResult)
-        } finally {
-            matchingResult.cancel()
-            if (!connectedBeforeSend) {
-                relayConnectionClient.disconnect()
+            connectControl(config = controlConfig, context = context)
+                ?.let { return@coroutineScope it }
+
+            val matchingEvents = launch {
+                relayConnectionClient.serverEvents
+                    .filter { event -> event.matchesProbe(requestId = context.requestId, packetId = context.packetId) }
+                    .collect { relayEvent ->
+                        recordRelayEvent(context = context, relayEvent = relayEvent)
+                    }
             }
+            val matchingResult = async {
+                relayConnectionClient.serverResults
+                    .filter { result -> result.matchesProbe(requestId = context.requestId, packetId = context.packetId) }
+                    .firstOrNull()
+            }
+
+            try {
+                sendProbeCommand(context = context, matchingResult = matchingResult)
+            } finally {
+                matchingEvents.cancel()
+                matchingResult.cancel()
+            }
+        } finally {
+            relayConnectionClient.disconnect()
         }
     }
 
@@ -94,7 +110,7 @@ internal class RelayTaskMailTransportProbeSender(
                 probeId = request.probeId,
                 scenario = request.scenario.wireValue,
                 direction = DIRECTION_ANDROID_TO_PC,
-                transportKind = TRANSPORT_KIND_RELAY_DIRECT,
+                transportKind = TRANSPORT_KIND_MAIL,
                 payloadText = payloadText,
                 createdAt = wallClockProvider(),
                 requestId = requestId,
@@ -106,25 +122,40 @@ internal class RelayTaskMailTransportProbeSender(
             request = request,
             requestId = requestId,
             packetId = packetId,
+            traceId = "$TRACE_ID_PREFIX$requestId",
             payloadText = payloadText,
             artifactDirectoryPath = eventStore.saveManifest(manifest),
             manifest = manifest,
         )
     }
 
-    private suspend fun connectIfNeeded(
+    private suspend fun connectControl(
         config: RelayTransportConfig,
         context: ProbeDispatchContext,
-        connectedBeforeSend: Boolean,
     ): TaskMailTransportProbeDispatchResult? {
-        if (connectedBeforeSend) return null
-
-        return relayConnectionClient.connect(config).fold(
+        return relayConnectionClient.connect(
+            config = config,
+            supportedPayloadSchemas = CONTROL_SUPPORTED_PAYLOAD_SCHEMAS,
+        ).fold(
             onSuccess = { helloAck ->
+                if (!helloAck.acceptedPayloadSchemas.contains(TRANSPORT_PROBE_SCHEMA_VERSION)) {
+                    recordEvent(
+                        context = context,
+                        eventType = "android_probe_dispatch_failed",
+                        summary = "Relay /control hello_ack did not advertise transport_probe support.",
+                        errorCode = "unsupported_payload_schema",
+                        errorMessage = "hello_ack.accepted_payload_schemas missing taskmail-transport-probe-payload-v1",
+                    )
+                    return@fold context.toDispatchResult(
+                        status = TaskMailTransportProbeDispatchStatus.Rejected,
+                        errorCode = "unsupported_payload_schema",
+                        errorMessage = "hello_ack.accepted_payload_schemas missing taskmail-transport-probe-payload-v1",
+                    )
+                }
                 recordEvent(
                     context = context,
                     eventType = "android_probe_relay_connected",
-                    summary = "Relay connected: ${helloAck.connectionId}",
+                    summary = "Relay /control connected: ${helloAck.connectionId}",
                 )
                 null
             },
@@ -132,7 +163,7 @@ internal class RelayTaskMailTransportProbeSender(
                 recordEvent(
                     context = context,
                     eventType = "android_probe_dispatch_failed",
-                    summary = "Relay connection failed before probe dispatch.",
+                    summary = "Relay /control connection failed before probe dispatch.",
                     errorMessage = error.message,
                 )
                 context.toDispatchResult(
@@ -143,62 +174,64 @@ internal class RelayTaskMailTransportProbeSender(
         )
     }
 
-    private suspend fun sendProbePacket(
+    private suspend fun sendProbeCommand(
         context: ProbeDispatchContext,
         matchingResult: Deferred<RelayResult?>,
     ): TaskMailTransportProbeDispatchResult {
-        return relayConnectionClient.sendPacket(
-            packet = buildPacket(
+        return relayConnectionClient.sendCommand(
+            command = buildCommand(
                 request = context.request,
                 requestId = context.requestId,
                 packetId = context.packetId,
+                traceId = context.traceId,
                 payloadText = context.payloadText,
             ),
+            ackTimeoutMillis = serverResponseWindowMillis(context.request),
         ).fold(
-            onSuccess = { packetAck -> handlePacketAck(context, packetAck, matchingResult) },
+            onSuccess = { commandAck -> handleCommandAck(context, commandAck, matchingResult) },
             onFailure = { error -> handleSendFailure(context, error) },
         )
     }
 
-    private suspend fun handlePacketAck(
+    private suspend fun handleCommandAck(
         context: ProbeDispatchContext,
-        packetAck: RelayPacketAck,
+        commandAck: RelayCommandAck,
         matchingResult: Deferred<RelayResult?>,
     ): TaskMailTransportProbeDispatchResult {
         recordEvent(
             context = context,
-            eventType = if (packetAck.accepted) {
+            eventType = if (commandAck.accepted) {
                 "android_relay_probe_submitted"
             } else {
                 "android_probe_dispatch_failed"
             },
-            summary = if (packetAck.accepted) {
-                "Relay packet accepted."
+            summary = if (commandAck.accepted) {
+                "Relay control command accepted."
             } else {
-                "Relay packet rejected."
+                "Relay control command rejected."
             },
-            receiptId = packetAck.receiptId,
-            errorCode = packetAck.errorCode,
-            errorMessage = packetAck.errorMessage,
+            receiptId = commandAck.receiptId,
+            errorCode = commandAck.errorCode,
+            errorMessage = commandAck.errorMessage,
         )
 
-        if (!packetAck.accepted) {
+        if (!commandAck.accepted) {
             return context.toDispatchResult(
                 status = TaskMailTransportProbeDispatchStatus.Rejected,
-                receiptId = packetAck.receiptId,
-                errorCode = packetAck.errorCode,
-                errorMessage = packetAck.errorMessage,
+                receiptId = commandAck.receiptId,
+                errorCode = commandAck.errorCode,
+                errorMessage = commandAck.errorMessage,
             )
         }
 
-        val observedResult = withTimeoutOrNull(RESULT_OBSERVE_WINDOW_MILLIS) {
+        val observedResult = withTimeoutOrNull(serverResponseWindowMillis(context.request)) {
             matchingResult.await()
         }
 
         return if (observedResult == null) {
-            handleAcceptedWithoutResult(context, packetAck.receiptId)
+            handleAcceptedWithoutResult(context, commandAck.receiptId)
         } else {
-            handleObservedResult(context, packetAck.receiptId, observedResult)
+            handleObservedResult(context, commandAck.receiptId, observedResult)
         }
     }
 
@@ -236,6 +269,8 @@ internal class RelayTaskMailTransportProbeSender(
             summary = "Relay result observed.",
             receiptId = receiptId,
             resultId = relayResult.resultId,
+            relayResultType = relayResult.resultType,
+            relayStatus = relayResult.status,
         )
 
         return context.toDispatchResult(
@@ -255,7 +290,7 @@ internal class RelayTaskMailTransportProbeSender(
         recordEvent(
             context = context,
             eventType = "android_probe_dispatch_failed",
-            summary = "Relay probe send failed before acceptance.",
+            summary = "Relay control command send failed before acceptance.",
             errorCode = relayServerException?.code,
             errorMessage = error.message,
         )
@@ -284,44 +319,32 @@ internal class RelayTaskMailTransportProbeSender(
         )
     }
 
-    private fun buildPacket(
+    private fun buildCommand(
         request: TaskMailTransportProbeRequest,
         requestId: String,
         packetId: String,
+        traceId: String,
         payloadText: String,
-    ): RelayPacket {
-        return RelayPacket(
+    ): RelayCommand {
+        return RelayCommand(
+            requestId = requestId,
             packetId = packetId,
-            clientTraceId = requestId,
-            taskRunPacket = buildJsonObject {
-                put("schema_version", TRANSPORT_PROBE_SCHEMA_VERSION)
-                put("action", DIRECT_ACTION_TRANSPORT_PROBE)
-                put("request_id", requestId)
-                put(
-                    "origin",
-                    buildJsonObject {
-                        put("client", ORIGIN_CLIENT)
-                        put("probe_id", request.probeId)
-                    },
-                )
-                put(
-                    DIRECT_ACTION_TRANSPORT_PROBE,
-                    buildJsonObject {
-                        put("probe_id", request.probeId)
-                        put("scenario", request.scenario.wireValue)
-                        put("direction", DIRECTION_ANDROID_TO_PC)
-                        put("transport_kind", TRANSPORT_KIND_RELAY_DIRECT)
-                        put("payload_text", payloadText)
-                        put("timeout_seconds", request.timeoutSeconds)
-                    },
-                )
-            },
-            dispatchMetadata = buildJsonObject {
-                put("channel", DISPATCH_CHANNEL)
-                put("schema_version", TRANSPORT_PROBE_SCHEMA_VERSION)
-                put("action", DIRECT_ACTION_TRANSPORT_PROBE)
-                put("fallback_policy", FALLBACK_POLICY_NONE)
+            commandType = DIRECT_ACTION_TRANSPORT_PROBE,
+            payloadSchema = TRANSPORT_PROBE_SCHEMA_VERSION,
+            trace = buildJsonObject {
+                put("trace_id", traceId)
                 put("probe_id", request.probeId)
+            },
+            payload = buildJsonObject {
+                put("probe_id", request.probeId)
+                put("scenario", request.scenario.wireValue)
+                put("direction", DIRECTION_ANDROID_TO_PC)
+                put("transport_kind", TRANSPORT_KIND_MAIL)
+                put("payload_text", payloadText)
+                put("timeout_seconds", request.timeoutSeconds)
+            },
+            related = buildJsonObject {
+                put("ui_surface", "transport_probe_sheet")
             },
             sentAt = wallClockProvider(),
         )
@@ -333,6 +356,8 @@ internal class RelayTaskMailTransportProbeSender(
         summary: String,
         receiptId: String? = null,
         resultId: String? = null,
+        relayResultType: String? = null,
+        relayStatus: String? = null,
         errorCode: String? = null,
         errorMessage: String? = null,
     ) {
@@ -349,10 +374,36 @@ internal class RelayTaskMailTransportProbeSender(
                 packetId = context.packetId,
                 receiptId = receiptId,
                 resultId = resultId,
+                relayResultType = relayResultType,
+                relayStatus = relayStatus,
                 errorCode = errorCode,
                 errorMessage = errorMessage,
             ),
         )
+    }
+
+    private suspend fun recordRelayEvent(
+        context: ProbeDispatchContext,
+        relayEvent: net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent,
+    ) {
+        val relayRecordedAt = relayEvent.sentAt?.takeIf(String::isNotBlank)
+        eventStore.appendEvent(
+            TaskMailTransportProbeRecordedEvent(
+                probeId = context.request.probeId,
+                eventType = relayEvent.eventType,
+                actor = "relay_server",
+                recordedAt = relayRecordedAt ?: currentTransportProbeTimestamp(),
+                clockSource = if (relayRecordedAt == null) "android_wall_clock" else "relay_wall_clock",
+                monotonicMs = if (relayRecordedAt == null) monotonicTimeProvider() else 0L,
+                summary = "Relay event observed: ${relayEvent.eventType}",
+                requestId = relayEvent.requestId ?: context.requestId,
+                packetId = relayEvent.packetId ?: context.packetId,
+            ),
+        )
+    }
+
+    private fun serverResponseWindowMillis(request: TaskMailTransportProbeRequest): Long {
+        return request.timeoutSeconds.toLong() * MILLIS_PER_SECOND + resultObserveWindowMillis
     }
 
     private companion object {
@@ -374,6 +425,7 @@ private data class ProbeDispatchContext(
     val request: TaskMailTransportProbeRequest,
     val requestId: String,
     val packetId: String,
+    val traceId: String,
     val payloadText: String,
     val artifactDirectoryPath: String,
     val manifest: TaskMailTransportProbeManifest,
@@ -425,9 +477,17 @@ private fun RelayResult.matchesProbe(
     return this.requestId == requestId || this.packetId == packetId
 }
 
+private fun net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent.matchesProbe(
+    requestId: String,
+    packetId: String,
+): Boolean {
+    return this.requestId == requestId || this.packetId == packetId
+}
+
 private fun RelayResult.toDispatchStatus(): TaskMailTransportProbeDispatchStatus {
     return when (status) {
         "completed" -> TaskMailTransportProbeDispatchStatus.ResultCompleted
+        "partial" -> TaskMailTransportProbeDispatchStatus.ResultPartial
         "failed" -> TaskMailTransportProbeDispatchStatus.ResultFailed
         else -> TaskMailTransportProbeDispatchStatus.AcceptedAwaitingResult
     }

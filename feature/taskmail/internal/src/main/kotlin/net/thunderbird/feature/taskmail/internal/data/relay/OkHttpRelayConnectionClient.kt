@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import net.thunderbird.core.logging.Logger
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommand
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayControlHello
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayError
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHello
@@ -39,6 +42,9 @@ import okhttp3.WebSocketListener
 private const val TAG = "OkHttpRelayConnectionClient"
 private const val CLIENT_ID = "android-taskmail"
 private const val CLIENT_VERSION = "0.1.0-dev"
+private const val CONTROL_CLIENT_ID = "android-control"
+private const val CONTROL_CLIENT_VERSION = "0.1.0"
+private const val CONTROL_PATH = "/control"
 private const val CONNECT_TIMEOUT_SECONDS = 15L
 private const val PING_INTERVAL_SECONDS = 30L
 private const val MILLIS_PER_SECOND = 1000L
@@ -63,6 +69,7 @@ internal class OkHttpRelayConnectionClient(
     private var webSocket: WebSocket? = null
     private var helloAckDeferred: CompletableDeferred<Result<RelayHelloAck>>? = null
     private var packetAckDeferred: CompletableDeferred<Result<RelayPacketAck>>? = null
+    private var commandAckDeferred: CompletableDeferred<Result<RelayCommandAck>>? = null
 
     override val connectionState: StateFlow<RelayConnectionState> = mutableConnectionState.asStateFlow()
     override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates.asSharedFlow()
@@ -70,9 +77,47 @@ internal class OkHttpRelayConnectionClient(
     override val serverResults: SharedFlow<RelayResult> = mutableServerResults.asSharedFlow()
 
     override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
+        return connectInternal(
+            config = config.normalized(),
+            helloPayload = { normalizedConfig ->
+                codec.encodeHello(
+                    RelayHello(
+                        clientId = CLIENT_ID,
+                        clientVersion = CLIENT_VERSION,
+                        transportTokenId = normalizedConfig.tokenFingerprint().orEmpty(),
+                        sentAt = currentUtcTimestamp(),
+                    ),
+                )
+            },
+        )
+    }
+
+    override suspend fun connect(
+        config: RelayTransportConfig,
+        supportedPayloadSchemas: List<String>,
+    ): Result<RelayHelloAck> {
+        return connectInternal(
+            config = config.copy(path = CONTROL_PATH).normalized(),
+            helloPayload = { normalizedConfig ->
+                codec.encodeControlHello(
+                    RelayControlHello(
+                        clientId = CONTROL_CLIENT_ID,
+                        clientVersion = CONTROL_CLIENT_VERSION,
+                        transportTokenId = normalizedConfig.tokenFingerprint().orEmpty(),
+                        supportedPayloadSchemas = supportedPayloadSchemas,
+                        sentAt = currentUtcTimestamp(),
+                    ),
+                )
+            },
+        )
+    }
+
+    private suspend fun connectInternal(
+        config: RelayTransportConfig,
+        helloPayload: (RelayTransportConfig) -> String,
+    ): Result<RelayHelloAck> {
         return withContext(ioDispatcher) {
-            val normalizedConfig = config.normalized()
-            if (!normalizedConfig.isConfigured()) {
+            if (!config.isConfigured()) {
                 val message = "Relay host, port, and transport token are required."
                 mutableConnectionState.value = RelayConnectionState.Failed(message)
                 return@withContext Result.failure(IllegalStateException(message))
@@ -82,18 +127,18 @@ internal class OkHttpRelayConnectionClient(
 
             val deferred = CompletableDeferred<Result<RelayHelloAck>>()
             helloAckDeferred = deferred
-            mutableConnectionState.value = RelayConnectionState.Connecting(normalizedConfig.relayUrl())
+            mutableConnectionState.value = RelayConnectionState.Connecting(config.relayUrl())
 
             val request = Request.Builder()
-                .url(normalizedConfig.relayUrl())
-                .header("Authorization", "Bearer ${normalizedConfig.transportToken}")
+                .url(config.relayUrl())
+                .header("Authorization", "Bearer ${config.transportToken}")
                 .build()
 
             webSocket = client.newWebSocket(
                 request,
                 RelaySocketListener(
-                    config = normalizedConfig,
                     deferred = deferred,
+                    helloPayload = helloPayload(config),
                 ),
             )
 
@@ -123,7 +168,7 @@ internal class OkHttpRelayConnectionClient(
                 )
             }
 
-            if (packetAckDeferred?.isCompleted == false) {
+            if (packetAckDeferred?.isCompleted == false || commandAckDeferred?.isCompleted == false) {
                 return@withContext Result.failure(
                     IllegalStateException("Relay packet send already in progress."),
                 )
@@ -158,6 +203,55 @@ internal class OkHttpRelayConnectionClient(
         }
     }
 
+    override suspend fun sendCommand(
+        command: RelayCommand,
+        ackTimeoutMillis: Long,
+    ): Result<RelayCommandAck> {
+        return withContext(ioDispatcher) {
+            val activeWebSocket = webSocket
+            if (activeWebSocket == null || mutableConnectionState.value !is RelayConnectionState.Connected) {
+                logger.warn(TAG) { "Refusing relay command send because websocket is not connected." }
+                return@withContext Result.failure(
+                    IllegalStateException("Relay websocket is not connected."),
+                )
+            }
+
+            if (packetAckDeferred?.isCompleted == false || commandAckDeferred?.isCompleted == false) {
+                return@withContext Result.failure(
+                    IllegalStateException("Relay command send already in progress."),
+                )
+            }
+
+            val deferred = CompletableDeferred<Result<RelayCommandAck>>()
+            commandAckDeferred = deferred
+
+            logger.debug(TAG) { "Sending relay command packetId=${command.packetId}" }
+            if (!activeWebSocket.send(codec.encodeCommand(command))) {
+                commandAckDeferred = null
+                logger.warn(TAG) { "Relay command send returned false for packetId=${command.packetId}" }
+                return@withContext Result.failure(
+                    IllegalStateException("Failed to send relay command."),
+                )
+            }
+
+            try {
+                withTimeout(ackTimeoutMillis) {
+                    deferred.await()
+                }
+            } catch (error: TimeoutCancellationException) {
+                commandAckDeferred = null
+                logger.warn(TAG, error) { "Relay command acknowledgement timed out for packetId=${command.packetId}" }
+                Result.failure(
+                    IllegalStateException(
+                        error.message?.takeIf(String::isNotBlank)
+                            ?: "Relay command acknowledgement timed out.",
+                        error,
+                    ),
+                )
+            }
+        }
+    }
+
     override suspend fun disconnect() {
         withContext(ioDispatcher) {
             disconnectInternal()
@@ -172,6 +266,8 @@ internal class OkHttpRelayConnectionClient(
         helloAckDeferred = null
         packetAckDeferred?.cancel()
         packetAckDeferred = null
+        commandAckDeferred?.cancel()
+        commandAckDeferred = null
     }
 
     private fun handleHelloAck(message: RelayHelloAck) {
@@ -207,6 +303,27 @@ internal class OkHttpRelayConnectionClient(
             }
         }
         packetAckDeferred = null
+    }
+
+    private fun handleCommandAck(message: RelayCommandAck) {
+        if (message.accepted) {
+            logger.debug(TAG) {
+                "Received relay command ack for packetId=${message.packetId.orEmpty()}"
+            }
+        } else {
+            logger.warn(TAG) {
+                "Relay command ack rejected for packetId=${message.packetId.orEmpty()} " +
+                    "code=${message.errorCode.orEmpty()} " +
+                    "error=${message.errorMessage.orEmpty()}"
+            }
+        }
+
+        commandAckDeferred?.let { commandDeferred ->
+            if (!commandDeferred.isCompleted) {
+                commandDeferred.complete(Result.success(message))
+            }
+        }
+        commandAckDeferred = null
     }
 
     private fun handleSessionUpdate(message: RelaySessionUpdate) {
@@ -254,7 +371,8 @@ internal class OkHttpRelayConnectionClient(
         if (
             mutableConnectionState.value is RelayConnectionState.Failed &&
             helloAckDeferred == null &&
-            packetAckDeferred == null
+            packetAckDeferred == null &&
+            commandAckDeferred == null
         ) {
             return
         }
@@ -272,21 +390,20 @@ internal class OkHttpRelayConnectionClient(
         }
         packetAckDeferred = null
 
+        if (commandAckDeferred?.isCompleted == false) {
+            commandAckDeferred?.complete(Result.failure(error))
+        }
+        commandAckDeferred = null
+
         webSocket?.cancel()
     }
 
     private inner class RelaySocketListener(
-        private val config: RelayTransportConfig,
         private val deferred: CompletableDeferred<Result<RelayHelloAck>>,
+        private val helloPayload: String,
     ) : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            val hello = RelayHello(
-                clientId = CLIENT_ID,
-                clientVersion = CLIENT_VERSION,
-                transportTokenId = config.tokenFingerprint().orEmpty(),
-                sentAt = currentUtcTimestamp(),
-            )
-            val sent = webSocket.send(codec.encodeHello(hello))
+            val sent = webSocket.send(helloPayload)
             if (!sent) {
                 failCurrentOperation(IllegalStateException("Failed to send relay hello."))
             }
@@ -330,6 +447,9 @@ internal class OkHttpRelayConnectionClient(
                 }
                 is RelayServerMessage.PacketAck -> {
                     this@OkHttpRelayConnectionClient.handlePacketAck(message.message)
+                }
+                is RelayServerMessage.CommandAck -> {
+                    this@OkHttpRelayConnectionClient.handleCommandAck(message.message)
                 }
                 is RelayServerMessage.SessionUpdate -> {
                     this@OkHttpRelayConnectionClient.handleSessionUpdate(message.message)

@@ -54,7 +54,9 @@ import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailNewTaskSendR
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailSessionActionSendRecordJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskSessionDetailJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.debug.FileBackedTaskMailProjectSyncDebugRecorder
+import net.thunderbird.feature.taskmail.internal.data.debug.FileBackedTaskMailFileSampleStore
 import net.thunderbird.feature.taskmail.internal.data.debug.FileBackedTaskMailTransportProbeEventStore
+import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailFileSampleStore
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailProjectSyncDebugRecorder
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeEventStore
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
@@ -64,10 +66,13 @@ import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
 import net.thunderbird.feature.taskmail.internal.data.parser.EmailMessageParser
 import net.thunderbird.feature.taskmail.internal.data.parser.IncomingMessageParser
 import net.thunderbird.feature.taskmail.internal.data.relay.DefaultRelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayFileSurfaceClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayHealthProbe
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayFileSurfaceClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailFileSampleSender
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayHealthProbe
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectProjectSyncSender
@@ -82,6 +87,7 @@ import net.thunderbird.feature.taskmail.internal.data.transport.TaskMailReplyTra
 import net.thunderbird.feature.taskmail.internal.domain.newtask.RealTaskMailNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskSender
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleSender
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailMessageDetector
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailProjectSyncResultParser
 import net.thunderbird.feature.taskmail.internal.domain.projectsync.TaskMailDirectProjectSyncSender
@@ -116,6 +122,7 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.RequestTaskMailP
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SaveTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailFileSample
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
@@ -150,6 +157,11 @@ val taskMailModule: Module = module {
     single { RelayProtocolJsonCodec() }
     single<RelayHealthProbe> {
         OkHttpRelayHealthProbe(
+            logger = get(),
+        )
+    }
+    single<RelayFileSurfaceClient> {
+        OkHttpRelayFileSurfaceClient(
             logger = get(),
         )
     }
@@ -335,10 +347,27 @@ val taskMailModule: Module = module {
         )
     }
 
+    single<TaskMailFileSampleStore> {
+        FileBackedTaskMailFileSampleStore(
+            storageDirectory = File(
+                androidContext().getExternalFilesDir(null) ?: androidContext().filesDir,
+                "taskmail-debug/file-sample",
+            ),
+            logger = get(),
+        )
+    }
+
     single<TaskMailTransportProbeSender> {
         RelayTaskMailTransportProbeSender(
             relayConnectionClient = get(),
             eventStore = get(),
+        )
+    }
+
+    single<TaskMailFileSampleSender> {
+        RelayTaskMailFileSampleSender(
+            fileSurfaceClient = get(),
+            store = get(),
         )
     }
 
@@ -559,6 +588,12 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        SendTaskMailFileSample(
+            sender = get(),
+        )
+    }
+
+    factory {
         RecordTaskMailNewTaskSendRecord(
             repository = get(),
         )
@@ -644,6 +679,7 @@ val taskMailModule: Module = module {
             relayBootstrapManager = get(),
             projectSyncDebugSettingsRepository = get(),
             sendTaskMailTransportProbe = get(),
+            sendTaskMailFileSample = get(),
         )
     }
 }

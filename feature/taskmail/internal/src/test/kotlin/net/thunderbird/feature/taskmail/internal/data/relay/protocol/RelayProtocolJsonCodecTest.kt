@@ -39,6 +39,40 @@ class RelayProtocolJsonCodecTest {
     }
 
     @Test
+    fun `encodeControlHello should encode canonical control hello payload`() {
+        val payload = testSubject.encodeControlHello(
+            RelayControlHello(
+                clientId = "android-control",
+                clientVersion = "0.1.0",
+                transportTokenId = "abc123def456",
+                supportedPayloadSchemas = listOf(
+                    "taskmail-bootstrap-control-contract-v2",
+                    "taskmail-transport-probe-payload-v1",
+                ),
+                sentAt = "2026-03-24T10:00:00Z",
+            ),
+        )
+
+        assertThat(Json.parseToJsonElement(payload)).isEqualTo(
+            Json.parseToJsonElement(
+                """
+                {
+                  "message_type": "hello",
+                  "client_id": "android-control",
+                  "client_version": "0.1.0",
+                  "transport_token_id": "abc123def456",
+                  "supported_payload_schemas": [
+                    "taskmail-bootstrap-control-contract-v2",
+                    "taskmail-transport-probe-payload-v1"
+                  ],
+                  "sent_at": "2026-03-24T10:00:00Z"
+                }
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    @Test
     fun `decodeServerMessage should decode hello_ack`() {
         val message = testSubject.decodeServerMessage(
             """
@@ -183,6 +217,45 @@ class RelayProtocolJsonCodecTest {
                     receivedAt = "2026-03-21T12:30:01Z",
                     errorCode = "invalid_payload",
                     errorMessage = "new_task.task_text must be a non-empty string",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `decodeServerMessage should decode command_ack`() {
+        val message = testSubject.decodeServerMessage(
+            """
+            {
+              "message_type": "command_ack",
+              "request_id": "probe_req_001",
+              "packet_id": "android-control:transport-probe:probe_req_001",
+              "command_type": "transport_probe",
+              "payload_schema": "taskmail-transport-probe-payload-v1",
+              "accepted": true,
+              "receipt_id": "receipt-1",
+              "received_at": "2026-03-24T10:00:01Z",
+              "transport_message_id": "transport-1",
+              "related": {
+                "probe_id": "probe_001"
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(message).isEqualTo(
+            RelayServerMessage.CommandAck(
+                RelayCommandAck(
+                    messageType = "command_ack",
+                    requestId = "probe_req_001",
+                    packetId = "android-control:transport-probe:probe_req_001",
+                    commandType = "transport_probe",
+                    payloadSchema = "taskmail-transport-probe-payload-v1",
+                    accepted = true,
+                    receiptId = "receipt-1",
+                    receivedAt = "2026-03-24T10:00:01Z",
+                    transportMessageId = "transport-1",
+                    related = Json.parseToJsonElement("""{"probe_id":"probe_001"}"""),
                 ),
             ),
         )

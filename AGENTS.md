@@ -97,6 +97,8 @@ TaskMail handoff:
 
 - Gradle requires Java 21+ in this repo.
 - On Windows, prefer `.\gradlew.bat ...`.
+- In PowerShell, default repository text reads to UTF-8: set `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` and use explicit decoding such as `Get-Content -Raw -Encoding utf8 <path>`.
+- Do not branch on “whether the file is Chinese” before reading. Treat explicit UTF-8 as the default read path, and only investigate alternate encodings if decoded output is still abnormal.
 - If Gradle picks Java 11, fix `JAVA_HOME` / `PATH` first instead of retrying blindly.
 
 ## Decision Rule

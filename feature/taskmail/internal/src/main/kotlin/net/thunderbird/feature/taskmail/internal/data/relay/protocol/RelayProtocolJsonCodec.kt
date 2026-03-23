@@ -16,8 +16,16 @@ internal class RelayProtocolJsonCodec(
         return json.encodeToString(RelayHello.serializer(), message)
     }
 
+    fun encodeControlHello(message: RelayControlHello): String {
+        return json.encodeToString(RelayControlHello.serializer(), message)
+    }
+
     fun encodePacket(message: RelayPacket): String {
         return json.encodeToString(RelayPacket.serializer(), message)
+    }
+
+    fun encodeCommand(message: RelayCommand): String {
+        return json.encodeToString(RelayCommand.serializer(), message)
     }
 
     fun decodeServerMessage(payload: String): RelayServerMessage {
@@ -37,6 +45,12 @@ internal class RelayProtocolJsonCodec(
             RelayPacketAck.MESSAGE_TYPE -> {
                 RelayServerMessage.PacketAck(
                     json.decodeFromString(RelayPacketAck.serializer(), payload),
+                )
+            }
+
+            RelayCommandAck.MESSAGE_TYPE -> {
+                RelayServerMessage.CommandAck(
+                    json.decodeFromString(RelayCommandAck.serializer(), payload),
                 )
             }
 
@@ -80,6 +94,10 @@ internal sealed interface RelayServerMessage {
 
     data class PacketAck(
         val message: RelayPacketAck,
+    ) : RelayServerMessage
+
+    data class CommandAck(
+        val message: RelayCommandAck,
     ) : RelayServerMessage
 
     data class SessionUpdate(

@@ -4,6 +4,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleResult
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleStatus
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleRequest
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
@@ -11,6 +14,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailProje
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchResult
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchStatus
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeRequest
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailFileSample
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailTransportProbe
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Event
@@ -23,6 +27,7 @@ internal class TaskMailRelayDebugViewModel(
     private val relayBootstrapManager: RelayBootstrapManager,
     private val projectSyncDebugSettingsRepository: TaskMailProjectSyncDebugSettingsRepository,
     private val sendTaskMailTransportProbe: SendTaskMailTransportProbe,
+    private val sendTaskMailFileSample: SendTaskMailFileSample,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskMailRelayDebugContract.ViewModel {
@@ -46,6 +51,7 @@ internal class TaskMailRelayDebugViewModel(
             Event.SaveClicked -> saveConfig()
             Event.ProbeHealthClicked -> probeHealth()
             Event.SendDirectProbeClicked -> sendDirectProbe()
+            Event.SendFileSurfaceSampleClicked -> sendFileSample()
             Event.ConnectClicked -> connect()
             Event.DisconnectClicked -> disconnect()
             Event.DismissErrors -> updateState { it.copy(healthError = null, actionError = null) }
@@ -160,7 +166,7 @@ internal class TaskMailRelayDebugViewModel(
         val config = currentConfig() ?: return
         val payloadText = state.value.probePayloadText.trim()
         if (payloadText.isEmpty()) {
-            updateState { it.copy(actionError = "Transport probe text is required.") }
+            updateState { it.copy(actionError = "Debug text payload is required.") }
             return
         }
 
@@ -201,6 +207,58 @@ internal class TaskMailRelayDebugViewModel(
                         it.copy(
                             isSendingProbe = false,
                             actionError = error.message ?: "Transport probe failed.",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    private fun sendFileSample() {
+        val config = currentConfig() ?: return
+        val payloadText = state.value.probePayloadText.trim()
+        if (payloadText.isEmpty()) {
+            updateState { it.copy(actionError = "Debug text payload is required.") }
+            return
+        }
+
+        updateState {
+            it.copy(
+                isSendingFileSample = true,
+                actionError = null,
+                lastFileSampleSummary = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                sendTaskMailFileSample(
+                    config = config,
+                    request = TaskMailFileSampleRequest(
+                        sampleId = nextFileSampleId(),
+                        payloadText = payloadText,
+                    ),
+                )
+            }.fold(
+                onSuccess = { result ->
+                    updateState {
+                        it.copy(
+                            isSendingFileSample = false,
+                            lastFileSampleSummary = result.toSummary(),
+                            lastFileSampleArtifactPath = result.artifactDirectoryPath,
+                        )
+                    }
+                    emitEffect(
+                        Effect.ShowMessage(
+                            "/v1/files sample ${result.status.name} (${result.sampleId})",
+                        ),
+                    )
+                },
+                onFailure = { error ->
+                    updateState {
+                        it.copy(
+                            isSendingFileSample = false,
+                            actionError = error.message ?: "/v1/files sample failed.",
                         )
                     }
                 },
@@ -281,8 +339,35 @@ private fun TaskMailTransportProbeDispatchResult.toSummary(): String {
     }.joinToString(separator = " | ")
 }
 
+private fun TaskMailFileSampleResult.toSummary(): String {
+    return buildList {
+        add("sample_id=$sampleId")
+        add("status=${status.name}")
+        fileId?.takeIf(String::isNotBlank)?.let { add("file_id=$it") }
+        byteSize?.let { add("byte_size=$it") }
+        expectedSha256?.takeIf(String::isNotBlank)?.let { add("sha256=$it") }
+        metadataUrl?.takeIf(String::isNotBlank)?.let { add("metadata_url=$it") }
+        downloadUrl?.takeIf(String::isNotBlank)?.let { add("download_url=$it") }
+        if (
+            status == TaskMailFileSampleStatus.Failed &&
+            observedSha256 != null &&
+            observedSha256 != expectedSha256
+        ) {
+            add("observed_sha256=$observedSha256")
+        }
+        errorCode?.takeIf(String::isNotBlank)?.let { add("error_code=$it") }
+        errorMessage?.takeIf(String::isNotBlank)?.let { add("error=$it") }
+    }.joinToString(separator = " | ")
+}
+
 private fun nextProbeId(): String {
     return "probe_" + java.util.UUID.randomUUID()
+        .toString()
+        .replace("-", "")
+}
+
+private fun nextFileSampleId(): String {
+    return "file_sample_" + java.util.UUID.randomUUID()
         .toString()
         .replace("-", "")
 }

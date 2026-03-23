@@ -44,6 +44,8 @@ class FileBackedTaskMailTransportProbeEventStoreTest {
                 requestId = "req_001",
                 packetId = "pkt_001",
                 receiptId = "receipt_001",
+                relayResultType = "transport_probe_result",
+                relayStatus = "completed",
             ),
         )
 
@@ -58,6 +60,8 @@ class FileBackedTaskMailTransportProbeEventStoreTest {
         assertThat(eventsContent).contains("\"receiptId\":\"receipt_001\"")
         assertThat(timelineContent).contains("# Transport Probe probe_001")
         assertThat(timelineContent).contains("request_id=req_001")
+        assertThat(timelineContent).contains("relay_result_type=transport_probe_result")
+        assertThat(timelineContent).contains("relay_status=completed")
         assertThat(testSubject.artifactDirectoryPath("probe_001")).isEqualTo(probeDirectory.absolutePath)
     }
 }

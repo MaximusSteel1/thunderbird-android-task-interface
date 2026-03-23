@@ -13,4 +13,8 @@ internal data class RelayHelloAck(
     val serverTime: String,
     @SerialName("heartbeat_seconds")
     val heartbeatSeconds: Int,
+    @SerialName("transport_token_id")
+    val transportTokenId: String? = null,
+    @SerialName("accepted_payload_schemas")
+    val acceptedPayloadSchemas: List<String> = emptyList(),
 )

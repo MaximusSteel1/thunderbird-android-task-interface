@@ -16,6 +16,8 @@ internal data class RelayResult(
     val requestId: String? = null,
     @SerialName("packet_id")
     val packetId: String? = null,
+    @SerialName("command_type")
+    val commandType: String? = null,
     @SerialName("receipt_id")
     val receiptId: String? = null,
     @SerialName("result_id")
@@ -26,6 +28,7 @@ internal data class RelayResult(
     @SerialName("payload_schema")
     val payloadSchema: String? = null,
     val payload: JsonElement? = null,
+    val related: JsonElement? = null,
 ) {
     companion object {
         const val MESSAGE_TYPE = "result"

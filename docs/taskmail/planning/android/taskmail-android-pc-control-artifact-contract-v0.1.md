@@ -1,6 +1,6 @@
 # TaskMail Android-PC 控制面与文件面合同（v0.1）
 
-更新时间：2026-03-23
+更新时间：2026-03-24
 
 ## 状态
 
@@ -8,6 +8,7 @@
 - 本文冻结 Android 与 PC 之间的通用 transport shell，不冻结 `new_task`、`session_action`、`project_sync` 等业务 payload 细节。
 - 当前已实现行为仍以 `E:\projects\mail_based_task_manager\docs\current\android_runner_communication_contract.md` 为准。
 - 本文代表 vNext 目标合同；只有在 Android / PC / VPS 三端 cutover 后，它才会取代当前 mail-first boundary。
+- 截至 2026-03-24，live relay `/v1/files` current behavior 仍只接受 `kind=image|file`；Android 真机单样本已证明文本文件可以先按 `kind=file` + 正确 `mime_type` 通过，这属于 current compatibility 约束，不改变本文对 vNext `kind` 枚举的目标定义。
 
 ## Read First
 
@@ -486,6 +487,12 @@ relay 在 durable accept 或 reject 后返回。
 - `text`
 - `json`
 
+但要明确区分：
+
+- 以上枚举是 vNext shared contract 目标
+- 截至 2026-03-24 的 live runtime current behavior 仍只接受 `image | file`
+- 因此当前联调阶段，`text/plain` 或 `application/json` sidecar 若走 live `/v1/files`，仍应暂时编码为 `kind=file`，并保留准确 `mime_type`
+
 `role` 当前冻结为：
 
 - `attachment`
@@ -534,6 +541,12 @@ relay 在 durable accept 或 reject 后返回。
 - 单个普通文本字段建议不超过 `64 KiB`
 - 超过该大小的正文、Markdown、JSON sidecar 应上传为 `kind = text` 或 `kind = json` artifact，再在 `payload` 中引用
 
+current implementation compatibility 注记：
+
+- 在 vNext 合同里，上述读法仍成立
+- 但截至 2026-03-24 的 live runtime 尚未接受 `kind=text/json`
+- 因此当前 Android / PC / VPS 真机联调里，大文本或 JSON 文件若要走 live `/v1/files`，仍需先按 `kind=file` 上传，同时依赖 `mime_type` 区分真实内容类型
+
 ## 14. HTTP 上传合同
 
 ### 14.1 `POST /v1/files`
@@ -548,6 +561,11 @@ relay 在 durable accept 或 reject 后返回。
 - `sha256`
 - `image`
 - `trace`
+
+current implementation compatibility 注记：
+
+- 截至 2026-03-24，若 `metadata.kind` 直接发送 `text` 或 `json`，live runtime 当前可能返回 `invalid_metadata`
+- 因此当前兼容实现仍应优先发送 `kind=file`，并用 `mime_type=text/plain` 或 `mime_type=application/json` 表达真实内容类型
 
 服务端职责：
 

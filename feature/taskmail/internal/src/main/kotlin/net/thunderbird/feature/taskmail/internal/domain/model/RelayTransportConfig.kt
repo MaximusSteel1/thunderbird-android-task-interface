@@ -11,11 +11,27 @@ internal data class RelayTransportConfig(
     val transportToken: String = "",
 ) {
     fun healthUrl(): String {
-        return "${httpScheme()}://$host:$port/healthz"
+        return absoluteHttpUrl("/healthz")
+    }
+
+    fun fileSurfaceUrl(): String {
+        return absoluteHttpUrl("/v1/files")
     }
 
     fun relayUrl(): String {
         return "${websocketScheme()}://$host:$port${normalizedPath()}"
+    }
+
+    fun absoluteHttpUrl(path: String): String {
+        val trimmedPath = path.trim()
+        if (trimmedPath.startsWith("http://") || trimmedPath.startsWith("https://")) {
+            return trimmedPath
+        }
+
+        val normalizedPath = trimmedPath.ifEmpty { "/" }
+            .let { value -> if (value.startsWith("/")) value else "/$value" }
+
+        return "${httpScheme()}://$host:$port$normalizedPath"
     }
 
     fun isConfigured(): Boolean {

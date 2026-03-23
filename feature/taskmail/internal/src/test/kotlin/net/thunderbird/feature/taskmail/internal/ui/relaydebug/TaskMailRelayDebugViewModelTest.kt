@@ -12,6 +12,10 @@ import kotlin.test.Test
 import kotlinx.coroutines.flow.MutableStateFlow
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleRequest
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleResult
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleSender
+import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -22,6 +26,7 @@ import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailT
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeDispatchStatus
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeRequest
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeSender
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailFileSample
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailTransportProbe
 
 class TaskMailRelayDebugViewModelTest {
@@ -79,6 +84,33 @@ class TaskMailRelayDebugViewModelTest {
             ensureThatAllEventsAreConsumed()
         }
     }
+
+    @Test
+    fun `send file sample should expose summary and artifact path`() = runMviTest {
+        with(TaskMailRelayDebugViewModelRobot(this)) {
+            start()
+            loadData()
+            awaitState()
+            changeProbePayloadText("TaskMail file sample text")
+            awaitState()
+            sendFileSample()
+
+            assertThat(awaitState().isSendingFileSample).isEqualTo(true)
+            assertThat(awaitState().lastFileSampleSummary).isEqualTo(
+                "sample_id=file_sample_test | status=Completed | file_id=file_test | " +
+                    "byte_size=96 | sha256=sample_sha256 | metadata_url=/v1/files/file_test | " +
+                    "download_url=/v1/files/file_test/content",
+            )
+            assertThat(viewModelState().lastFileSampleArtifactPath)
+                .isEqualTo("E:/tmp/taskmail-debug/file-sample/file_sample_test")
+            assertThat(awaitEffect()).isEqualTo(
+                TaskMailRelayDebugContract.Effect.ShowMessage(
+                    "/v1/files sample Completed (file_sample_test)",
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
 }
 
 private class TaskMailRelayDebugViewModelRobot(
@@ -90,10 +122,12 @@ private class TaskMailRelayDebugViewModelRobot(
         initialValue = initialDebugFileLoggingEnabled,
     )
     private val transportProbeSender = FakeTaskMailTransportProbeSender()
+    private val fileSampleSender = FakeTaskMailFileSampleSender()
     private val viewModel = TaskMailRelayDebugViewModel(
         relayBootstrapManager = relayBootstrapManager,
         projectSyncDebugSettingsRepository = debugSettingsRepository,
         sendTaskMailTransportProbe = SendTaskMailTransportProbe(transportProbeSender),
+        sendTaskMailFileSample = SendTaskMailFileSample(fileSampleSender),
     )
     private lateinit var turbines: MviTurbines<TaskMailRelayDebugContract.State, TaskMailRelayDebugContract.Effect>
 
@@ -124,6 +158,11 @@ private class TaskMailRelayDebugViewModelRobot(
 
     suspend fun sendDirectProbe() {
         viewModel.event(TaskMailRelayDebugContract.Event.SendDirectProbeClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun sendFileSample() {
+        viewModel.event(TaskMailRelayDebugContract.Event.SendFileSurfaceSampleClicked)
         mviContext.advanceUntilIdle()
     }
 
@@ -210,6 +249,25 @@ private class FakeTaskMailTransportProbeSender : TaskMailTransportProbeSender {
             packetId = "pkt_test",
             artifactDirectoryPath = "E:/tmp/taskmail-debug/transport-probe/probe_test",
             receiptId = "receipt_test",
+        )
+    }
+}
+
+private class FakeTaskMailFileSampleSender : TaskMailFileSampleSender {
+    override suspend fun send(
+        config: RelayTransportConfig,
+        request: TaskMailFileSampleRequest,
+    ): TaskMailFileSampleResult {
+        return TaskMailFileSampleResult(
+            sampleId = "file_sample_test",
+            status = TaskMailFileSampleStatus.Completed,
+            artifactDirectoryPath = "E:/tmp/taskmail-debug/file-sample/file_sample_test",
+            fileId = "file_test",
+            metadataUrl = "/v1/files/file_test",
+            downloadUrl = "/v1/files/file_test/content",
+            byteSize = 96,
+            expectedSha256 = "sample_sha256",
+            observedSha256 = "sample_sha256",
         )
     }
 }

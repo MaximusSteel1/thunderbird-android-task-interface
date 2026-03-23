@@ -209,7 +209,7 @@ internal fun TaskMailRelayDebugScreen(
                     onValueChange = {
                         dispatch(TaskMailRelayDebugContract.Event.ProbePayloadTextChanged(it))
                     },
-                    label = "Probe text",
+                    label = "Debug text payload",
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -261,6 +261,37 @@ internal fun TaskMailRelayDebugScreen(
                     },
                     onClick = { dispatch(TaskMailRelayDebugContract.Event.SendDirectProbeClicked) },
                     enabled = !state.value.isSendingProbe,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            state.value.lastFileSampleSummary?.let { summary ->
+                item {
+                    TextBodySmall(
+                        text = summary,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            state.value.lastFileSampleArtifactPath?.let { artifactPath ->
+                item {
+                    TextBodySmall(
+                        text = "File sample artifacts: $artifactPath",
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item {
+                ButtonFilled(
+                    text = if (state.value.isSendingFileSample) {
+                        "Running /v1/files sample..."
+                    } else {
+                        "Run /v1/files sample"
+                    },
+                    onClick = { dispatch(TaskMailRelayDebugContract.Event.SendFileSurfaceSampleClicked) },
+                    enabled = !state.value.isSendingFileSample,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
