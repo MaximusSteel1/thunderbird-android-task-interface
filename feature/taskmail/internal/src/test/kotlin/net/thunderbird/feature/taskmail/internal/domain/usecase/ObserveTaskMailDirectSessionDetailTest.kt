@@ -20,8 +20,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import net.thunderbird.core.logging.LogMessage
 import net.thunderbird.core.logging.LogTag
 import net.thunderbird.core.logging.Logger
@@ -29,6 +31,7 @@ import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessi
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEffectiveExecution
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
@@ -39,6 +42,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionDelta
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionSnapshot
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayStructuredPayload
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -159,6 +163,81 @@ class ObserveTaskMailDirectSessionDetailTest {
 
         assertThat(debugLog).contains("Direct detail subscribe accepted reason=detail_open")
         assertThat(debugLog).contains("Direct detail emitted projection status=Running")
+    }
+
+    @Test
+    fun `invoke should merge relay event and result into emitted projection control-plane snapshot`() = runTest(testDispatcher) {
+        val relayConnectionClient = DirectDetailFakeRelayConnectionClient()
+        val relayBootstrapManager = DirectDetailFakeRelayBootstrapManager(relayConnectionClient)
+        val testSubject = createTestSubject(
+            relayConnectionClient = relayConnectionClient,
+            relayBootstrapManager = relayBootstrapManager,
+            requestIdFactory = { "req_control_plane" },
+        )
+
+        val projectionsDeferred = async {
+            testSubject(sampleDetail()).take(3).toList()
+        }
+
+        advanceUntilIdle()
+        relayConnectionClient.emitSessionUpdate(
+            snapshotUpdate(
+                subscriptionId = "sub_control_plane",
+                sequence = 1,
+                workspaceId = "workspace_canonical",
+                status = "running",
+                lastSummary = "Direct running summary",
+            ),
+        )
+        relayConnectionClient.emitServerEvent(
+            RelayEvent(
+                eventId = "evt_001",
+                requestId = "cmd_001",
+                receiptId = "receipt_001",
+                eventType = "running",
+                payload = buildJsonObject {
+                    put("workspace_id", "workspace_canonical")
+                    put("session_id", "session_001")
+                    put("run_id", "run_001")
+                    put("summary", "Relay event summary.")
+                },
+            ),
+        )
+        relayConnectionClient.emitServerResult(
+            RelayResult(
+                resultId = "res_001",
+                requestId = "cmd_001",
+                receiptId = "receipt_001",
+                resultType = "task_outcome",
+                finalStatus = "done",
+                payload = buildJsonObject {
+                    put("workspace_id", "workspace_canonical")
+                    put("session_id", "session_001")
+                    put("run_id", "run_001")
+                    put("summary", "Relay completed.")
+                },
+                structuredPayload = RelayStructuredPayload(
+                    kind = "task_outcome",
+                    payload = buildJsonObject {
+                        put("session_id", "session_001")
+                        put("summary", "Relay completed.")
+                    },
+                ),
+                effectiveExecution = RelayEffectiveExecution(
+                    backend = "codex",
+                    profile = "strong",
+                    permission = "highest",
+                    resolvedModel = "gpt-5-codex",
+                ),
+            ),
+        )
+
+        val finalProjection = projectionsDeferred.await().last()
+
+        assertThat(finalProjection.controlPlaneSnapshot?.events?.single()?.eventType).isEqualTo("running")
+        assertThat(finalProjection.controlPlaneSnapshot?.result?.summary).isEqualTo("Relay completed.")
+        assertThat(finalProjection.controlPlaneSnapshot?.result?.effectiveExecution?.resolvedModel)
+            .isEqualTo("gpt-5-codex")
     }
 }
 
@@ -323,6 +402,14 @@ private class DirectDetailFakeRelayConnectionClient : RelayConnectionClient {
 
     suspend fun emitSessionUpdate(update: RelaySessionUpdate) {
         mutableSessionUpdates.emit(update)
+    }
+
+    suspend fun emitServerEvent(event: RelayEvent) {
+        mutableServerEvents.emit(event)
+    }
+
+    suspend fun emitServerResult(result: RelayResult) {
+        mutableServerResults.emit(result)
     }
 
     fun queuePacketAck(packetAck: RelayPacketAck) {

@@ -9,6 +9,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessio
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayStateTransition
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailStatusLabel
@@ -53,6 +54,7 @@ internal data class TaskMailDirectSessionProjection(
     val visibleBusinessEventKeys: List<String> = emptyList(),
     val suppressedDirectBusinessEventKeys: List<String> = emptyList(),
     val lastSequence: Long,
+    val controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
 ) {
     val questionSetId: String?
         get() = pendingQuestions

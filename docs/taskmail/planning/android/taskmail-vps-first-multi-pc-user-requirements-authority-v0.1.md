@@ -31,7 +31,7 @@
 
 - 节点调试面板
 - 协议字段编辑器
-- 继续围绕 mail thread 的兼容 UI
+- 继续围绕 mail thread 的过渡 UI
 
 本文的作用，就是提前冻结 Android 侧的用户心智与主流程，避免后续执行过程中不断回到“到底该按协议还是按用户逻辑做”的争论。
 
@@ -40,7 +40,7 @@
 从 2026-03-25 起，对 Android 侧未来主线的用户需求讨论，默认按以下优先级读取：
 
 1. 当前实现事实：`docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
-2. 当前 mail 兼容事实：`docs/TASKMAIL-MAIL-RULES.md`
+2. 当前 mail 协议事实（仅用于描述现状）：`docs/TASKMAIL-MAIL-RULES.md`
 3. 本文
 4. `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
 5. `docs/taskmail/planning/platform/taskmail-multi-pc-control-plane-v0.1.md`
@@ -85,7 +85,7 @@ Android 的目标角色是：
 5. Session 页默认面向“当前态”，前续对话通过 `最近上下文摘要 + 历史上下文层` 进入，而不是整页长聊天记录。
 6. `event` 负责状态，`output_chunk` 负责过程直播，`result` 负责最终收口。
 7. `artifact` 应作为结果的一部分被直接展示，而不是隐藏在调试层。
-8. `mail` 如果保留，长期角色应是 backup / export / notification / compatibility，而不是主工作流。
+8. `mail` 不再是 Android 用户主线的一部分；如果未来需要单独保留通知或导出能力，也只能作为控制面稳定后的单向派生功能，而不是兼容入口。
 9. `execution_policy = backend / profile / permission / backend_transport` 是执行策略，不是账号权限系统。
 10. 第一版不把多用户 ACL、角色权限中心、跨 PC session 热迁移带入 Android 主产品逻辑。
 
@@ -345,7 +345,6 @@ Android 侧第一版设置项应主要围绕客户端使用体验，而不是复
 - 默认 `PC`
 - 默认 `workspace`
 - 通知开关
-- 备份 mail 开关
 - Debug / 诊断开关
 
 当前不应做成主线设置项：
@@ -355,19 +354,15 @@ Android 侧第一版设置项应主要围绕客户端使用体验，而不是复
 - 自定义 raw model id 输入
 - 任意 permission string 编辑
 
-## Mail 的长期角色
+## Mail 的处理边界
 
-如果 mail 继续保留，它在 Android 侧的用户意义应固定为：
+在当前 `VPS-first` 无 legacy baseline 下，Android 不再规划 mail 入口。
 
-- 备份通知
-- 导出或留档
-- 主控制面不可用时的兼容入口
+如果未来确有通知或导出邮件需求，它也只能：
 
-它不应继续承担：
-
-- 主首页
-- 主 session 时间线
-- 主结果真相
+- 从 canonical control-plane state 单向派生
+- 作为附属能力存在
+- 不反向约束主首页、主 session 页或主结果真相
 
 ## 明确不做的事
 
@@ -379,6 +374,7 @@ Android 侧第一版设置项应主要围绕客户端使用体验，而不是复
 - 不要求用户对已有 `session` 反复选择路由目标
 - 不把流式输出当最终结果
 - 不把 mail thread 当长期主对象
+- 不把 mail 做成主控制面不可用时的兼容入口
 - 不把跨 PC 热迁移当第一版默认能力
 
 ## 对后续执行的直接约束
@@ -389,6 +385,6 @@ Android 侧第一版设置项应主要围绕客户端使用体验，而不是复
 2. 这项设计是否只在新任务时暴露 `pc + workspace` 路由选择
 3. 这项设计是否把 `profile / permission` 正确读成执行策略，而不是账号权限
 4. 这项设计是否把 `event / output_chunk / result / artifact` 分层处理
-5. 这项设计是否把 mail 留在 backup / export / compatibility 位置
+5. 这项设计是否完全避免把 mail 重新拉回主流程或兼容入口
 
 如果不能通过这些检查，就不应被视作符合当前主线 authority。

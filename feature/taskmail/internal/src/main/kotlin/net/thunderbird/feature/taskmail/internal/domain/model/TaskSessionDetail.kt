@@ -19,4 +19,5 @@ internal data class TaskSessionDetail(
     val pendingQuestions: List<TaskQuestionCapsule> = question?.let { listOf(it) } ?: emptyList(),
     val replyContext: TaskSessionReplyContext? = null,
     val timeline: List<TaskTimelineItem>,
+    val controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
 )

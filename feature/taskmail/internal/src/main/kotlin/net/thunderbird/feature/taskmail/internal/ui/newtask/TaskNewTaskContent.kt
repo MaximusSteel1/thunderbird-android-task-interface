@@ -43,8 +43,11 @@ import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 private val backendOptions = TaskMailBackend.entries.toImmutableList()
 private val modeOptions = TaskMailNewTaskMode.entries.toImmutableList()
 private val permissionOptions = TaskMailNewTaskPermission.entries.toImmutableList()
-private const val ADVANCED_OPTIONS_SUPPORTING_TEXT =
-    "Only set these when the default first-task request is not enough."
+private const val EXECUTION_POLICY_SUPPORTING_TEXT =
+    "Backend is part of the new control-plane shape. Advanced values stay optional for now."
+private const val SUBMIT_REQUIREMENTS_SUPPORTING_TEXT =
+    "Current relay submit still depends on sender identity plus a repository bridge. " +
+        "PC/workspace is already the main route shape, but the bridge remains active until workspace APIs are wired."
 private val backendLabel: (TaskMailBackend) -> String = { backend ->
     when (backend) {
         TaskMailBackend.OpenCode -> "OpenCode"
@@ -124,40 +127,27 @@ private fun TaskNewTaskForm(
         item {
             TextBodyLarge(
                 text = "Create a new TaskMail request. " +
-                    "This sends a first message to your configured TaskMail service address.",
+                    "The page now starts from PC and workspace routing. " +
+                    "Sender account plus repository bridge stays visible only because the current relay submit path still needs it.",
             )
         }
 
-        senderAccountItems(
+        routeTargetItems(
             state = state,
             onEvent = onEvent,
         )
 
-        controlTargetItems(
+        taskInputItems(
             state = state,
             onEvent = onEvent,
         )
 
-        requiredItems(
+        executionPolicyItems(
             state = state,
             onEvent = onEvent,
         )
 
-        item {
-            ButtonFilledTonal(
-                text = if (state.isAdvancedExpanded) {
-                    "Hide advanced options"
-                } else {
-                    "Advanced options"
-                },
-                onClick = { onEvent(TaskNewTaskContract.Event.AdvancedToggleClicked) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("TaskNewTaskAdvancedToggle"),
-            )
-        }
-
-        advancedItems(
+        submitRequirementsItems(
             state = state,
             onEvent = onEvent,
         )
@@ -178,106 +168,203 @@ private fun TaskNewTaskForm(
     }
 }
 
-private fun LazyListScope.requiredItems(
+private fun LazyListScope.routeTargetItems(
     state: TaskNewTaskContract.State,
     onEvent: (TaskNewTaskContract.Event) -> Unit,
 ) {
     item {
         TaskSectionHeader(
-            title = "Required fields",
-            supportingText = "Choose a backend, the repo path, and the task you want to send.",
+            title = "Route target",
+            supportingText = "Pick the intended PC and workspace first. These fields can stay blank until PC/workspace list APIs are connected.",
         )
     }
 
     item {
-        BackendSelector(
-            selectedBackend = state.selectedBackend,
-            errorMessage = state.backendError,
-            onBackendSelected = {
-                onEvent(TaskNewTaskContract.Event.BackendSelected(it))
-            },
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextInput(
+                onTextChange = {
+                    onEvent(TaskNewTaskContract.Event.PcChanged(it))
+                },
+                text = state.pcSelection.selectedPcId,
+                label = "PC ID",
+            )
+            RouteHint(
+                optionsCount = state.pcSelection.pcOptions.size,
+                emptyText = "PC list is not wired yet. Enter a future target ID or leave blank.",
+                nonEmptyText = "${state.pcSelection.pcOptions.size} PC option(s) available.",
+            )
+        }
     }
 
-    repoPathItem(
-        state = state,
-        onEvent = onEvent,
-    )
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextInput(
+                onTextChange = {
+                    onEvent(TaskNewTaskContract.Event.WorkspaceChanged(it))
+                },
+                text = state.workspaceSelection.selectedWorkspaceId,
+                label = "Workspace ID",
+            )
+            RouteHint(
+                optionsCount = state.workspaceSelection.workspaceOptions.size,
+                emptyText = "Workspace list is not wired yet. Current relay submit may still fall back to the repository bridge.",
+                nonEmptyText = "${state.workspaceSelection.workspaceOptions.size} workspace option(s) available.",
+            )
+        }
+    }
+}
+
+private fun LazyListScope.taskInputItems(
+    state: TaskNewTaskContract.State,
+    onEvent: (TaskNewTaskContract.Event) -> Unit,
+) {
+    item {
+        TaskSectionHeader(
+            title = "Task input",
+            supportingText = "Describe the task first. The mail subject still derives from the first non-empty line unless you override it.",
+        )
+    }
 
     item {
         TextInput(
             onTextChange = {
                 onEvent(TaskNewTaskContract.Event.TaskChanged(it))
             },
-            text = state.taskText,
+            text = state.taskInput.taskText,
             label = "Task",
             isRequired = true,
-            errorMessage = state.taskError,
+            errorMessage = state.validationErrors.taskError,
             isSingleLine = false,
         )
     }
 
     item {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TaskSectionHeader(
-                title = "Title",
-                supportingText = "The title becomes the mail subject text after the backend prefix. " +
-                    "By default it follows the first non-empty line of Task.",
-            )
-            TextInput(
-                onTextChange = {
-                    onEvent(TaskNewTaskContract.Event.SubjectTitleChanged(it))
-                },
-                text = state.subjectTitle,
-                label = "Title",
-                isRequired = true,
-                errorMessage = state.titleError,
-            )
-        }
+        TextInput(
+            onTextChange = {
+                onEvent(TaskNewTaskContract.Event.SubjectTitleChanged(it))
+            },
+            text = state.taskInput.subjectTitle,
+            label = "Title",
+            isRequired = true,
+            errorMessage = state.validationErrors.titleError,
+        )
     }
 }
 
-private fun LazyListScope.controlTargetItems(
+private fun LazyListScope.executionPolicyItems(
     state: TaskNewTaskContract.State,
     onEvent: (TaskNewTaskContract.Event) -> Unit,
 ) {
     item {
         TaskSectionHeader(
-            title = "Control target",
-            supportingText = "Prepare the future VPS-first route target. These stay optional while repo-based sending is still active.",
+            title = "Execution policy",
+            supportingText = EXECUTION_POLICY_SUPPORTING_TEXT,
         )
     }
 
     item {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TaskSectionHeader(
-                title = "PC ID",
-                supportingText = "Target PC for the future control-plane session.",
-            )
-            TextInput(
-                onTextChange = {
-                    onEvent(TaskNewTaskContract.Event.PcChanged(it))
-                },
-                text = state.pcId,
-                label = "PC ID",
-            )
-        }
+        BackendSelector(
+            selectedBackend = state.executionPolicyEditor.backend,
+            errorMessage = state.validationErrors.backendError,
+            onBackendSelected = {
+                onEvent(TaskNewTaskContract.Event.BackendSelected(it))
+            },
+        )
     }
 
     item {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TaskSectionHeader(
-                title = "Workspace ID",
-                supportingText = "Target workspace on the selected PC.",
-            )
-            TextInput(
-                onTextChange = {
-                    onEvent(TaskNewTaskContract.Event.WorkspaceChanged(it))
-                },
-                text = state.workspaceId,
-                label = "Workspace ID",
-            )
-        }
+        ButtonFilledTonal(
+            text = if (state.executionPolicyEditor.isExpanded) {
+                "Hide advanced options"
+            } else {
+                "Advanced options"
+            },
+            onClick = { onEvent(TaskNewTaskContract.Event.AdvancedToggleClicked) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("TaskNewTaskAdvancedToggle"),
+        )
+    }
+
+    if (!state.executionPolicyEditor.isExpanded) return
+
+    item {
+        SelectInput(
+            options = modeOptions,
+            selectedOption = state.executionPolicyEditor.mode,
+            onOptionChange = { onEvent(TaskNewTaskContract.Event.ModeChanged(it)) },
+            optionToStringTransformation = modeLabel,
+            label = "Mode",
+        )
+    }
+
+    item {
+        TextInput(
+            onTextChange = { onEvent(TaskNewTaskContract.Event.TimeoutChanged(it)) },
+            text = state.executionPolicyEditor.timeoutText,
+            label = "Timeout (minutes)",
+            errorMessage = state.validationErrors.timeoutError,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+    }
+
+    item {
+        SelectInput(
+            options = permissionOptions,
+            selectedOption = state.executionPolicyEditor.permission,
+            onOptionChange = { onEvent(TaskNewTaskContract.Event.PermissionChanged(it)) },
+            optionToStringTransformation = permissionLabel,
+            label = "Permission",
+        )
+    }
+
+    item {
+        TextInput(
+            onTextChange = { onEvent(TaskNewTaskContract.Event.ProfileChanged(it)) },
+            text = state.executionPolicyEditor.profile,
+            label = "Profile",
+        )
+    }
+
+    item {
+        TextInput(
+            onTextChange = { onEvent(TaskNewTaskContract.Event.AcceptanceChanged(it)) },
+            text = state.executionPolicyEditor.acceptanceText,
+            label = "Acceptance",
+            isSingleLine = false,
+        )
+    }
+}
+
+private fun LazyListScope.submitRequirementsItems(
+    state: TaskNewTaskContract.State,
+    onEvent: (TaskNewTaskContract.Event) -> Unit,
+) {
+    item {
+        TaskSectionHeader(
+            title = "Current submit bridge",
+            supportingText = SUBMIT_REQUIREMENTS_SUPPORTING_TEXT,
+        )
+    }
+
+    senderAccountItems(
+        state = state,
+        onEvent = onEvent,
+    )
+
+    repoPathItem(
+        state = state,
+        onEvent = onEvent,
+    )
+
+    if (!state.executionPolicyEditor.isExpanded) return
+
+    item {
+        TextInput(
+            onTextChange = { onEvent(TaskNewTaskContract.Event.WorkdirChanged(it)) },
+            text = state.workspaceSelection.workdir,
+            label = "Workdir",
+        )
     }
 }
 
@@ -313,65 +400,6 @@ private fun LazyListScope.senderAccountItems(
     }
 }
 
-private fun LazyListScope.advancedItems(
-    state: TaskNewTaskContract.State,
-    onEvent: (TaskNewTaskContract.Event) -> Unit,
-) {
-    if (!state.isAdvancedExpanded) return
-
-    item { TaskSectionHeader(title = "Advanced options", supportingText = ADVANCED_OPTIONS_SUPPORTING_TEXT) }
-
-    item {
-        TextInput(
-            onTextChange = { onEvent(TaskNewTaskContract.Event.WorkdirChanged(it)) },
-            text = state.workdir,
-            label = "Workdir",
-        )
-    }
-    item {
-        SelectInput(
-            options = modeOptions,
-            selectedOption = state.mode,
-            onOptionChange = { onEvent(TaskNewTaskContract.Event.ModeChanged(it)) },
-            optionToStringTransformation = modeLabel,
-            label = "Mode",
-        )
-    }
-    item {
-        TextInput(
-            onTextChange = { onEvent(TaskNewTaskContract.Event.TimeoutChanged(it)) },
-            text = state.timeoutText,
-            label = "Timeout (minutes)",
-            errorMessage = state.timeoutError,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-    }
-    item {
-        SelectInput(
-            options = permissionOptions,
-            selectedOption = state.permission,
-            onOptionChange = { onEvent(TaskNewTaskContract.Event.PermissionChanged(it)) },
-            optionToStringTransformation = permissionLabel,
-            label = "Permission",
-        )
-    }
-    item {
-        TextInput(
-            onTextChange = { onEvent(TaskNewTaskContract.Event.ProfileChanged(it)) },
-            text = state.profile,
-            label = "Profile",
-        )
-    }
-    item {
-        TextInput(
-            onTextChange = { onEvent(TaskNewTaskContract.Event.AcceptanceChanged(it)) },
-            text = state.acceptanceText,
-            label = "Acceptance",
-            isSingleLine = false,
-        )
-    }
-}
-
 private fun LazyListScope.repoPathItem(
     state: TaskNewTaskContract.State,
     onEvent: (TaskNewTaskContract.Event) -> Unit,
@@ -382,10 +410,19 @@ private fun LazyListScope.repoPathItem(
                 onTextChange = {
                     onEvent(TaskNewTaskContract.Event.RepoChanged(it))
                 },
-                text = state.repoPath,
-                label = "Repo",
-                isRequired = true,
-                errorMessage = state.repoError,
+                text = state.workspaceSelection.repoPath,
+                label = "Repository bridge",
+                isRequired = state.resolvedRepoBridgePath == null,
+                errorMessage = state.validationErrors.repoError,
+            )
+            RouteHint(
+                optionsCount = if (state.selectedWorkspaceOption?.repoPath != null) 1 else 0,
+                emptyText = if (state.hasControlPlaneRouteTarget) {
+                    "Keep repository context for now. This is still the active bridge from the new route target into the current relay submit path."
+                } else {
+                    "Current relay submit still needs repository context. Pick a workspace target first, or enter the bridge manually."
+                },
+                nonEmptyText = "Repository bridge is already available from the selected workspace option and can still be overridden here.",
             )
             ButtonFilledTonal(
                 text = "Choose from project list",
@@ -396,6 +433,18 @@ private fun LazyListScope.repoPathItem(
             )
         }
     }
+}
+
+@Composable
+private fun RouteHint(
+    optionsCount: Int,
+    emptyText: String,
+    nonEmptyText: String,
+) {
+    TextBodySmall(
+        text = if (optionsCount == 0) emptyText else nonEmptyText,
+        color = MainTheme.colors.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -437,7 +486,7 @@ private fun SenderAccountSelector(
         ?: SenderAccountOption.Placeholder
 
     InputLayout(
-        errorMessage = state.senderAccountError,
+        errorMessage = state.validationErrors.senderAccountError,
         contentPadding = PaddingValues(0.dp),
     ) {
         TextFieldOutlinedSelect(
@@ -461,7 +510,7 @@ private fun SenderAccountSelector(
                 }
             },
             label = "Send from",
-            hasError = state.senderAccountError != null,
+            hasError = state.validationErrors.senderAccountError != null,
         )
     }
 }
@@ -473,7 +522,7 @@ private fun TaskNewTaskSendSection(
     onDismissSendError: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        state.sendError?.let { sendError ->
+        state.submitState.sendError?.let { sendError ->
             ErrorBannerInlineNotificationCard(
                 title = "TaskMail send failed",
                 supportingText = sendError,
@@ -487,12 +536,13 @@ private fun TaskNewTaskSendSection(
         }
 
         TextBodySmall(
-            text = "TaskMail requests are sent from this account to your configured TaskMail service address.",
+            text = "Current relay submit still uses sender identity plus a repository bridge. " +
+                "PC/workspace is already the routing shape for the cutover path.",
             color = MainTheme.colors.onSurfaceVariant,
         )
 
         ButtonFilled(
-            text = if (state.isSending) "Sending..." else "Send task",
+            text = if (state.submitState.isSending) "Sending..." else "Send task",
             onClick = onSend,
             modifier = Modifier
                 .fillMaxWidth()

@@ -8,8 +8,10 @@ import kotlinx.coroutines.withContext
 import net.thunderbird.feature.taskmail.internal.data.TaskMailMessage
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
@@ -110,10 +112,11 @@ internal class SyncTaskMailCache(
         if (affectedKeys.isEmpty()) return
 
         val taskMailMessages = decodeTaskMailMessages(currentMessages)
+        val existingDetails = taskSessionDetailRepository.getTaskSessionDetails()
         val sessionDetails = sessionProjector.projectSessionDetails(
             messages = taskMailMessages,
             keys = affectedKeys,
-        )
+        ).preserveControlPlaneSnapshots(existingDetails)
         val projectedKeys = sessionDetails.map { detail -> detail.key }.toSet()
 
         taskSessionDetailRepository.upsertSessionDetails(sessionDetails)
@@ -122,7 +125,9 @@ internal class SyncTaskMailCache(
 
     private suspend fun rebuildAllSessionDetails(cachedMessages: List<UnifiedMessage>) {
         val taskMailMessages = decodeTaskMailMessages(cachedMessages)
+        val existingDetails = taskSessionDetailRepository.getTaskSessionDetails()
         val sessionDetails = sessionProjector.projectSessionDetails(taskMailMessages)
+            .preserveControlPlaneSnapshots(existingDetails)
         taskSessionDetailRepository.replaceAllSessionDetails(sessionDetails)
     }
 
@@ -257,4 +262,25 @@ private fun TaskMailMessage.toTaskSessionKey(): TaskSessionKey {
 private enum class SnapshotRebuildMode {
     Full,
     Incremental,
+}
+
+private fun List<TaskSessionDetail>.preserveControlPlaneSnapshots(
+    existingDetails: List<TaskSessionDetail>,
+): List<TaskSessionDetail> {
+    if (isEmpty() || existingDetails.isEmpty()) return this
+
+    return map { detail ->
+        val preservedSnapshot = existingDetails
+            .firstOrNull { existingDetail ->
+                existingDetail.key == detail.key ||
+                    existingDetail.key.isCompatibleWith(detail.key)
+            }
+            ?.controlPlaneSnapshot
+
+        if (preservedSnapshot == null) {
+            detail
+        } else {
+            detail.copy(controlPlaneSnapshot = preservedSnapshot)
+        }
+    }
 }

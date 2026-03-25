@@ -9,7 +9,7 @@ import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
 internal fun TaskWorkspacePreview() {
     TaskWorkspaceContent(
         state = TaskWorkspaceContract.State(
-            workspaces = listOf(
+            workspaceSummaries = listOf(
                 TaskWorkspaceItemUi(
                     title = TaskMailPreviewData.workspaceSummaries.first().title,
                     subtitle = TaskMailPreviewData.workspaceSummaries.first().subtitle,
@@ -17,7 +17,7 @@ internal fun TaskWorkspacePreview() {
                     sessions = listOf(
                         TaskSessionItemUi(
                             sessionId = "session_001",
-                            threadId = "thread_001",
+                            stableId = "workspace_001::session_001",
                             sessionName = "Build TaskMail Phase 1",
                             status = "WaitingUser",
                             backend = "Codex",

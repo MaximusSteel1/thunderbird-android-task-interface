@@ -64,7 +64,7 @@ class RelayTaskMailDirectNewTaskSenderTest {
     }
 
     @Test
-    fun `send should route capability rejection to mail fallback`() = runTest {
+    fun `send should route capability rejection to fallback-classified result`() = runTest {
         val testSubject = RelayTaskMailDirectNewTaskSender(
             relayConnectionClient = FakeDirectRelayConnectionClient(
                 sendPacketResult = Result.failure(
@@ -167,7 +167,7 @@ class RelayTaskMailDirectNewTaskSenderTest {
     }
 
     @Test
-    fun `send should keep packet ack capability rejection on mail fallback path`() = runTest {
+    fun `send should keep packet ack capability rejection on fallback-classified path`() = runTest {
         val testSubject = RelayTaskMailDirectNewTaskSender(
             relayConnectionClient = FakeDirectRelayConnectionClient(
                 sendPacketResult = Result.success(
@@ -274,7 +274,7 @@ private fun assertCanonicalPacket(sentPacket: RelayPacket) {
     assertThat(sentPacket.dispatchMetadata.string("channel")).isEqualTo("taskmail_android_direct")
     assertThat(sentPacket.dispatchMetadata.string("schema_version")).isEqualTo("phase2-direct-outbound-contract-v1")
     assertThat(sentPacket.dispatchMetadata.string("action")).isEqualTo("new_task")
-    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("mail")
+    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("none")
     assertThat(sentPacket.taskRunPacket.string("schema_version")).isEqualTo("phase2-direct-outbound-contract-v1")
     assertThat(sentPacket.taskRunPacket.string("action")).isEqualTo("new_task")
     assertThat(sentPacket.taskRunPacket.string("request_id")).isEqualTo("req_001")

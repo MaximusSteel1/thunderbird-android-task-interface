@@ -3,11 +3,13 @@ package net.thunderbird.feature.taskmail.internal.domain.model
 internal data class TaskSessionKey(
     val workspaceId: String? = null,
     val sessionId: String? = null,
-    val threadId: String,
+    val threadId: String? = null,
 )
 
 internal fun TaskSessionKey.isCompatibleWith(other: TaskSessionKey): Boolean {
-    if (sessionId != other.sessionId || threadId != other.threadId) {
+    val sessionIdsMatch = sessionId != null && other.sessionId != null && sessionId == other.sessionId
+    val threadIdsMatch = threadId != null && other.threadId != null && threadId == other.threadId
+    if (!sessionIdsMatch && !threadIdsMatch) {
         return false
     }
 

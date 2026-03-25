@@ -55,6 +55,15 @@ internal fun SessionRow(
                 }
             }
 
+            session.routeLabel?.let { routeLabel ->
+                TextLabelMedium(
+                    text = routeLabel,
+                    color = MainTheme.colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
             session.lastSummary?.let {
                 TextBodyMedium(
                     text = it,

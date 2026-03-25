@@ -1,6 +1,6 @@
 # TaskMail VPS-First 多 PC Android 骨架实施计划（v0.1）
 
-更新时间：2026-03-25
+更新时间：2026-03-26
 
 ## 状态
 
@@ -34,7 +34,7 @@
 1. Android 当前代码与新协议/新页面骨架之间的主要差距
 2. 第一批建议进入编码的切片顺序
 3. 每个切片的目标、写入范围和验收读法
-4. 哪些旧结构现在只是兼容层，哪些仍不应急着删
+4. 哪些旧结构应被替换、删除，以及迁移期适配器可以放在哪些边界
 
 ## 一句话结论
 
@@ -42,12 +42,21 @@ Android 当前不缺新的平台文档，真正缺的是：
 
 - 让 `Workspace / NewTask / SessionDetail` 这三张真实页面开始承载新的控制面对象
 - 让 route / state / DTO 不再继续以 `threadId + mail timeline + senderAccount` 为主语
+- 停止为旧 mail/direct 入口继续保兼容
 
 所以接下来的第一批工作，不是继续补高层设计，而是开始做：
 
 - 页面状态骨架
 - 协议 DTO 骨架
 - 主键与路由骨架
+
+## Hard Cutover 原则
+
+从本文生效后，后续 slice 默认按“替换旧入口并尽快删除 legacy seam”推进：
+
+- 不再把 mail/direct 旧线当长期并存前提
+- 不再把 `threadId fallback`、`mail-backed summary`、`senderAccount / repoPath / workdir bridge` 当默认保留项
+- 若短期出现过渡 adapter，只允许位于 ingress / adapter boundary，并且必须带明确 retirement 条件
 
 ## 当前代码与新主线的主要差距
 
@@ -63,7 +72,7 @@ Android 当前不缺新的平台文档，真正缺的是：
 
 - 主键以 `session_id` 为主
 - `workspace_id` 用于固定路由归属
-- `threadId` 只保留为 legacy fallback / compatibility hint
+- `threadId` 退出页面路由、页面 state 与主仓库接口的默认主键读法
 
 ### 2. 首页仍是 workspace-first
 
@@ -199,9 +208,9 @@ Android 当前不缺新的平台文档，真正缺的是：
 
 ### 推荐策略
 
-- 第一阶段允许新旧 DTO 并存
-- 旧 `RelayCommand / RelayCommandAck / RelayEvent / RelayResult` 不要强行一次性改死
-- 新增一层更接近 freeze doc 的 control-plane DTO 更稳
+- control-plane DTO 是唯一继续增长的产品状态对象
+- 现存 relay-era DTO 或 mapper 只按短期导入桥读取，不再继续扩大使用面
+- 新代码不再直接以 `RelayCommand / RelayCommandAck / RelayEvent / RelayResult` 作为 UI 或 domain state 的默认输入
 
 ### 新 DTO 至少应覆盖
 
@@ -248,11 +257,11 @@ Android 当前不缺新的平台文档，真正缺的是：
 - `executionPolicyEditor`
 - `submitState`
 
-### 兼容原则
+### Cutover 原则
 
-- 短期仍可保留 `senderAccount`
-- 短期仍可保留 `repoPath/workdir`
-- 但这些应逐步退到 compatibility / bridge 位置
+- `senderAccount / repoPath / workdir` 不再作为需要持续保留的 UI 兼容层
+- 一旦正式 `pc/workspace/submit` path 可用，直接删除对应 bridge，不再保留双读法
+- 不再新增 compatibility getter、bridge 文案或新的 mail-era 表单字段
 
 ### 这一步不要求
 
@@ -288,7 +297,8 @@ Android 当前不缺新的平台文档，真正缺的是：
 ### 这一步不要求
 
 - 不要求 route 名字立刻从 `Workspace` 改为 `Workbench`
-- 不要求当前 mail-backed summary 立刻退场
+- 不要求在这一 slice 内完成全部 PC/VPS 联调
+- 但当前 mail-backed summary 只按待替换遗留输入读取，不再作为后续默认数据基线
 
 ### 验收读法
 
@@ -301,7 +311,7 @@ Android 当前不缺新的平台文档，真正缺的是：
 
 ### 目标
 
-让 Android 侧主键读法与新控制面收敛，但又不立刻砍掉 legacy 兼容。
+让 Android 侧主键、路由与仓库入口完成 control-plane hard cutover。
 
 ### 主要改动范围
 
@@ -312,18 +322,18 @@ Android 当前不缺新的平台文档，真正缺的是：
 
 ### 推荐策略
 
-- `sessionId` 升为 follow-up 主锚点
-- `workspaceId` 保持路由归属
-- `threadId` 退为 fallback / compatibility hint
+- `sessionId + workspaceId` 成为路由、页面状态与仓库接口的默认主锚点
+- `threadId` 从 `TaskMailRoute`、`TaskSessionKey`、主导航事件与页面 contract 中退出
+- 若历史数据迁移仍需 `threadId` lookup，只允许存在于 repository / ingress adapter 边界，不再进入 public route/state contract
 
 ### 这一步不要求
 
-- 不要求一次性删除所有 `threadId`
-- 不要求 current-truth mail path 立刻停用
+- 不要求在同一提交里删净所有历史测试样例、预览数据或旧文档
+- 不要求为了 cutover 先做 repo-wide rename
 
 ### 验收读法
 
-完成后，新的页面状态与导航逻辑不应继续把 `threadId` 当第一产品主键。
+完成后，新的页面状态、导航逻辑与仓库 key 不再接受 `threadId` 作为必填或 fallback 主锚点。
 
 ## 推荐顺序
 
@@ -342,11 +352,120 @@ Android 侧推荐按以下顺序编码：
 - 新任务页和首页随后收口，才能让 UI 真正变成 VPS-first
 - route/key 最后做更稳，可以减少过早大范围连锁修改
 
+## 2026-03-25 当前一批推进口径
+
+当前建议不要把 Android 侧下一批工作切成零散的小修。
+
+更合适的做法是把以下三件事收成同一批 Android local-readiness 推进：
+
+1. `route / key` 收口
+2. `NewTask` 主表单 cutover
+3. 本地 control-plane 纵切自洽
+
+这批工作的目标不是宣称 Android 已完成正式跨端握手，也不是宣称 mail/direct 兼容代码已经可以一次删净。
+
+这批工作的目标是：
+
+- 把 `threadId` 从页面 state、列表 identity 与公开交互读法中退出
+- 把 `TaskNewTask` 页面明确改读成 `pc + workspace + task + execution_policy`
+- 把 `repoPath / workdir` 明确降为当前 relay submit 仍在使用的 bridge 输入，而不是产品主表单主语
+- 让 Android 侧已经落地的 canonical `command_ack / event / result / artifact_manifest` DTO 不再只停在 codec / mapper 层，而是能在本地 representative JSON / fake-data 纵切里稳定投影到 `SessionDetail`
+
+### A. `route / key` 收口
+
+这一批的最低要求是：
+
+- `TaskMailRoute.SessionDetail` 继续只以 `workspaceId + sessionId` 作为公开路由读法
+- `TaskWorkspace` 的 session item identity 不再直接暴露 `threadId`
+- `threadId` 只允许继续存在于 repository、cache、ingress、direct subscription 或 action adapter 等 compatibility boundary
+
+本批不要求：
+
+- 立刻删除仓库内所有 `threadId` 字段
+- 先改 parser、mail cache 或历史样本的 canonical truth
+
+### B. `NewTask` 主表单 cutover
+
+这一批的最低要求是：
+
+- 页面顺序继续固定为 `route target -> task input -> execution policy -> submit bridge`
+- `senderAccount + repoPath` 不再被写成产品主读法
+- `repoPath / workdir` 必须以“当前 relay submit bridge”身份显式呈现
+- 若未来 `workspace option` 已携带 repo/workdir bridge 信息，ViewModel 应允许从该 option 自动解析 bridge，而不是强迫用户再次手填
+
+本批不要求：
+
+- 立刻接通正式 `pc list / workspace list`
+- 立刻删除 `ProjectSync -> repoPath` 回填
+- 在 Android 侧同一提交里切完真正的 VPS network path
+
+### C. 本地 control-plane 纵切自洽
+
+这一批的最低要求是：
+
+- Android 侧已有的 canonical `command_ack / event / result / artifact_manifest` DTO，必须能通过本地 representative JSON 或 fake data 走通最小 UI 投影
+- `SessionDetail` 至少应能从这条本地纵切稳定承载：
+  - `recent context`
+  - `result summary`
+  - `effective execution`
+  - `artifact list`
+- 这条纵切的结论应明确读成 “Android local readiness evidence”，而不是 live handshake closeout
+
+### 这批工作的验收读法
+
+如果这批推进完成，Android 侧应满足以下读法：
+
+1. 页面和路由已经不再继续把 `threadId` 当作未来主线主键
+2. `NewTask` 的主表单已经切正，但兼容 bridge 仍被诚实保留在边界层
+3. canonical control-plane DTO 已经在本地自洽地进入 `SessionDetail` UI，而不是只存在于协议模型和 mapper
+4. Android 可以据此更稳地进入第一次 `NewTask -> SessionDetail` 正式握手，而不必在握手时同时改路由、改表单、改 DTO 承载
+
+## 2026-03-26 SessionDetail ingress/cache 收口口径
+
+在 `2026-03-25` 那一批 Android local-readiness 完成后，下一步不应再去横向扩更多页面。
+
+当前最短主线推进，应聚焦把 `SessionDetail` 从“本地 fake overlay 能看见 control-plane”推进到“真实 direct observation / cache reload 也能继续承载 control-plane”。
+
+### 这一批的目标
+
+这一批只冻结以下事情：
+
+1. `TaskSessionDetail` domain model 与本地缓存明确承载 `controlPlaneSnapshot`
+2. direct observation 不再只消费旧 `session update`，而是同时并入 relay `event / result`
+3. `SessionDetail` ViewModel 能把 direct observation 里出现的 control-plane 快照写回 detail repository，并在 reload 后继续显示
+4. mail rebuild 不得抹掉已经落到本地 detail cache 的 control-plane 快照
+
+### 这一批完成后的正确读法
+
+完成后，Android 侧应按下面的口径解读：
+
+- `event / result / effective_execution` 已经不再只是测试内 overlay 数据，而是能通过真实 direct observation 进入 `SessionDetail`
+- `TaskSessionDetailJsonCodec` 与 file-backed detail cache 已经可以保留这批 control-plane 数据
+- `SyncTaskMailCache` 在重建 mail-backed detail 时，会尽量保留已存在的 `controlPlaneSnapshot`
+- 这仍然是 Android 本地 ingress/cache readiness，并不等于正式 live handshake 已经关单
+
+### 这一批明确不做的事
+
+这一批当前明确不做：
+
+- 不把 `artifact_manifest` live stream 一起接进 direct detail 订阅链
+- 不把 `command_ack` 从发送链直接并入 detail subscription 观察链
+- 不在同一批内扩到 `Workbench`、artifact 下载或 `output_chunk` 直播
+
+### 这批工作的验收读法
+
+如果这批推进完成，应该至少能稳定证明：
+
+1. relay `event` 到达后，`SessionDetail` 最近上下文会更新
+2. relay `result` 到达后，`SessionDetail` 结果摘要与 `effective execution` 会更新
+3. 这些更新会被写回本地 detail repository，并在缓存读回时继续存在
+4. mail-backed rebuild 不会把这批 control-plane 快照直接覆盖掉
+
 ## 当前明确不做的事
 
 这份实施计划当前明确不要求：
 
-- 先全量删除旧 mail/direct 代码
+- 先在同一提交里全量删除仓库内每一处旧 mail/direct 文件
 - 先重写整个 repository
 - 先切完正式 VPS transport
 - 先做多用户 ACL
@@ -360,7 +479,7 @@ Android 侧推荐按以下顺序编码：
 1. Android 当前 truth 仍以 `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md` 为准
 2. 文档里冻结的页面骨架，优先落在现有 `Contract / ViewModel / Content / component` 上
 3. 新协议对象优先用 freeze doc 的 canonical 名称
-4. `senderAccount / threadId / repoPath` 当前仍可保留，但读法必须逐步降为 compatibility seam
+4. `senderAccount / threadId / repoPath` 这类旧字段不再作为新设计 baseline；若迁移期短期存在，只能隔离在边界 adapter 并附明确删除条件
 
 ## 与 PC 端握手时机
 

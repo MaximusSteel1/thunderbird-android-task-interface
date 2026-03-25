@@ -48,7 +48,7 @@ private fun LatestDirectEvidenceCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TaskSectionHeader(
-                title = "Latest direct result",
+                title = "Latest dispatch result",
                 supportingText = "Restored from the most recent TaskMail send attempt for this sender account.",
             )
             TextTitleMedium(text = evidence.outcome.displayLabel())
@@ -81,7 +81,7 @@ private fun LatestDirectEvidenceCard(
             }
             evidence.fallbackReason?.let { fallbackReason ->
                 DirectEvidenceField(
-                    label = "Fallback reason",
+                    label = "Dispatch detail",
                     value = fallbackReason,
                 )
             }

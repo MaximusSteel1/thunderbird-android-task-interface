@@ -18,12 +18,11 @@ sealed interface TaskMailRoute : Route {
     data class SessionDetail(
         val workspaceId: String? = null,
         val sessionId: String,
-        val threadId: String,
     ) : TaskMailRoute {
         override val basePath: String = BASE_PATH
 
         override fun route(): String {
-            val detailPath = "$basePath/$sessionId/$threadId"
+            val detailPath = "$basePath/$sessionId"
             return workspaceId?.let { "$detailPath?workspaceId=$it" } ?: detailPath
         }
 

@@ -27,8 +27,7 @@ internal interface TaskSessionDetailContract {
     sealed interface Event {
         data class LoadDetail(
             val workspaceId: String?,
-            val sessionId: String?,
-            val threadId: String,
+            val sessionId: String,
         ) : Event
 
         data class DraftChanged(val text: String) : Event

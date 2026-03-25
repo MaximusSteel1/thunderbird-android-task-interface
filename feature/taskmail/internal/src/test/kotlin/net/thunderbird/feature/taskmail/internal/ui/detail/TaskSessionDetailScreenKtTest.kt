@@ -18,6 +18,11 @@ import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneArtifactManifestMessage
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAckMessage
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEventMessage
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneProtocolJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResultMessage
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
@@ -151,6 +156,152 @@ class TaskSessionDetailScreenKtTest {
             .performScrollToNode(hasTestTag("TaskSessionDetailArtifacts"))
         composeTestRule.onNodeWithTag("TaskSessionDetailArtifacts").assertIsDisplayed()
         composeTestRule.onNodeWithText("cleanup_report.md").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should render control plane overlay from representative json`() {
+        val codec = ControlPlaneProtocolJsonCodec()
+        val commandAck = codec.decodeMessage(
+            """
+            {
+              "schema_version": "v1",
+              "type": "command_ack",
+              "message_id": "msg_ack_01",
+              "trace_id": "trace_cmd_01",
+              "pc_id": "pc_home",
+              "connection_epoch": 12,
+              "sent_at": "2026-03-25T10:01:00Z",
+              "payload": {
+                "command_id": "cmd_01",
+                "ack_status": "accepted_but_queued",
+                "queue_position": 1
+              }
+            }
+            """.trimIndent(),
+        ) as ControlPlaneCommandAckMessage
+        val event = codec.decodeMessage(
+            """
+            {
+              "schema_version": "v1",
+              "type": "event",
+              "message_id": "msg_evt_01",
+              "trace_id": "trace_cmd_01",
+              "pc_id": "pc_home",
+              "connection_epoch": 12,
+              "sent_at": "2026-03-25T10:01:10Z",
+              "payload": {
+                "event_id": "evt_01",
+                "command_id": "cmd_01",
+                "workspace_id": "workspace_android_app",
+                "session_id": "session_001",
+                "run_id": "run_01",
+                "event_type": "running",
+                "payload": {
+                  "summary": "Applying route/key cutover and local readiness checks."
+                },
+                "emitted_at": "2026-03-25T10:01:09Z"
+              }
+            }
+            """.trimIndent(),
+        ) as ControlPlaneEventMessage
+        val result = codec.decodeMessage(
+            """
+            {
+              "schema_version": "v1",
+              "type": "result",
+              "message_id": "msg_res_01",
+              "trace_id": "trace_cmd_01",
+              "pc_id": "pc_home",
+              "connection_epoch": 12,
+              "sent_at": "2026-03-25T10:02:00Z",
+              "payload": {
+                "result_id": "res_01",
+                "command_id": "cmd_01",
+                "workspace_id": "workspace_android_app",
+                "session_id": "session_001",
+                "run_id": "run_01",
+                "final_status": "done",
+                "summary": "Completed the Android VPS-first readiness slice.",
+                "effective_execution": {
+                  "backend": "codex",
+                  "profile": "strong",
+                  "permission": "highest",
+                  "backend_transport": "sdk",
+                  "resolved_model": "gpt-5-codex"
+                },
+                "structured_payload": {
+                  "kind": "task_outcome",
+                  "changed_files": ["TaskNewTaskViewModel.kt", "TaskWorkspaceViewModel.kt"]
+                },
+                "generated_at": "2026-03-25T10:01:59Z"
+              }
+            }
+            """.trimIndent(),
+        ) as ControlPlaneResultMessage
+        val artifactManifest = codec.decodeMessage(
+            """
+            {
+              "schema_version": "v1",
+              "type": "artifact_manifest",
+              "message_id": "msg_art_01",
+              "trace_id": "trace_cmd_01",
+              "pc_id": "pc_home",
+              "connection_epoch": 12,
+              "sent_at": "2026-03-25T10:02:05Z",
+              "payload": {
+                "run_id": "run_01",
+                "artifacts": [
+                  {
+                    "artifact_id": "art_01",
+                    "name": "summary.md",
+                    "kind": "file",
+                    "role": "output",
+                    "content_type": "text/markdown",
+                    "size": 1024,
+                    "download_ref": {
+                      "kind": "vps_file",
+                      "file_id": "file_01"
+                    }
+                  }
+                ]
+              }
+            }
+            """.trimIndent(),
+        ) as ControlPlaneArtifactManifestMessage
+        val overlay = buildTaskSessionControlPlaneOverlay(
+            commandAck = commandAck.payload,
+            events = listOf(event.payload),
+            result = result.payload,
+            artifactManifest = artifactManifest.payload,
+        )
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail().withControlPlaneOverlay(overlay),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailRecentContext"))
+        composeTestRule.onNodeWithText("Completed the Android VPS-first readiness slice.").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
+        composeTestRule.onNodeWithText("Done").assertIsDisplayed()
+        composeTestRule.onNodeWithText(
+            "backend=codex · profile=strong · permission=highest · transport=sdk · model=gpt-5-codex",
+        ).assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailArtifacts"))
+        composeTestRule.onNodeWithText("summary.md").assertIsDisplayed()
     }
 
     @Test
@@ -331,6 +482,38 @@ class TaskSessionDetailScreenKtTest {
         composeTestRule
             .onAllNodesWithText("Reply unavailable because this session spans multiple accounts.")
             .assertCountEquals(1)
+        composeTestRule.onAllNodesWithText("Send reply").assertCountEquals(0)
+    }
+
+    @Test
+    fun `content should keep status action visible when reply is unavailable but status is allowed`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(
+                            canReply = false,
+                            canQueryStatus = true,
+                            replyUnavailableReason = "Direct plain reply is unavailable while the session is paused.",
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Direct plain reply is unavailable while the session is paused."))
+
+        composeTestRule
+            .onNodeWithText("Direct plain reply is unavailable while the session is paused.")
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskReplyComposerStatusButton"))
+        composeTestRule.onNodeWithTag("TaskReplyComposerStatusButton").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Send reply").assertCountEquals(0)
     }
 

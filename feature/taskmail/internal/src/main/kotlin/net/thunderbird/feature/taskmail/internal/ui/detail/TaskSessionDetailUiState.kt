@@ -38,13 +38,15 @@ internal data class TaskSessionDetailUiState(
     ): Boolean {
         return if (!canReply) {
             false
+        } else if (attachmentCount > 0) {
+            false
         } else if (requiresStructuredReply) {
             validateStructuredReply(
                 draftText = draftText,
                 pendingQuestions = pendingQuestions,
             ) == StructuredReplyValidationResult.Valid
         } else {
-            draftText.isNotBlank() || attachmentCount > 0
+            draftText.isNotBlank()
         }
     }
 
@@ -65,6 +67,7 @@ internal data class TaskResultSummaryUi(
     val headline: String,
     val supportingText: String? = null,
     val statusLabel: String,
+    val effectiveExecutionSummary: String? = null,
 )
 
 @Immutable

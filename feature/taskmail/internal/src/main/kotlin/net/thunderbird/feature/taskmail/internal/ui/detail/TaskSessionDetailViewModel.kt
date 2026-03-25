@@ -22,12 +22,12 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionAct
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.merge
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
-import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
@@ -38,43 +38,46 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailD
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectOrFallbackResult
+import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectDispatchResult
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract.State
 import net.thunderbird.feature.taskmail.internal.ui.toDisplayWorkdir
 
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail reply."
-private const val REPLY_SENT_VIA_MAIL_MESSAGE = "[Mail] Reply sent."
 private const val REPLY_SENT_VIA_DIRECT_MESSAGE =
     "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives."
-private const val REPLY_SENT_VIA_MAIL_FALLBACK_MESSAGE = "[Mail fallback] Reply sent."
-private const val QUICK_ANSWER_SENT_VIA_MAIL_MESSAGE = "[Mail] Quick answer sent."
-private const val STATUS_QUERY_SENT_VIA_MAIL_MESSAGE = "[Mail] /status sent."
+private const val QUICK_ANSWER_SENT_VIA_DIRECT_MESSAGE =
+    "[Relay] Quick answer sent. Final state will refresh after the canonical TaskMail mail arrives."
 private const val STATUS_QUERY_SENT_VIA_DIRECT_MESSAGE =
     "[Relay] /status sent. Final state will refresh after the canonical [STATUS] mail arrives."
-private const val STATUS_QUERY_SENT_VIA_MAIL_FALLBACK_MESSAGE = "[Mail fallback] /status sent."
+private const val DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE =
+    "Direct session action is unavailable until this session has canonical workspace and session ids."
+private const val DIRECT_REPLY_WAITING_MESSAGE =
+    "Direct plain reply is unavailable while the session is awaiting user input."
+private const val DIRECT_REPLY_PAUSED_MESSAGE =
+    "Direct plain reply is unavailable while the session is paused."
+private const val DIRECT_REPLY_ATTACHMENTS_UNSUPPORTED_MESSAGE =
+    "Direct plain reply does not support attachments yet."
 
 @Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 internal class TaskSessionDetailViewModel(
-    detailRepository: TaskSessionDetailRepository,
+    private val detailRepository: TaskSessionDetailRepository,
     private val getTaskSessionDetail: GetTaskSessionDetail = GetTaskSessionDetail(detailRepository),
     private val refreshTaskMail: RefreshTaskMail,
     private val observeTaskMailStoreChanges: ObserveTaskMailStoreChanges,
     private val foregroundRefreshTickerFactory: TaskMailForegroundRefreshTickerFactory,
-    private val sendTaskMailReply: SendTaskMailReply,
     private val sendTaskMailDirectSessionAction: SendTaskMailDirectSessionAction? = null,
     private val getLatestTaskMailSessionActionSendRecord: GetLatestTaskMailSessionActionSendRecord? = null,
     private val recordTaskMailSessionActionSendRecord: RecordTaskMailSessionActionSendRecord? = null,
     private val replyAttachmentResolver: TaskMailReplyAttachmentResolver,
     private val timelineAttachmentHandler: TaskMailTimelineAttachmentHandler,
     private val logger: Logger,
-    private val runTaskMailDirectOrFallback: RunTaskMailDirectOrFallback? = null,
+    private val runTaskMailDirectDispatch: RunTaskMailDirectDispatch? = null,
     private val syncTaskMailCache: SyncTaskMailCache? = null,
     private val observeTaskMailDirectSessionDetail: ObserveTaskMailDirectSessionDetail? = null,
     initialState: State = State(),
@@ -92,6 +95,7 @@ internal class TaskSessionDetailViewModel(
     private var currentDirectProjectionSummary: String? = null
     private var currentDirectProjectionQuestions: List<TaskQuestionCapsule>? = null
     private var currentDirectProjectionTimeline: List<TaskTimelineItem>? = null
+    private var currentDirectProjectionControlPlane: TaskSessionControlPlaneSnapshot? = null
 
     init {
         observeLocalMailChanges()
@@ -107,8 +111,7 @@ internal class TaskSessionDetailViewModel(
             is Event.LoadDetail -> loadDetail(
                 key = TaskSessionKey(
                     workspaceId = event.workspaceId?.trim()?.takeIf(String::isNotBlank),
-                    sessionId = event.sessionId,
-                    threadId = event.threadId,
+                    sessionId = event.sessionId.trim().takeIf(String::isNotBlank),
                 ),
                 syncCacheBeforeLoad = true,
             )
@@ -380,6 +383,7 @@ internal class TaskSessionDetailViewModel(
             directSummary = currentDirectProjectionSummary,
             directQuestions = currentDirectProjectionQuestions,
             directTimeline = currentDirectProjectionTimeline,
+            directControlPlaneSnapshot = currentDirectProjectionControlPlane,
         )
         updateState {
             it.copy(
@@ -466,6 +470,17 @@ internal class TaskSessionDetailViewModel(
                 currentDirectProjectionSummary = projection.lastSummary
                 currentDirectProjectionQuestions = projection.pendingQuestions
                 currentDirectProjectionTimeline = projection.provisionalTimeline
+                val existingDetail = currentDetail
+                val mergedDetail = existingDetail?.mergeControlPlaneSnapshot(projection.controlPlaneSnapshot)
+                currentDetail = mergedDetail ?: existingDetail
+                currentDirectProjectionControlPlane = mergedDetail?.controlPlaneSnapshot
+                    ?: projection.controlPlaneSnapshot
+                if (
+                    mergedDetail != null &&
+                    mergedDetail.controlPlaneSnapshot != existingDetail.controlPlaneSnapshot
+                ) {
+                    persistDirectControlPlaneSnapshot(mergedDetail)
+                }
                 renderDirectProjection()
             }
         }
@@ -481,6 +496,7 @@ internal class TaskSessionDetailViewModel(
             currentDirectProjectionSummary = null
             currentDirectProjectionQuestions = null
             currentDirectProjectionTimeline = null
+            currentDirectProjectionControlPlane = null
         }
     }
 
@@ -488,7 +504,8 @@ internal class TaskSessionDetailViewModel(
         return currentDirectProjectionStatus != null ||
             currentDirectProjectionSummary != null ||
             currentDirectProjectionQuestions != null ||
-            currentDirectProjectionTimeline != null
+            currentDirectProjectionTimeline != null ||
+            currentDirectProjectionControlPlane != null
     }
 
     private fun renderDirectProjection() {
@@ -498,6 +515,7 @@ internal class TaskSessionDetailViewModel(
             directSummary = currentDirectProjectionSummary,
             directQuestions = currentDirectProjectionQuestions,
             directTimeline = currentDirectProjectionTimeline,
+            directControlPlaneSnapshot = currentDirectProjectionControlPlane,
         )
 
         updateState { currentState ->
@@ -559,60 +577,29 @@ internal class TaskSessionDetailViewModel(
             return
         }
 
-        withReplyContext { context ->
-            if (detail.requiresStructuredReply && !detail.canSendReply(draftText, currentState.replyAttachments.size)) {
-                updateState {
-                    it.copy(sendError = "Complete all required answers using valid question_id values before sending.")
-                }
-                return@withReplyContext
-            }
+        val directReplyUnavailableReason = directReplyUnavailableReason(
+            detail = detail,
+            attachments = currentState.replyAttachments,
+        )
+        if (directReplyUnavailableReason != null) {
+            updateState { it.copy(sendError = directReplyUnavailableReason) }
+            return
+        }
 
-            if (canUseDirectPlainReply(detail = detail, attachments = currentState.replyAttachments)) {
-                performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
-                    sendDirectSessionActionOrFallback(
-                        request = TaskMailDirectSessionActionRequest.Reply(
-                            target = requireNotNull(currentDirectSessionActionTargetOrNull()),
-                            replyText = draftText,
-                        ),
-                        mailFallback = {
-                            sendTaskMailReply.sendFreeText(
-                                context = context,
-                                draftText = draftText,
-                                attachments = currentState.replyAttachments,
-                            )
-                        },
-                        directSuccessMessage = REPLY_SENT_VIA_DIRECT_MESSAGE,
-                        fallbackSuccessMessage = REPLY_SENT_VIA_MAIL_FALLBACK_MESSAGE,
-                    )
-                }
-            } else {
-                performMailSend(REPLY_SENT_VIA_MAIL_MESSAGE) {
-                    if (detail.requiresResumeBeforeReply) {
-                        sendTaskMailReply.sendResumeSession(
-                            context = context,
-                            draftText = draftText,
-                            attachments = currentState.replyAttachments,
-                        )
-                    } else if (detail.requiresStructuredReply) {
-                        sendTaskMailReply.sendStructuredAnswers(
-                            context = context,
-                            draftText = draftText,
-                            attachments = currentState.replyAttachments,
-                        )
-                    } else {
-                        sendTaskMailReply.sendFreeText(
-                            context = context,
-                            draftText = draftText,
-                            attachments = currentState.replyAttachments,
-                        )
-                    }
-                }
-            }
+        performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
+            sendDirectSessionAction(
+                request = TaskMailDirectSessionActionRequest.Reply(
+                    target = requireNotNull(currentDirectSessionActionTargetOrNull()),
+                    replyText = draftText,
+                ),
+                directSuccessMessage = REPLY_SENT_VIA_DIRECT_MESSAGE,
+            )
         }
     }
 
     private fun sendChoice(choice: String) {
-        val detail = state.value.detail ?: return
+        val currentState = state.value
+        val detail = currentState.detail ?: return
         if (!detail.canUseQuickAnswer(choice)) {
             updateState {
                 it.copy(sendError = "Quick answers are only available when exactly one pending question is active.")
@@ -620,22 +607,23 @@ internal class TaskSessionDetailViewModel(
             return
         }
 
-        withReplyContext { context ->
-            performMailSend(QUICK_ANSWER_SENT_VIA_MAIL_MESSAGE) {
-                if (detail.requiresResumeBeforeReply) {
-                    sendTaskMailReply.sendResumeSession(
-                        context = context,
-                        draftText = choice,
-                        attachments = state.value.replyAttachments,
-                    )
-                } else {
-                    sendTaskMailReply.sendQuestionChoice(
-                        context = context,
-                        choice = choice,
-                        attachments = state.value.replyAttachments,
-                    )
-                }
-            }
+        val directReplyUnavailableReason = directReplyUnavailableReason(
+            detail = detail,
+            attachments = currentState.replyAttachments,
+        )
+        if (directReplyUnavailableReason != null) {
+            updateState { it.copy(sendError = directReplyUnavailableReason) }
+            return
+        }
+
+        performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
+            sendDirectSessionAction(
+                request = TaskMailDirectSessionActionRequest.Reply(
+                    target = requireNotNull(currentDirectSessionActionTargetOrNull()),
+                    replyText = choice,
+                ),
+                directSuccessMessage = QUICK_ANSWER_SENT_VIA_DIRECT_MESSAGE,
+            )
         }
     }
 
@@ -650,25 +638,86 @@ internal class TaskSessionDetailViewModel(
             return
         }
 
-        withReplyContext { context ->
-            if (canUseDirectStatusQuery(detail = detail)) {
-                performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
-                    sendDirectSessionActionOrFallback(
-                        request = TaskMailDirectSessionActionRequest.Status(
-                            target = requireNotNull(currentDirectSessionActionTargetOrNull()),
-                        ),
-                        mailFallback = {
-                            sendTaskMailReply.sendStatusQuery(context)
-                        },
-                        directSuccessMessage = STATUS_QUERY_SENT_VIA_DIRECT_MESSAGE,
-                        fallbackSuccessMessage = STATUS_QUERY_SENT_VIA_MAIL_FALLBACK_MESSAGE,
-                    )
-                }
-            } else {
-                performMailSend(STATUS_QUERY_SENT_VIA_MAIL_MESSAGE) {
-                    sendTaskMailReply.sendStatusQuery(context)
-                }
+        val directStatusUnavailableReason = directStatusUnavailableReason()
+        if (directStatusUnavailableReason != null) {
+            updateState {
+                it.copy(sendError = directStatusUnavailableReason)
             }
+            return
+        }
+
+        if (!detail.canQueryStatus) {
+            updateState {
+                it.copy(sendError = detail.replyUnavailableReason ?: DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE)
+            }
+            return
+        }
+
+        performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
+            sendDirectSessionAction(
+                request = TaskMailDirectSessionActionRequest.Status(
+                    target = requireNotNull(currentDirectSessionActionTargetOrNull()),
+                ),
+                directSuccessMessage = STATUS_QUERY_SENT_VIA_DIRECT_MESSAGE,
+            )
+        }
+    }
+
+    private fun directReplyUnavailableReason(
+        detail: TaskSessionDetailUiState,
+        attachments: List<TaskReplyAttachment>,
+    ): String? {
+        return when {
+            !hasDirectSessionActionDispatcher() -> DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE
+            currentDirectSessionActionTargetOrNull() == null -> DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE
+            detail.requiresResumeBeforeReply -> DIRECT_REPLY_PAUSED_MESSAGE
+            detail.pendingQuestions.isNotEmpty() -> DIRECT_REPLY_WAITING_MESSAGE
+            attachments.isNotEmpty() -> DIRECT_REPLY_ATTACHMENTS_UNSUPPORTED_MESSAGE
+            else -> null
+        }
+    }
+
+    private fun directStatusUnavailableReason(): String? {
+        return when {
+            !hasDirectSessionActionDispatcher() -> DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE
+            currentDirectSessionActionTargetOrNull() == null -> DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE
+            else -> null
+        }
+    }
+
+    private fun hasDirectSessionActionDispatcher(): Boolean {
+        return sendTaskMailDirectSessionAction != null && runTaskMailDirectDispatch != null
+    }
+
+    private suspend fun sendDirectSessionAction(
+        request: TaskMailDirectSessionActionRequest,
+        directSuccessMessage: String,
+    ): TaskSessionSendUiResult {
+        val directSessionActionSender = requireNotNull(sendTaskMailDirectSessionAction)
+        val directDispatchRunner = requireNotNull(runTaskMailDirectDispatch)
+        val result = directDispatchRunner.execute(
+            directSend = {
+                directSessionActionSender(request).toDirectAttemptResult()
+            }
+        )
+        val latestRecord = runCatching {
+            recordTaskMailSessionActionSendRecord?.invoke(
+                request = request,
+                evidence = result.evidence,
+            )
+        }.getOrNull()
+
+        return when (result) {
+            is TaskMailDirectDispatchResult.DirectAccepted ->
+                TaskSessionSendUiResult.Success(
+                    message = directSuccessMessage,
+                    latestDirectSessionActionRecord = latestRecord,
+                )
+            is TaskMailDirectDispatchResult.DirectRejected ->
+                TaskSessionSendUiResult.Failure(
+                    errorMessage = result.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
+                    latestDirectSessionActionRecord = latestRecord,
+                )
         }
     }
 
@@ -726,32 +775,6 @@ internal class TaskSessionDetailViewModel(
         }
     }
 
-    private fun withReplyContext(action: (TaskSessionReplyContext) -> Unit) {
-        val detail = state.value.detail ?: return
-        val replyContext = detail.replyContext
-
-        if (replyContext == null) {
-            updateState {
-                it.copy(
-                    sendError = detail.replyUnavailableReason ?: "Reply unavailable for this session.",
-                )
-            }
-            return
-        }
-        if (!state.value.isSending) {
-            action(replyContext)
-        }
-    }
-
-    private fun performMailSend(
-        successMessage: String,
-        action: suspend () -> TaskMailReplyResult,
-    ) {
-        performSend(sendFailureMessage = SEND_FAILURE_MESSAGE) {
-            action().toUiSendResult(successMessage)
-        }
-    }
-
     private fun performSend(
         sendFailureMessage: String,
         action: suspend () -> TaskSessionSendUiResult,
@@ -806,53 +829,6 @@ internal class TaskSessionDetailViewModel(
         }
     }
 
-    private suspend fun sendDirectSessionActionOrFallback(
-        request: TaskMailDirectSessionActionRequest,
-        mailFallback: suspend () -> TaskMailReplyResult,
-        directSuccessMessage: String,
-        fallbackSuccessMessage: String,
-    ): TaskSessionSendUiResult {
-        val directSessionActionSender = requireNotNull(sendTaskMailDirectSessionAction)
-        val directOrFallbackRunner = requireNotNull(runTaskMailDirectOrFallback)
-        val result = directOrFallbackRunner.execute(
-            directSend = {
-                directSessionActionSender(request).toDirectAttemptResult()
-            },
-            mailFallback = {
-                mailFallback().toMailFallbackResult()
-            },
-        )
-        val latestRecord = runCatching {
-            recordTaskMailSessionActionSendRecord?.invoke(
-                request = request,
-                evidence = result.evidence,
-            )
-        }.getOrNull()
-
-        return when (result) {
-            is TaskMailDirectOrFallbackResult.DirectAccepted ->
-                TaskSessionSendUiResult.Success(
-                    message = directSuccessMessage,
-                    latestDirectSessionActionRecord = latestRecord,
-                )
-            is TaskMailDirectOrFallbackResult.MailFallbackSucceeded ->
-                TaskSessionSendUiResult.Success(
-                    message = fallbackSuccessMessage,
-                    latestDirectSessionActionRecord = latestRecord,
-                )
-            is TaskMailDirectOrFallbackResult.MailFallbackFailed ->
-                TaskSessionSendUiResult.Failure(
-                    errorMessage = result.errorMessage ?: SEND_FAILURE_MESSAGE,
-                    latestDirectSessionActionRecord = latestRecord,
-                )
-            is TaskMailDirectOrFallbackResult.DirectRejected ->
-                TaskSessionSendUiResult.Failure(
-                    errorMessage = result.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
-                    latestDirectSessionActionRecord = latestRecord,
-                )
-        }
-    }
-
     private fun loadLatestDirectSessionActionRecord(key: TaskSessionKey) {
         val getLatestRecord = getLatestTaskMailSessionActionSendRecord ?: run {
             updateState { it.copy(latestDirectSessionActionRecord = null) }
@@ -881,30 +857,22 @@ internal class TaskSessionDetailViewModel(
         }
     }
 
-    private fun canUseDirectPlainReply(
-        detail: TaskSessionDetailUiState,
-        attachments: List<TaskReplyAttachment>,
-    ): Boolean {
-        return sendTaskMailDirectSessionAction != null &&
-            runTaskMailDirectOrFallback != null &&
-            currentDirectSessionActionTargetOrNull() != null &&
-            !detail.requiresStructuredReply &&
-            !detail.requiresResumeBeforeReply &&
-            attachments.isEmpty()
-    }
-
-    private fun canUseDirectStatusQuery(
-        detail: TaskSessionDetailUiState,
-    ): Boolean {
-        return sendTaskMailDirectSessionAction != null &&
-            runTaskMailDirectOrFallback != null &&
-            currentDirectSessionActionTargetOrNull() != null &&
-            detail.canQueryStatus
-    }
-
     @Suppress("ReturnCount")
     private fun currentDirectSessionActionTargetOrNull(): TaskMailDirectSessionActionTarget? {
-        return currentKey?.toDirectSessionActionTargetOrNull()
+        val key = currentKey ?: return null
+        return key.toDirectSessionActionTargetOrNull(
+            threadIdFallback = currentDetail?.key?.threadId,
+        )
+    }
+
+    private fun persistDirectControlPlaneSnapshot(detail: TaskSessionDetail) {
+        viewModelScope.launch {
+            runCatching {
+                detailRepository.upsertSessionDetails(listOf(detail))
+            }.onFailure { error ->
+                logger.warn(TAG, error) { "Failed to persist direct control-plane snapshot." }
+            }
+        }
     }
 
     private fun findTimelineAttachment(attachmentId: String): TaskMessageAttachment? {
@@ -935,15 +903,19 @@ private sealed interface TaskSessionSendUiResult {
 private const val FOREGROUND_REFRESH_INTERVAL_MS = 10_000L
 private const val TAG = "TaskSessionDetailViewModel"
 
-private fun TaskSessionKey.toDirectSessionActionTargetOrNull(): TaskMailDirectSessionActionTarget? {
+private fun TaskSessionKey.toDirectSessionActionTargetOrNull(
+    threadIdFallback: String? = null,
+): TaskMailDirectSessionActionTarget? {
     val normalizedWorkspaceId = workspaceId?.trim()?.takeIf(String::isNotBlank)
     val normalizedSessionId = sessionId?.trim()?.takeIf(String::isNotBlank)
+    val normalizedThreadId = threadId?.trim()?.takeIf(String::isNotBlank)
+        ?: threadIdFallback?.trim()?.takeIf(String::isNotBlank)
 
     return if (normalizedWorkspaceId != null && normalizedSessionId != null) {
         TaskMailDirectSessionActionTarget(
             workspaceId = normalizedWorkspaceId,
             sessionId = normalizedSessionId,
-            threadId = threadId,
+            threadId = normalizedThreadId,
         )
     } else {
         null
@@ -979,14 +951,28 @@ private fun TaskSessionDetail.toUiState(
     directSummary: String? = null,
     directQuestions: List<TaskQuestionCapsule>? = null,
     directTimeline: List<TaskTimelineItem>? = null,
+    directControlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
 ): TaskSessionDetailUiState {
     val effectiveStatus = directStatus ?: status
     val effectiveSummary = directSummary ?: lastSummary
-    val canReply = replyContext != null
+    val directActionTarget = TaskSessionKey(
+        workspaceId = key.workspaceId ?: workspace.workspaceId,
+        sessionId = key.sessionId,
+        threadId = key.threadId,
+    ).toDirectSessionActionTargetOrNull(
+        threadIdFallback = key.threadId,
+    )
     val pendingQuestionItems = (directQuestions ?: pendingQuestions)
         .map(TaskQuestionCapsule::toUiState)
         .toImmutableList()
     val replyUiState = pendingQuestionItems.toReplyUiState(effectiveStatus)
+    val replyUnavailableReason = when {
+        directActionTarget == null -> DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE
+        replyUiState.requiresResumeBeforeReply -> DIRECT_REPLY_PAUSED_MESSAGE
+        pendingQuestionItems.isNotEmpty() -> DIRECT_REPLY_WAITING_MESSAGE
+        else -> null
+    }
+    val canReply = replyUnavailableReason == null
     val mergedTimeline = mergeTimeline(
         mailTimeline = timeline,
         directTimeline = directTimeline,
@@ -1000,7 +986,7 @@ private fun TaskSessionDetail.toUiState(
         .map(TaskTimelineAttachmentUi::toArtifactUi)
         .toImmutableList()
 
-    return TaskSessionDetailUiState(
+    val uiState = TaskSessionDetailUiState(
         sessionName = sessionName,
         backend = backend.name,
         status = effectiveStatus.name,
@@ -1031,10 +1017,17 @@ private fun TaskSessionDetail.toUiState(
         replySupportingText = replyUiState.replySupportingText,
         replyContext = replyContext,
         canReply = canReply,
-        canQueryStatus = canReply,
-        replyUnavailableReason = if (canReply) null else "Reply unavailable for this session.",
+        canQueryStatus = directActionTarget != null,
+        replyUnavailableReason = replyUnavailableReason,
         timeline = mergedTimeline,
     )
+
+    val effectiveControlPlaneSnapshot = controlPlaneSnapshot.merge(directControlPlaneSnapshot)
+    return if (effectiveControlPlaneSnapshot != null) {
+        uiState.withControlPlaneSnapshot(effectiveControlPlaneSnapshot)
+    } else {
+        uiState
+    }
 }
 
 private fun TaskTimelineItem.toUiState(): TaskTimelineItemUi {
@@ -1211,7 +1204,18 @@ private fun replySupportingText(
             "Answer the pending question with plain text, attachments, or a quick TaskMail action."
         }
 
-        else -> "Send a plain-text reply, attach files, or both to continue this task."
+        else -> "Send a direct plain-text reply to continue this task."
+    }
+}
+
+private fun TaskSessionDetail.mergeControlPlaneSnapshot(
+    snapshot: TaskSessionControlPlaneSnapshot?,
+): TaskSessionDetail {
+    val mergedSnapshot = controlPlaneSnapshot.merge(snapshot)
+    return if (mergedSnapshot == controlPlaneSnapshot) {
+        this
+    } else {
+        copy(controlPlaneSnapshot = mergedSnapshot)
     }
 }
 
@@ -1252,28 +1256,6 @@ private fun State.resolveDraftText(detail: TaskSessionDetailUiState): String {
 }
 
 private const val HISTORY_PREVIEW_COUNT = 5
-
-private fun TaskMailReplyResult.toUiSendResult(
-    successMessage: String,
-): TaskSessionSendUiResult {
-    return if (isSuccess) {
-        TaskSessionSendUiResult.Success(successMessage)
-    } else {
-        TaskSessionSendUiResult.Failure(errorMessage ?: SEND_FAILURE_MESSAGE)
-    }
-}
-
-private fun TaskMailReplyResult.toMailFallbackResult(): Result<Unit> {
-    return if (isSuccess) {
-        Result.success(Unit)
-    } else {
-        Result.failure(
-            IllegalStateException(
-                errorMessage ?: SEND_FAILURE_MESSAGE,
-            ),
-        )
-    }
-}
 
 private fun TaskMailDirectSessionActionResult.toDirectAttemptResult():
     TaskMailDirectAttemptResult<TaskMailDirectSessionActionResult.Accepted> {

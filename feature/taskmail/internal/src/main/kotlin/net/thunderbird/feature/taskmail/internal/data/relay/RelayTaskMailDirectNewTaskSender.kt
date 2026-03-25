@@ -22,7 +22,7 @@ private const val ORIGIN_CLIENT = "android_taskmail"
 private const val PACKET_ID_PREFIX = "android-taskmail:new-task:"
 private const val REQUEST_ID_PREFIX = "req_"
 private const val DISPATCH_CHANNEL = "taskmail_android_direct"
-private const val FALLBACK_POLICY_MAIL = "mail"
+private const val FALLBACK_POLICY_NONE = "none"
 private const val DEFAULT_DIRECT_REJECTION_MESSAGE = "Relay rejected direct task request."
 private val HARD_REJECTION_CODES = setOf(
     "invalid_payload",
@@ -99,7 +99,7 @@ internal class RelayTaskMailDirectNewTaskSender(
         put("channel", DISPATCH_CHANNEL)
         put("schema_version", PHASE2_SCHEMA_VERSION)
         put("action", DIRECT_ACTION_NEW_TASK)
-        put("fallback_policy", FALLBACK_POLICY_MAIL)
+        put("fallback_policy", FALLBACK_POLICY_NONE)
     }
 
     private companion object {

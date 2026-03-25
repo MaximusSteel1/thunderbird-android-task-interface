@@ -11,9 +11,23 @@ internal interface TaskWorkspaceContract {
         val isRefreshing: Boolean = false,
         val error: String? = null,
         val refreshError: String? = null,
-        val workspaces: List<TaskWorkspaceItemUi> = emptyList(),
+        val attentionSessions: List<TaskSessionItemUi> = emptyList(),
+        val activeSessions: List<TaskSessionItemUi> = emptyList(),
+        val recentSessions: List<TaskSessionItemUi> = emptyList(),
+        val pcSummaries: List<TaskPcSummaryItemUi> = emptyList(),
+        val workspaceSummaries: List<TaskWorkspaceItemUi> = emptyList(),
     ) {
-        val isEmpty: Boolean = !isLoading && error == null && workspaces.isEmpty()
+        val hasContent: Boolean
+            get() = attentionSessions.isNotEmpty() ||
+                activeSessions.isNotEmpty() ||
+                recentSessions.isNotEmpty() ||
+                pcSummaries.isNotEmpty() ||
+                workspaceSummaries.isNotEmpty()
+
+        val isEmpty: Boolean
+            get() = !isLoading &&
+                error == null &&
+                !hasContent
     }
 
     sealed interface Event {
@@ -26,8 +40,7 @@ internal interface TaskWorkspaceContract {
         data object NewTaskClicked : Event
         data class SessionClicked(
             val workspaceId: String?,
-            val sessionId: String?,
-            val threadId: String,
+            val sessionId: String,
         ) : Event
     }
 
@@ -36,8 +49,7 @@ internal interface TaskWorkspaceContract {
         data object OpenNewTask : Effect
         data class OpenSessionDetail(
             val workspaceId: String?,
-            val sessionId: String?,
-            val threadId: String,
+            val sessionId: String,
         ) : Effect
     }
 }

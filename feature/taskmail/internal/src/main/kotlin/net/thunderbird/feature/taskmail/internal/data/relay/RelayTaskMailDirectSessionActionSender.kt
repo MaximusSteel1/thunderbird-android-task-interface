@@ -20,7 +20,7 @@ private const val PACKET_ID_PREFIX = "android-taskmail:session-action:"
 private const val REQUEST_ID_PREFIX = "req_"
 private const val CURRENT_SESSION_SCOPE = "current_session"
 private const val DISPATCH_CHANNEL = "taskmail_android_direct"
-private const val FALLBACK_POLICY_MAIL = "mail"
+private const val FALLBACK_POLICY_NONE = "none"
 private const val DEFAULT_DIRECT_REJECTION_MESSAGE = "Relay rejected direct session action request."
 private val HARD_REJECTION_CODES = setOf(
     "invalid_payload",
@@ -113,7 +113,7 @@ internal class RelayTaskMailDirectSessionActionSender(
         put("channel", DISPATCH_CHANNEL)
         put("schema_version", SESSION_ACTION_SCHEMA_VERSION)
         put("action", actionType.wireValue)
-        put("fallback_policy", FALLBACK_POLICY_MAIL)
+        put("fallback_policy", FALLBACK_POLICY_NONE)
     }
 
     private companion object {

@@ -69,7 +69,6 @@ class FileBackedTaskSessionDetailRepositoryTest {
             TaskSessionKey(
                 workspaceId = "workspace_001",
                 sessionId = "session_001",
-                threadId = "thread_001",
             ),
         )
 

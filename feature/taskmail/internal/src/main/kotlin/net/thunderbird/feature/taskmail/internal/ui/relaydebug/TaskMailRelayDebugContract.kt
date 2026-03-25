@@ -17,6 +17,8 @@ internal interface TaskMailRelayDebugContract {
         val useTls: Boolean = false,
         val transportToken: String = "",
         val probePayloadText: String = DEFAULT_PROBE_PAYLOAD_TEXT,
+        val newTaskSendRecordsPath: String? = null,
+        val sessionActionSendRecordsPath: String? = null,
         val isSaving: Boolean = false,
         val isProbingHealth: Boolean = false,
         val isConnecting: Boolean = false,

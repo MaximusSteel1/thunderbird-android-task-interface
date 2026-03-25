@@ -131,7 +131,7 @@ internal class FileBackedTaskSessionDetailRepository(
             compareBy<TaskSessionDetail>(
                 { it.key.workspaceId.orEmpty() },
                 { it.key.sessionId.orEmpty() },
-                { it.key.threadId },
+                { it.key.threadId.orEmpty() },
             ),
         )
         writeSessionDetails(persistedDetails)

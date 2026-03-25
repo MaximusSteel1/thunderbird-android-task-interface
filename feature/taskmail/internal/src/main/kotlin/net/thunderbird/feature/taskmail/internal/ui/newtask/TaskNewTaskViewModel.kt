@@ -5,19 +5,19 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft
-import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskResult
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailNewTask
 import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectOrFallbackResult
+import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectDispatchResult
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.State
@@ -28,15 +28,13 @@ private const val LOAD_SENDER_ACCOUNTS_ERROR =
     "Unable to load mailbox accounts for TaskMail sending."
 private const val SENDER_ACCOUNT_REQUIRED_ERROR = "Select the sending account."
 private const val BACKEND_REQUIRED_ERROR = "Select a backend."
-private const val REPO_REQUIRED_ERROR = "Repo is required."
+private const val REPO_REQUIRED_ERROR = "Repository bridge is required."
 private const val TASK_REQUIRED_ERROR = "Task details are required."
 private const val TITLE_REQUIRED_ERROR = "Title is required."
 private const val TIMEOUT_INVALID_ERROR = "Timeout must be a positive integer."
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail task request."
 private const val SEND_SUCCESS_MESSAGE =
-    "[Relay] Task request sent. It will appear after the first TaskMail status mail arrives."
-private const val SEND_FALLBACK_SUCCESS_MESSAGE =
-    "[Mail fallback] Task request sent. It will appear after the first TaskMail status mail arrives."
+    "[Relay] Task request sent. It will appear after the first TaskMail update arrives."
 
 @Suppress("TooManyFunctions")
 internal class TaskNewTaskViewModel(
@@ -44,8 +42,7 @@ internal class TaskNewTaskViewModel(
     private val getLatestTaskMailNewTaskSendRecord: GetLatestTaskMailNewTaskSendRecord,
     private val recordTaskMailNewTaskSendRecord: RecordTaskMailNewTaskSendRecord,
     private val sendTaskMailDirectNewTask: SendTaskMailDirectNewTask,
-    private val sendTaskMailNewTask: SendTaskMailNewTask,
-    private val runTaskMailDirectOrFallback: RunTaskMailDirectOrFallback,
+    private val runTaskMailDirectDispatch: RunTaskMailDirectDispatch,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskNewTaskContract.ViewModel {
@@ -56,7 +53,12 @@ internal class TaskNewTaskViewModel(
             Event.BackClicked -> emitEffect(Effect.NavigateBack)
             Event.ChooseRepoClicked -> emitEffect(Effect.OpenProjectSync)
             Event.SendClicked -> sendTask()
-            Event.DismissSendError -> updateState { it.copy(sendError = null) }
+            Event.DismissSendError -> updateState {
+                it.copy(
+                    submitState = it.submitState.copy(sendError = null),
+                )
+            }
+
             is Event.SenderAccountSelected,
             is Event.PcChanged,
             is Event.WorkspaceChanged,
@@ -85,6 +87,7 @@ internal class TaskNewTaskViewModel(
             is Event.TaskChanged,
             is Event.SubjectTitleChanged,
             -> handleRequiredFieldEvent(event)
+
             Event.AdvancedToggleClicked,
             is Event.WorkdirChanged,
             is Event.ModeChanged,
@@ -93,6 +96,7 @@ internal class TaskNewTaskViewModel(
             is Event.ProfileChanged,
             is Event.AcceptanceChanged,
             -> handleAdvancedFieldEvent(event)
+
             else -> Unit
         }
     }
@@ -103,55 +107,80 @@ internal class TaskNewTaskViewModel(
 
             is Event.PcChanged -> updateState {
                 it.copy(
-                    pcId = event.value,
-                    sendError = null,
+                    pcSelection = it.pcSelection.copy(selectedPcId = event.value),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.WorkspaceChanged -> updateState {
+                val selectedOption = it.workspaceSelection.workspaceOptions
+                    .firstOrNull { option -> option.id == event.value }
                 it.copy(
-                    workspaceId = event.value,
-                    sendError = null,
+                    workspaceSelection = it.workspaceSelection.copy(
+                        selectedWorkspaceId = event.value,
+                        repoPath = selectedOption?.repoPath
+                            ?.takeIf { optionRepoPath ->
+                                it.workspaceSelection.repoPath.isBlank()
+                            }
+                            ?: it.workspaceSelection.repoPath,
+                        workdir = selectedOption?.workdir
+                            ?.takeIf { optionWorkdir ->
+                                it.workspaceSelection.workdir.isBlank()
+                            }
+                            ?: it.workspaceSelection.workdir,
+                    ),
+                    validationErrors = it.validationErrors.copy(repoError = null),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.BackendSelected -> updateState {
                 it.copy(
-                    selectedBackend = event.backend,
-                    backendError = null,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(backend = event.backend),
+                    validationErrors = it.validationErrors.copy(backendError = null),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.RepoChanged -> updateState {
                 it.copy(
-                    repoPath = event.value,
-                    repoError = null,
-                    sendError = null,
+                    workspaceSelection = it.workspaceSelection.copy(repoPath = event.value),
+                    validationErrors = it.validationErrors.copy(repoError = null),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.TaskChanged -> updateState { current ->
                 val derivedTitle = deriveSubjectTitle(event.value)
                 current.copy(
-                    taskText = event.value,
-                    subjectTitle = if (current.isSubjectTitleEdited) {
-                        current.subjectTitle
-                    } else {
-                        derivedTitle
-                    },
-                    taskError = null,
-                    titleError = if (current.isSubjectTitleEdited) current.titleError else null,
-                    sendError = null,
+                    taskInput = current.taskInput.copy(
+                        taskText = event.value,
+                        subjectTitle = if (current.taskInput.isSubjectTitleEdited) {
+                            current.taskInput.subjectTitle
+                        } else {
+                            derivedTitle
+                        },
+                    ),
+                    validationErrors = current.validationErrors.copy(
+                        taskError = null,
+                        titleError = if (current.taskInput.isSubjectTitleEdited) {
+                            current.validationErrors.titleError
+                        } else {
+                            null
+                        },
+                    ),
+                    submitState = current.submitState.copy(sendError = null),
                 )
             }
 
             is Event.SubjectTitleChanged -> updateState {
                 it.copy(
-                    subjectTitle = event.value,
-                    isSubjectTitleEdited = true,
-                    titleError = null,
-                    sendError = null,
+                    taskInput = it.taskInput.copy(
+                        subjectTitle = event.value,
+                        isSubjectTitleEdited = true,
+                    ),
+                    validationErrors = it.validationErrors.copy(titleError = null),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
@@ -163,51 +192,55 @@ internal class TaskNewTaskViewModel(
         when (event) {
             Event.AdvancedToggleClicked -> updateState {
                 it.copy(
-                    isAdvancedExpanded = !it.isAdvancedExpanded,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(
+                        isExpanded = !it.executionPolicyEditor.isExpanded,
+                    ),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.WorkdirChanged -> updateState {
                 it.copy(
-                    workdir = event.value,
-                    sendError = null,
+                    workspaceSelection = it.workspaceSelection.copy(workdir = event.value),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.ModeChanged -> updateState {
                 it.copy(
-                    mode = event.mode,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(mode = event.mode),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.TimeoutChanged -> updateState {
                 it.copy(
-                    timeoutText = event.value,
-                    timeoutError = validateTimeoutText(event.value),
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(timeoutText = event.value),
+                    validationErrors = it.validationErrors.copy(
+                        timeoutError = validateTimeoutText(event.value),
+                    ),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.PermissionChanged -> updateState {
                 it.copy(
-                    permission = event.permission,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(permission = event.permission),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.ProfileChanged -> updateState {
                 it.copy(
-                    profile = event.value,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(profile = event.value),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
             is Event.AcceptanceChanged -> updateState {
                 it.copy(
-                    acceptanceText = event.value,
-                    sendError = null,
+                    executionPolicyEditor = it.executionPolicyEditor.copy(acceptanceText = event.value),
+                    submitState = it.submitState.copy(sendError = null),
                 )
             }
 
@@ -220,8 +253,11 @@ internal class TaskNewTaskViewModel(
             it.copy(
                 isLoading = true,
                 senderAccountBlockingError = null,
-                senderAccountError = null,
-                sendError = null,
+                validationErrors = it.validationErrors.copy(senderAccountError = null),
+                submitState = it.submitState.copy(
+                    isSending = false,
+                    sendError = null,
+                ),
                 lastDirectSendEvidence = null,
             )
         }
@@ -240,7 +276,7 @@ internal class TaskNewTaskViewModel(
                         senderAccountBlockingError = accounts.blockingErrorOrNull(),
                         senderAccounts = accounts.toImmutableList(),
                         selectedSenderAccountId = selectedSenderAccountId,
-                        senderAccountError = null,
+                        validationErrors = current.validationErrors.copy(senderAccountError = null),
                     )
                 }
                 if (selectedSenderAccountId != null) {
@@ -253,7 +289,7 @@ internal class TaskNewTaskViewModel(
                         senderAccountBlockingError = LOAD_SENDER_ACCOUNTS_ERROR,
                         senderAccounts = persistentListOf(),
                         selectedSenderAccountId = null,
-                        senderAccountError = null,
+                        validationErrors = it.validationErrors.copy(senderAccountError = null),
                         lastDirectSendEvidence = null,
                     )
                 }
@@ -273,50 +309,52 @@ internal class TaskNewTaskViewModel(
 
         val draft = validation.buildDraft(currentState)
         if (draft == null) {
-            updateState { it.copy(sendError = SEND_FAILURE_MESSAGE) }
-        } else {
             updateState {
                 it.copy(
+                    submitState = it.submitState.copy(sendError = SEND_FAILURE_MESSAGE),
+                )
+            }
+            return
+        }
+
+        updateState {
+            it.copy(
+                submitState = it.submitState.copy(
                     isSending = true,
                     sendError = null,
-                    lastDirectSendEvidence = null,
-                    senderAccountError = null,
-                    backendError = null,
-                    repoError = null,
-                    taskError = null,
-                    titleError = null,
-                    timeoutError = null,
+                ),
+                lastDirectSendEvidence = null,
+                validationErrors = TaskNewTaskValidationErrors(),
+            )
+        }
+
+        viewModelScope.launch {
+            val sendResult = runTaskMailDirectDispatch.execute(
+                directSend = {
+                    sendTaskMailDirectNewTask(draft).toDirectAttemptResult()
+                },
+            )
+            runCatching {
+                recordTaskMailNewTaskSendRecord(
+                    draft = draft,
+                    evidence = sendResult.evidence,
                 )
             }
-            viewModelScope.launch {
-                val sendResult = runTaskMailDirectOrFallback.execute(
-                    directSend = {
-                        sendTaskMailDirectNewTask(draft).toDirectAttemptResult()
-                    },
-                    mailFallback = {
-                        sendTaskMailNewTask(draft).toMailFallbackResult()
-                    },
-                )
-                runCatching {
-                    recordTaskMailNewTaskSendRecord(
-                        draft = draft,
-                        evidence = sendResult.evidence,
-                    )
-                }
-                handleSendResult(sendResult)
-            }
+            handleSendResult(sendResult)
         }
     }
 
     private suspend fun handleSendResult(
-        sendResult: TaskMailDirectOrFallbackResult<TaskMailDirectNewTaskResult.Accepted>,
+        sendResult: TaskMailDirectDispatchResult<TaskMailDirectNewTaskResult.Accepted>,
     ) {
         when (sendResult) {
-            is TaskMailDirectOrFallbackResult.DirectAccepted -> {
+            is TaskMailDirectDispatchResult.DirectAccepted -> {
                 updateState {
                     it.copy(
-                        isSending = false,
-                        sendError = null,
+                        submitState = it.submitState.copy(
+                            isSending = false,
+                            sendError = null,
+                        ),
                         lastDirectSendEvidence = sendResult.evidence,
                     )
                 }
@@ -324,34 +362,14 @@ internal class TaskNewTaskViewModel(
                 emitEffect(Effect.NavigateBack)
             }
 
-            is TaskMailDirectOrFallbackResult.MailFallbackSucceeded -> {
+            is TaskMailDirectDispatchResult.DirectRejected -> {
                 updateState {
                     it.copy(
-                        isSending = false,
-                        sendError = null,
+                        submitState = it.submitState.copy(
+                            isSending = false,
+                            sendError = sendResult.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
+                        ),
                         lastDirectSendEvidence = sendResult.evidence,
-                    )
-                }
-                emitEffect(Effect.ShowMessage(SEND_FALLBACK_SUCCESS_MESSAGE))
-                emitEffect(Effect.NavigateBack)
-            }
-
-            is TaskMailDirectOrFallbackResult.MailFallbackFailed -> {
-                updateState {
-                    it.copy(
-                        isSending = false,
-                        lastDirectSendEvidence = sendResult.evidence,
-                        sendError = sendResult.errorMessage ?: SEND_FAILURE_MESSAGE,
-                    )
-                }
-            }
-
-            is TaskMailDirectOrFallbackResult.DirectRejected -> {
-                updateState {
-                    it.copy(
-                        isSending = false,
-                        lastDirectSendEvidence = sendResult.evidence,
-                        sendError = sendResult.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
                     )
                 }
             }
@@ -361,13 +379,15 @@ internal class TaskNewTaskViewModel(
     private fun showValidationErrors(validation: ValidationResult) {
         updateState {
             it.copy(
-                senderAccountError = validation.senderAccountError,
-                backendError = validation.backendError,
-                repoError = validation.repoError,
-                taskError = validation.taskError,
-                titleError = validation.titleError,
-                timeoutError = validation.timeoutError,
-                sendError = null,
+                validationErrors = TaskNewTaskValidationErrors(
+                    senderAccountError = validation.senderAccountError,
+                    backendError = validation.backendError,
+                    repoError = validation.repoError,
+                    taskError = validation.taskError,
+                    titleError = validation.titleError,
+                    timeoutError = validation.timeoutError,
+                ),
+                submitState = it.submitState.copy(sendError = null),
             )
         }
     }
@@ -377,10 +397,10 @@ internal class TaskNewTaskViewModel(
             ?.takeIf { accountUuid ->
                 state.senderAccounts.any { it.accountUuid == accountUuid }
             }
-        val repoPath = state.repoPath.trim()
-        val taskText = state.taskText.trim()
-        val subjectTitle = state.subjectTitle.trim()
-        val timeoutText = state.timeoutText.trim()
+        val repoPath = state.resolvedRepoBridgePath.orEmpty().trim()
+        val taskText = state.taskInput.taskText.trim()
+        val subjectTitle = state.taskInput.subjectTitle.trim()
+        val timeoutText = state.executionPolicyEditor.timeoutText.trim()
         val timeoutMinutes = timeoutText
             .takeIf(String::isNotEmpty)
             ?.toIntOrNull()
@@ -392,7 +412,7 @@ internal class TaskNewTaskViewModel(
             } else {
                 null
             },
-            backendError = if (state.selectedBackend == null) BACKEND_REQUIRED_ERROR else null,
+            backendError = if (state.executionPolicyEditor.backend == null) BACKEND_REQUIRED_ERROR else null,
             repoError = if (repoPath.isEmpty()) REPO_REQUIRED_ERROR else null,
             taskError = if (taskText.isEmpty()) TASK_REQUIRED_ERROR else null,
             titleError = if (subjectTitle.isEmpty()) TITLE_REQUIRED_ERROR else null,
@@ -409,8 +429,8 @@ internal class TaskNewTaskViewModel(
         updateState {
             it.copy(
                 selectedSenderAccountId = accountUuid,
-                senderAccountError = null,
-                sendError = null,
+                validationErrors = it.validationErrors.copy(senderAccountError = null),
+                submitState = it.submitState.copy(sendError = null),
                 lastDirectSendEvidence = null,
             )
         }
@@ -465,20 +485,9 @@ private fun TaskMailDirectNewTaskResult.toDirectAttemptResult():
                 ),
             )
         }
+
         is TaskMailDirectNewTaskResult.FallbackToMail -> TaskMailDirectAttemptResult.FallbackToMail(detailMessage)
         is TaskMailDirectNewTaskResult.Rejected -> TaskMailDirectAttemptResult.Rejected(errorMessage)
-    }
-}
-
-private fun TaskMailNewTaskResult.toMailFallbackResult(): Result<Unit> {
-    return if (isSuccess) {
-        Result.success(Unit)
-    } else {
-        Result.failure(
-            IllegalStateException(
-                errorMessage ?: SEND_FAILURE_MESSAGE,
-            ),
-        )
     }
 }
 
@@ -531,7 +540,7 @@ private data class ValidationResult(
     fun buildDraft(state: State): TaskMailNewTaskDraft? {
         if (!hasNoErrors()) return null
         val senderAccountId = normalizedSenderAccountId
-        val backend = state.selectedBackend
+        val backend = state.executionPolicyEditor.backend
 
         return if (senderAccountId != null && backend != null) {
             TaskMailNewTaskDraft(
@@ -540,21 +549,34 @@ private data class ValidationResult(
                 repoPath = normalizedRepoPath,
                 taskText = normalizedTaskText,
                 subjectTitle = normalizedSubjectTitle,
-                workdir = state.workdir.trim().takeIf { it.isNotEmpty() },
-                mode = state.mode,
+                workdir = state.resolvedWorkdirBridge,
+                mode = state.executionPolicyEditor.mode,
                 timeoutMinutes = normalizedTimeoutMinutes,
-                permission = state.permission,
-                profile = state.profile.trim().takeIf { it.isNotEmpty() },
-                acceptanceCriteria = state.acceptanceText
+                permission = state.executionPolicyEditor.permission,
+                profile = state.executionPolicyEditor.profile.trim().takeIf { it.isNotEmpty() },
+                acceptanceCriteria = state.executionPolicyEditor.acceptanceText
                     .lineSequence()
                     .map(String::trim)
                     .filter(String::isNotEmpty)
                     .toList(),
-                pcId = state.pcId.trim().takeIf { it.isNotEmpty() },
-                workspaceId = state.workspaceId.trim().takeIf { it.isNotEmpty() },
+                pcId = state.pcSelection.selectedPcId.trim().takeIf { it.isNotEmpty() },
+                workspaceId = state.workspaceSelection.selectedWorkspaceId.trim().takeIf { it.isNotEmpty() },
+                executionPolicy = state.executionPolicyEditor.toControlPlaneExecutionPolicy(),
             )
         } else {
             null
         }
     }
+}
+
+private fun TaskNewTaskExecutionPolicyUiState.toControlPlaneExecutionPolicy(): ControlPlaneExecutionPolicy {
+    return ControlPlaneExecutionPolicy(
+        backend = backend?.wireValue,
+        profile = profile.trim().takeIf { it.isNotEmpty() },
+        permission = when (permission) {
+            TaskMailNewTaskPermission.Default -> "default"
+            TaskMailNewTaskPermission.Highest -> "highest"
+        },
+        backendTransport = backendTransport.trim().takeIf { it.isNotEmpty() },
+    )
 }

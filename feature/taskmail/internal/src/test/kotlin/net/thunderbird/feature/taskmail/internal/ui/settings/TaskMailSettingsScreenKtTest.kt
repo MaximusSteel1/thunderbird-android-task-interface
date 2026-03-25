@@ -80,6 +80,28 @@ class TaskMailSettingsScreenKtTest {
 
         assertThat(confirmClicked).isEqualTo(true)
     }
+
+    @Test
+    fun `content should dispatch open relay config when available`() {
+        var relayConfigOpened = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskMailSettingsContent(
+                    state = TaskMailSettingsContract.State(address = "bot@example.org"),
+                    onEvent = {},
+                    onOpenRelayConfig = {
+                        relayConfigOpened = true
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("TaskMailSettingsOpenRelayConfigButton").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TaskMailSettingsOpenRelayConfigButton").performClick()
+
+        assertThat(relayConfigOpened).isEqualTo(true)
+    }
 }
 
 private class FakeTaskMailSettingsViewModel(

@@ -42,6 +42,12 @@ internal fun ResultSummaryCard(
                     color = MainTheme.colors.onSurfaceVariant,
                 )
             }
+            result.effectiveExecutionSummary?.let { text ->
+                TextBodyMedium(
+                    text = text,
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
         }
     }
 }

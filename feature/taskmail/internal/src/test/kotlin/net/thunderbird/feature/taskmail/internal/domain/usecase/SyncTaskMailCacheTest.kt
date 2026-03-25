@@ -10,9 +10,11 @@ import kotlinx.coroutines.test.runTest
 import net.thunderbird.feature.taskmail.internal.data.TaskMailMessage
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
@@ -267,6 +269,50 @@ class SyncTaskMailCacheTest {
         assertThat(
             sessionDetailRepository.sessionDetails.first { detail -> detail.key.sessionId == "session-2" }.lastSummary,
         ).isEqualTo("Repository wiring is queued.")
+    }
+
+    @Test
+    fun `invoke should preserve existing control-plane snapshot while rebuilding mail-backed detail`() = runTest {
+        val messageCodec = TaskMailMessageJsonCodec()
+        val message = sampleTaskMailMessage()
+        val existingDetail = projectSessionDetails(message).single().copy(
+            controlPlaneSnapshot = TaskSessionControlPlaneSnapshot(
+                commandAck = ControlPlaneCommandAck(
+                    commandId = "cmd_001",
+                    ackStatus = "accepted",
+                ),
+            ),
+        )
+        val sessionDetailRepository = InMemoryTaskSessionDetailRepository(
+            sessionDetails = listOf(existingDetail),
+        )
+        val testSubject = SyncTaskMailCache(
+            unifiedMessageRepository = InMemoryUnifiedMessageRepository(
+                initialMessages = listOf(
+                    sampleUnifiedMessage(messageJson = messageCodec.encode(message)),
+                ),
+            ),
+            messageSyncStateRepository = InMemoryMessageSyncStateRepository(
+                MessageSyncState(
+                    source = DEFAULT_MESSAGE_SYNC_SOURCE,
+                    scopeKey = DEFAULT_MESSAGE_SYNC_SCOPE_KEY,
+                    lastCursor = "cursor-1",
+                    lastSyncAt = 123L,
+                ),
+            ),
+            syncCoordinator = RecordingMessageSyncCoordinator(),
+            taskMailMessageJsonCodec = messageCodec,
+            sessionProjector = TaskMailSessionProjector(),
+            taskSessionDetailRepository = sessionDetailRepository,
+            clock = { 2_000L },
+        )
+
+        val result = testSubject()
+
+        assertThat(result.isSuccess).isEqualTo(true)
+        assertThat(sessionDetailRepository.sessionDetails.single().controlPlaneSnapshot).isEqualTo(
+            existingDetail.controlPlaneSnapshot,
+        )
     }
 }
 

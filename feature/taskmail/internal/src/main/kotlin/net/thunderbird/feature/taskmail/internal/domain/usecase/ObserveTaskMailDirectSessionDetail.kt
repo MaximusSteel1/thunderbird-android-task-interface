@@ -7,15 +7,21 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import net.thunderbird.core.logging.Logger
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.toControlPlaneEvent
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.toControlPlaneResult
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.RelaySessionDetailSubscription
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.merge
 
 private const val TAG = "ObserveTaskMailDirectSessionDetail"
 private const val SUBSCRIPTION_REASON_DETAIL_OPEN = "detail_open"
@@ -67,15 +73,37 @@ internal class DefaultObserveTaskMailDirectSessionDetail(
                     )
                 }
             }
+            val eventCollectorJob = launch {
+                relayConnectionClient.serverEvents.collect { relayEvent ->
+                    processEvent(
+                        relayEvent = relayEvent,
+                        target = target,
+                        state = state,
+                    )
+                }
+            }
+            val resultCollectorJob = launch {
+                relayConnectionClient.serverResults.collect { relayResult ->
+                    processResult(
+                        relayResult = relayResult,
+                        target = target,
+                        state = state,
+                    )
+                }
+            }
 
             if (!requestSubscribe(SUBSCRIPTION_REASON_DETAIL_OPEN)) {
                 collectorJob.cancel()
+                eventCollectorJob.cancel()
+                resultCollectorJob.cancel()
                 disconnectSilently()
                 return@channelFlow
             }
 
             awaitClose {
                 collectorJob.cancel()
+                eventCollectorJob.cancel()
+                resultCollectorJob.cancel()
                 launch {
                     disconnectSilently()
                 }
@@ -157,15 +185,71 @@ internal class DefaultObserveTaskMailDirectSessionDetail(
         state: DirectObservationState,
     ) {
         state.accept(update)
-        projector.project(state.updates)?.let { projection ->
+        projector.project(state.updates)
+            ?.let(state::attachControlPlaneSnapshot)
+            ?.let { projection ->
             state.updateFrom(projection)
             logger.debug(TAG) {
                 "Direct detail emitted projection " +
                     "status=${projection.headerStatus.name} " +
                     "pendingQuestionCount=${projection.pendingQuestions.size} " +
                     "provisionalTimelineCount=${projection.provisionalTimeline.size} " +
+                    "hasControlPlane=${projection.controlPlaneSnapshot != null} " +
                     "lastSequence=${projection.lastSequence}"
             }
+            trySend(projection)
+        }
+    }
+
+    private fun ProducerScope<TaskMailDirectSessionProjection>.processEvent(
+        relayEvent: RelayEvent,
+        target: DirectObservationTarget,
+        state: DirectObservationState,
+    ) {
+        val event = relayEvent.toControlPlaneEvent()
+        if (!event.matchesTarget(target = target, canonicalWorkspaceId = state.canonicalWorkspaceId)) return
+
+        logger.debug(TAG) {
+            "Direct detail observed relay event " +
+                "type=${event.eventType} " +
+                "sessionId=${event.sessionId.orEmpty()} " +
+                "workspaceId=${event.workspaceId.orEmpty()}"
+        }
+        state.mergeControlPlaneSnapshot(
+            TaskSessionControlPlaneSnapshot(
+                events = listOf(event),
+            ),
+        )
+        emitControlPlaneProjection(state)
+    }
+
+    private fun ProducerScope<TaskMailDirectSessionProjection>.processResult(
+        relayResult: RelayResult,
+        target: DirectObservationTarget,
+        state: DirectObservationState,
+    ) {
+        val result = relayResult.toControlPlaneResult()
+        if (!result.matchesTarget(target = target, canonicalWorkspaceId = state.canonicalWorkspaceId)) return
+
+        logger.debug(TAG) {
+            "Direct detail observed relay result " +
+                "status=${result.finalStatus} " +
+                "sessionId=${result.sessionId.orEmpty()} " +
+                "workspaceId=${result.workspaceId.orEmpty()}"
+        }
+        state.mergeControlPlaneSnapshot(
+            TaskSessionControlPlaneSnapshot(
+                result = result,
+            ),
+        )
+        emitControlPlaneProjection(state)
+    }
+
+    private fun ProducerScope<TaskMailDirectSessionProjection>.emitControlPlaneProjection(
+        state: DirectObservationState,
+    ) {
+        state.latestProjectionWithControlPlane()?.let { projection ->
+            state.updateFrom(projection)
             trySend(projection)
         }
     }
@@ -221,6 +305,8 @@ private class DirectObservationState(
     var canonicalWorkspaceId: String? = null,
     var lastKnownSequence: Long? = null,
     val updates: MutableList<RelaySessionUpdate> = mutableListOf(),
+    var controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
+    var latestProjection: TaskMailDirectSessionProjection? = null,
 ) {
     fun accept(update: RelaySessionUpdate) {
         if (activeSubscriptionId == null) {
@@ -232,6 +318,23 @@ private class DirectObservationState(
     fun updateFrom(projection: TaskMailDirectSessionProjection) {
         canonicalWorkspaceId = projection.canonicalWorkspaceId
         lastKnownSequence = projection.lastSequence
+        latestProjection = projection
+    }
+
+    fun mergeControlPlaneSnapshot(snapshot: TaskSessionControlPlaneSnapshot) {
+        controlPlaneSnapshot = controlPlaneSnapshot.merge(snapshot)
+    }
+
+    fun attachControlPlaneSnapshot(
+        projection: TaskMailDirectSessionProjection,
+    ): TaskMailDirectSessionProjection {
+        return projection.copy(
+            controlPlaneSnapshot = projection.controlPlaneSnapshot.merge(controlPlaneSnapshot),
+        )
+    }
+
+    fun latestProjectionWithControlPlane(): TaskMailDirectSessionProjection? {
+        return latestProjection?.let(::attachControlPlaneSnapshot)
     }
 }
 
@@ -239,9 +342,10 @@ private fun TaskSessionDetail.toDirectObservationTarget(): DirectObservationTarg
     val workspaceId = workspace.workspaceId?.takeIf(String::isNotBlank)
     val repoPath = repoPath.takeIf(String::isNotBlank)
     val workdir = workdir?.takeIf(String::isNotBlank) ?: workspace.workdir?.takeIf(String::isNotBlank)
+    val threadId = key.threadId?.takeIf(String::isNotBlank) ?: return null
 
     val hasWorkspaceLocator = workspaceId != null || (repoPath != null && workdir != null)
-    val hasSessionLocator = key.sessionId?.takeIf(String::isNotBlank) != null || key.threadId.isNotBlank()
+    val hasSessionLocator = key.sessionId?.takeIf(String::isNotBlank) != null || threadId.isNotBlank()
     if (!hasWorkspaceLocator || !hasSessionLocator) return null
 
     return DirectObservationTarget(
@@ -249,7 +353,7 @@ private fun TaskSessionDetail.toDirectObservationTarget(): DirectObservationTarg
         repoPath = repoPath,
         workdir = workdir,
         sessionId = key.sessionId?.takeIf(String::isNotBlank),
-        threadId = key.threadId,
+        threadId = threadId,
     )
 }
 
@@ -275,4 +379,32 @@ private fun RelaySessionUpdate.isDuplicateOf(lastKnownSequence: Long?): Boolean 
 private fun RelaySessionUpdate.requiresGapRefresh(lastKnownSequence: Long?): Boolean {
     val isSnapshot = updateType.equals("session_snapshot", ignoreCase = true)
     return lastKnownSequence != null && !isSnapshot && sequence > lastKnownSequence + 1
+}
+
+private fun net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent.matchesTarget(
+    target: DirectObservationTarget,
+    canonicalWorkspaceId: String?,
+): Boolean {
+    val expectedSessionId = target.sessionId?.takeIf(String::isNotBlank) ?: return false
+    if (sessionId != expectedSessionId) return false
+
+    val expectedWorkspaceId = canonicalWorkspaceId
+        ?.takeIf(String::isNotBlank)
+        ?: target.workspaceId?.takeIf(String::isNotBlank)
+
+    return workspaceId == null || expectedWorkspaceId == null || workspaceId == expectedWorkspaceId
+}
+
+private fun net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult.matchesTarget(
+    target: DirectObservationTarget,
+    canonicalWorkspaceId: String?,
+): Boolean {
+    val expectedSessionId = target.sessionId?.takeIf(String::isNotBlank) ?: return false
+    if (sessionId != expectedSessionId) return false
+
+    val expectedWorkspaceId = canonicalWorkspaceId
+        ?.takeIf(String::isNotBlank)
+        ?: target.workspaceId?.takeIf(String::isNotBlank)
+
+    return workspaceId == null || expectedWorkspaceId == null || workspaceId == expectedWorkspaceId
 }

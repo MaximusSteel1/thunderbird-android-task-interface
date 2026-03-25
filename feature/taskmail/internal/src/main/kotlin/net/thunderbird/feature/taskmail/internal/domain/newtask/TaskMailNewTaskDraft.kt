@@ -1,5 +1,6 @@
 package net.thunderbird.feature.taskmail.internal.domain.newtask
 
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 
 internal data class TaskMailNewTaskDraft(
@@ -16,6 +17,7 @@ internal data class TaskMailNewTaskDraft(
     val acceptanceCriteria: List<String> = emptyList(),
     val pcId: String? = null,
     val workspaceId: String? = null,
+    val executionPolicy: ControlPlaneExecutionPolicy? = null,
 )
 
 internal enum class TaskMailNewTaskMode(

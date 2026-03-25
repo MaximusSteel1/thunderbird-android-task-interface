@@ -1,6 +1,7 @@
 package net.thunderbird.feature.taskmail.internal.ui.workspace
 
 import androidx.lifecycle.viewModelScope
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
@@ -9,11 +10,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionSummary
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
-import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
-import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskWorkspaceSummaries
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
@@ -23,8 +23,7 @@ import net.thunderbird.feature.taskmail.internal.ui.workspace.TaskWorkspaceContr
 import net.thunderbird.feature.taskmail.internal.ui.workspace.TaskWorkspaceContract.State
 
 internal class TaskWorkspaceViewModel(
-    repository: TaskMailRepository,
-    private val getTaskWorkspaceSummaries: GetTaskWorkspaceSummaries = GetTaskWorkspaceSummaries(repository),
+    private val getTaskSessionDetails: GetTaskSessionDetails,
     private val getTaskMailSenderAccounts: GetTaskMailSenderAccounts,
     private val refreshTaskMail: RefreshTaskMail,
     private val observeTaskMailStoreChanges: ObserveTaskMailStoreChanges,
@@ -81,7 +80,6 @@ internal class TaskWorkspaceViewModel(
                     Effect.OpenSessionDetail(
                         workspaceId = event.workspaceId,
                         sessionId = event.sessionId,
-                        threadId = event.threadId,
                     ),
                 )
             }
@@ -93,7 +91,7 @@ internal class TaskWorkspaceViewModel(
             observeTaskMailStoreChanges()
                 .conflate()
                 .collect {
-                    if (hasLoadedData || state.value.isLoading || state.value.workspaces.isNotEmpty()) {
+                    if (hasLoadedData || state.value.isLoading || state.value.hasContent) {
                         loadData(
                             force = true,
                             refreshTransportBeforeLoad = false,
@@ -115,18 +113,18 @@ internal class TaskWorkspaceViewModel(
             loadMutex.withLock {
                 if (shouldSkipLoad(force)) return@withLock
 
-                val cachedWorkspaces = runCatching {
-                    getTaskWorkspaceSummaries()
+                val cachedSessionDetails = runCatching {
+                    getTaskSessionDetails()
                 }.getOrNull().orEmpty()
                 if (
-                    shouldRenderCachedWorkspacesBeforeSync(
+                    shouldRenderCachedSessionsBeforeSync(
                         force = force,
                         refreshTransportBeforeLoad = refreshTransportBeforeLoad,
                         syncCacheBeforeLoad = syncCacheBeforeLoad,
-                        cachedWorkspaces = cachedWorkspaces,
+                        cachedSessionDetails = cachedSessionDetails,
                     )
                 ) {
-                    handleLoadSuccess(cachedWorkspaces, syncError = null)
+                    handleLoadSuccess(cachedSessionDetails, syncError = null)
                     launchBackgroundSyncAndReload()
                     return@withLock
                 }
@@ -139,13 +137,13 @@ internal class TaskWorkspaceViewModel(
                 )
 
                 runCatching {
-                    getTaskWorkspaceSummaries()
+                    getTaskSessionDetails()
                 }
-                    .onSuccess { workspaces ->
-                        if (!hasLoadedData && workspaces.isEmpty() && syncError != null) {
+                    .onSuccess { sessionDetails ->
+                        if (!hasLoadedData && sessionDetails.isEmpty() && syncError != null) {
                             handleLoadFailure(syncError)
                         } else {
-                            handleLoadSuccess(workspaces, syncError)
+                            handleLoadSuccess(sessionDetails, syncError)
                         }
                     }
                     .onFailure { handleLoadFailure(syncError) }
@@ -174,7 +172,7 @@ internal class TaskWorkspaceViewModel(
                 .exceptionOrNull()
                 ?.let { throwable ->
                     throwable.message?.takeIf { it.isNotBlank() }
-                        ?: "Failed to refresh TaskMail workspaces."
+                        ?: "Failed to refresh TaskMail workbench."
                 }
         }
     }
@@ -189,10 +187,10 @@ internal class TaskWorkspaceViewModel(
                 )
 
                 runCatching {
-                    getTaskWorkspaceSummaries()
+                    getTaskSessionDetails()
                 }
-                    .onSuccess { workspaces ->
-                        handleLoadSuccess(workspaces, syncError)
+                    .onSuccess { sessionDetails ->
+                        handleLoadSuccess(sessionDetails, syncError)
                     }
                     .onFailure { handleLoadFailure(syncError) }
             }
@@ -228,17 +226,22 @@ internal class TaskWorkspaceViewModel(
     }
 
     private fun handleLoadSuccess(
-        workspaces: List<TaskWorkspaceSummary>,
+        sessionDetails: List<TaskSessionDetail>,
         syncError: String?,
     ) {
         hasLoadedData = true
+        val workbench = sessionDetails.toWorkbenchUiState()
         updateState {
             it.copy(
                 isLoading = false,
                 isRefreshing = false,
                 error = null,
                 refreshError = syncError,
-                workspaces = workspaces.map(TaskWorkspaceSummary::toUiState),
+                attentionSessions = workbench.attentionSessions,
+                activeSessions = workbench.activeSessions,
+                recentSessions = workbench.recentSessions,
+                pcSummaries = workbench.pcSummaries,
+                workspaceSummaries = workbench.workspaceSummaries,
             )
         }
     }
@@ -249,14 +252,18 @@ internal class TaskWorkspaceViewModel(
                 currentState.copy(
                     isLoading = false,
                     isRefreshing = false,
-                    refreshError = syncError ?: "Failed to refresh TaskMail workspaces.",
+                    refreshError = syncError ?: "Failed to refresh TaskMail workbench.",
                 )
             } else {
                 currentState.copy(
                     isLoading = false,
                     isRefreshing = false,
-                    error = syncError ?: "Failed to load TaskMail workspaces.",
-                    workspaces = emptyList(),
+                    error = syncError ?: "Failed to load TaskMail workbench.",
+                    attentionSessions = emptyList(),
+                    activeSessions = emptyList(),
+                    recentSessions = emptyList(),
+                    pcSummaries = emptyList(),
+                    workspaceSummaries = emptyList(),
                 )
             }
         }
@@ -265,16 +272,24 @@ internal class TaskWorkspaceViewModel(
 
 private const val FOREGROUND_REFRESH_INTERVAL_MS = 10_000L
 
-private fun shouldRenderCachedWorkspacesBeforeSync(
+private data class TaskWorkspaceWorkbenchUiState(
+    val attentionSessions: List<TaskSessionItemUi>,
+    val activeSessions: List<TaskSessionItemUi>,
+    val recentSessions: List<TaskSessionItemUi>,
+    val pcSummaries: List<TaskPcSummaryItemUi>,
+    val workspaceSummaries: List<TaskWorkspaceItemUi>,
+)
+
+private fun shouldRenderCachedSessionsBeforeSync(
     force: Boolean,
     refreshTransportBeforeLoad: Boolean,
     syncCacheBeforeLoad: Boolean,
-    cachedWorkspaces: List<TaskWorkspaceSummary>,
+    cachedSessionDetails: List<TaskSessionDetail>,
 ): Boolean {
     return !force &&
         !refreshTransportBeforeLoad &&
         syncCacheBeforeLoad &&
-        cachedWorkspaces.isNotEmpty()
+        cachedSessionDetails.isNotEmpty()
 }
 
 private fun State.toLoadingState(isRefresh: Boolean): State {
@@ -301,26 +316,134 @@ private fun State.toRefreshingState(): State {
     )
 }
 
-private fun TaskWorkspaceSummary.toUiState(): TaskWorkspaceItemUi {
-    return TaskWorkspaceItemUi(
-        title = title,
-        subtitle = subtitle.toDisplayWorkdir(),
-        sessionCountLabel = "$sessionCount session${if (sessionCount == 1) "" else "s"}",
-        sessions = sessions.map { session ->
-            session.toUiState(workspaceId = key.workspaceId)
-        },
+private fun List<TaskSessionDetail>.toWorkbenchUiState(): TaskWorkspaceWorkbenchUiState {
+    val workspaceSummaries = groupBy(TaskSessionDetail::workspace)
+        .values
+        .sortedByDescending { details ->
+            details.maxOfOrNull(TaskSessionDetail::lastUpdatedAt) ?: Long.MIN_VALUE
+        }
+        .map(::toWorkspaceUiState)
+    val sessions = workspaceSummaries
+        .flatMap(TaskWorkspaceItemUi::sessions)
+        .sortedByDescending(TaskSessionItemUi::lastUpdatedAt)
+    val attentionSessions = sessions.filter(TaskSessionItemUi::requiresAttention)
+    val activeSessions = sessions.filter(TaskSessionItemUi::isActiveSession)
+    val attentionOrActiveIds = buildSet {
+        addAll(attentionSessions.map(TaskSessionItemUi::identity))
+        addAll(activeSessions.map(TaskSessionItemUi::identity))
+    }
+    val recentSessions = sessions
+        .filterNot { session -> session.identity in attentionOrActiveIds }
+        .take(5)
+        .ifEmpty { sessions.take(5) }
+
+    return TaskWorkspaceWorkbenchUiState(
+        attentionSessions = attentionSessions,
+        activeSessions = activeSessions,
+        recentSessions = recentSessions,
+        pcSummaries = workspaceSummaries.toPcSummaries(),
+        workspaceSummaries = workspaceSummaries,
     )
 }
 
-private fun TaskSessionSummary.toUiState(workspaceId: String?): TaskSessionItemUi {
+private fun toWorkspaceUiState(details: List<TaskSessionDetail>): TaskWorkspaceItemUi {
+    val primaryDetail = details.maxByOrNull(TaskSessionDetail::lastUpdatedAt) ?: details.first()
+    val workspace = primaryDetail.workspace
+    val title = resolveWorkspaceTitle(workspace)
+    val subtitle = primaryDetail.workdir.toDisplayWorkdir()
+    val sessions = details
+        .sortedByDescending(TaskSessionDetail::lastUpdatedAt)
+        .map { detail ->
+            detail.toUiState(
+                workspaceTitle = title,
+                workspaceSubtitle = subtitle,
+                workspaceIdFallback = workspace.workspaceId,
+            )
+        }
+
+    return TaskWorkspaceItemUi(
+        title = title,
+        subtitle = subtitle,
+        sessionCountLabel = "${sessions.size} session${if (sessions.size == 1) "" else "s"}",
+        sessions = sessions,
+    )
+}
+
+private fun TaskSessionDetail.toUiState(
+    workspaceTitle: String = resolveWorkspaceTitle(workspace),
+    workspaceSubtitle: String? = workdir.toDisplayWorkdir(),
+    workspaceIdFallback: String? = workspace.workspaceId,
+): TaskSessionItemUi {
+    val routeLabel = listOfNotNull(
+        workspaceTitle,
+        workspaceSubtitle,
+    ).joinToString(" · ").takeIf(String::isNotBlank)
+
     return TaskSessionItemUi(
-        workspaceId = key.workspaceId ?: workspaceId,
+        workspaceId = key.workspaceId ?: workspaceIdFallback,
         sessionId = key.sessionId,
-        threadId = key.threadId,
+        stableId = buildTaskSessionStableId(
+            workspaceId = key.workspaceId ?: workspaceIdFallback,
+            sessionId = key.sessionId,
+            threadId = key.threadId,
+        ),
         sessionName = sessionName,
         status = status.name,
         backend = backend.name,
         lastSummary = lastSummary,
-        pendingQuestion = pendingQuestion,
+        pendingQuestion = pendingQuestions.isNotEmpty(),
+        routeLabel = routeLabel,
+        lastUpdatedAt = lastUpdatedAt(),
     )
+}
+
+private fun List<TaskWorkspaceItemUi>.toPcSummaries(): List<TaskPcSummaryItemUi> {
+    if (isEmpty()) return emptyList()
+
+    val workspaceCountLabel = "${size} workspace summary${if (size == 1) "" else "ies"}"
+
+    return listOf(
+        TaskPcSummaryItemUi(
+            title = "PC routing pending",
+            supportingText = "VPS-first PC inventory is not wired yet. Current home derives route context from cached session details.",
+            workspaceCountLabel = workspaceCountLabel,
+        ),
+    )
+}
+
+private fun TaskSessionDetail.lastUpdatedAt(): Long {
+    return timeline.lastOrNull()?.timestamp ?: 0L
+}
+
+private fun deriveWorkspaceTitle(repoPath: String): String {
+    return File(repoPath).name.takeIf { it.isNotBlank() } ?: repoPath
+}
+
+private fun resolveWorkspaceTitle(workspace: TaskWorkspaceKey): String {
+    return workspace.repoPath
+        .takeIf { it.isNotBlank() }
+        ?.let(::deriveWorkspaceTitle)
+        ?: workspace.workspaceId
+        ?: "Task workspace"
+}
+
+private val TaskSessionItemUi.identity: String
+    get() = stableId
+
+private fun buildTaskSessionStableId(
+    workspaceId: String?,
+    sessionId: String?,
+    threadId: String?,
+): String {
+    val normalizedWorkspaceId = workspaceId?.trim()?.takeIf(String::isNotBlank)
+    val normalizedSessionId = sessionId?.trim()?.takeIf(String::isNotBlank)
+    if (normalizedSessionId != null) {
+        return listOfNotNull(normalizedWorkspaceId, normalizedSessionId)
+            .joinToString(separator = "::")
+    }
+
+    val normalizedThreadId = threadId?.trim()?.takeIf(String::isNotBlank)
+        ?: "unknown_thread"
+    return listOf("compat", normalizedWorkspaceId ?: "workspace_unknown", normalizedThreadId)
+        .joinToString(separator = "::")
 }

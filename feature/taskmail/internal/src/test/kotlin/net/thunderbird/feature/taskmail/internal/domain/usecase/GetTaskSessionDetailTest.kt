@@ -18,7 +18,6 @@ class GetTaskSessionDetailTest {
         val testSubject = GetTaskSessionDetail(repository)
         val key = TaskSessionKey(
             sessionId = "session_001",
-            threadId = "thread_001",
         )
 
         // Act
@@ -36,7 +35,6 @@ class GetTaskSessionDetailTest {
         val testSubject = GetTaskSessionDetail(repository)
         val key = TaskSessionKey(
             sessionId = "missing",
-            threadId = "missing",
         )
 
         // Act

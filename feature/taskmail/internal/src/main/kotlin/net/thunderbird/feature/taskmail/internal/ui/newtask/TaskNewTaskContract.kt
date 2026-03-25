@@ -1,5 +1,6 @@
 package net.thunderbird.feature.taskmail.internal.ui.newtask
 
+import androidx.compose.runtime.Immutable
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.ui.contract.mvi.UnidirectionalViewModel
@@ -18,32 +19,30 @@ internal interface TaskNewTaskContract {
         val senderAccountBlockingError: String? = null,
         val senderAccounts: ImmutableList<TaskMailSenderAccount> = persistentListOf(),
         val selectedSenderAccountId: String? = null,
-        val pcId: String = "",
-        val workspaceId: String = "",
-        val selectedBackend: TaskMailBackend? = null,
-        val repoPath: String = "",
-        val taskText: String = "",
-        val subjectTitle: String = "",
-        val isSubjectTitleEdited: Boolean = false,
-        val workdir: String = "",
-        val mode: TaskMailNewTaskMode = TaskMailNewTaskMode.Modify,
-        val timeoutText: String = "",
-        val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
-        val profile: String = "",
-        val acceptanceText: String = "",
-        val isAdvancedExpanded: Boolean = false,
-        val isSending: Boolean = false,
-        val sendError: String? = null,
+        val pcSelection: TaskNewTaskPcSelectionUiState = TaskNewTaskPcSelectionUiState(),
+        val workspaceSelection: TaskNewTaskWorkspaceSelectionUiState = TaskNewTaskWorkspaceSelectionUiState(),
+        val taskInput: TaskNewTaskTaskInputUiState = TaskNewTaskTaskInputUiState(),
+        val executionPolicyEditor: TaskNewTaskExecutionPolicyUiState = TaskNewTaskExecutionPolicyUiState(),
+        val submitState: TaskNewTaskSubmitUiState = TaskNewTaskSubmitUiState(),
+        val validationErrors: TaskNewTaskValidationErrors = TaskNewTaskValidationErrors(),
         val lastDirectSendEvidence: TaskMailDirectSendEvidence? = null,
-        val senderAccountError: String? = null,
-        val backendError: String? = null,
-        val repoError: String? = null,
-        val taskError: String? = null,
-        val titleError: String? = null,
-        val timeoutError: String? = null,
     ) {
         val selectedSenderAccount: TaskMailSenderAccount?
             get() = senderAccounts.firstOrNull { it.accountUuid == selectedSenderAccountId }
+
+        val selectedWorkspaceOption: TaskNewTaskWorkspaceOptionUi?
+            get() = workspaceSelection.workspaceOptions.firstOrNull { it.id == workspaceSelection.selectedWorkspaceId }
+
+        val resolvedRepoBridgePath: String?
+            get() = workspaceSelection.repoPath.trim().takeIf(String::isNotEmpty)
+                ?: selectedWorkspaceOption?.repoPath?.trim()?.takeIf(String::isNotEmpty)
+
+        val resolvedWorkdirBridge: String?
+            get() = workspaceSelection.workdir.trim().takeIf(String::isNotEmpty)
+                ?: selectedWorkspaceOption?.workdir?.trim()?.takeIf(String::isNotEmpty)
+
+        val hasControlPlaneRouteTarget: Boolean
+            get() = pcSelection.selectedPcId.isNotBlank() || workspaceSelection.selectedWorkspaceId.isNotBlank()
 
         val requiresSenderAccountSelection: Boolean
             get() = senderAccounts.size > 1
@@ -52,7 +51,7 @@ internal interface TaskNewTaskContract {
             get() = !isLoading && senderAccountBlockingError != null
 
         val canSend: Boolean
-            get() = !isLoading && !isSending && !hasBlockingState
+            get() = !isLoading && !submitState.isSending && !hasBlockingState
     }
 
     sealed interface Event {
@@ -83,3 +82,68 @@ internal interface TaskNewTaskContract {
         data class ShowMessage(val message: String) : Effect
     }
 }
+
+@Immutable
+internal data class TaskNewTaskPcSelectionUiState(
+    val selectedPcId: String = "",
+    val pcOptions: ImmutableList<TaskNewTaskPcOptionUi> = persistentListOf(),
+)
+
+@Immutable
+internal data class TaskNewTaskPcOptionUi(
+    val id: String,
+    val title: String = id,
+    val supportingText: String? = null,
+)
+
+@Immutable
+internal data class TaskNewTaskWorkspaceSelectionUiState(
+    val selectedWorkspaceId: String = "",
+    val workspaceOptions: ImmutableList<TaskNewTaskWorkspaceOptionUi> = persistentListOf(),
+    val repoPath: String = "",
+    val workdir: String = "",
+)
+
+@Immutable
+internal data class TaskNewTaskWorkspaceOptionUi(
+    val id: String,
+    val title: String = id,
+    val supportingText: String? = null,
+    val repoPath: String? = null,
+    val workdir: String? = null,
+)
+
+@Immutable
+internal data class TaskNewTaskTaskInputUiState(
+    val taskText: String = "",
+    val subjectTitle: String = "",
+    val isSubjectTitleEdited: Boolean = false,
+)
+
+@Immutable
+internal data class TaskNewTaskExecutionPolicyUiState(
+    val backend: TaskMailBackend? = null,
+    val mode: TaskMailNewTaskMode = TaskMailNewTaskMode.Modify,
+    val timeoutText: String = "",
+    val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
+    val profile: String = "",
+    val backendTransport: String = "",
+    val acceptanceText: String = "",
+    val isExpanded: Boolean = false,
+)
+
+@Immutable
+internal data class TaskNewTaskSubmitUiState(
+    val isSending: Boolean = false,
+    val sendError: String? = null,
+)
+
+@Immutable
+internal data class TaskNewTaskValidationErrors(
+    val senderAccountError: String? = null,
+    val backendError: String? = null,
+    val repoError: String? = null,
+    val taskError: String? = null,
+    val titleError: String? = null,
+    val timeoutError: String? = null,
+)

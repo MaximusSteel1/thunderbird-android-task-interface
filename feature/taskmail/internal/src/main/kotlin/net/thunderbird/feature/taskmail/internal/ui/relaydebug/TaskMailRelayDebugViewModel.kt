@@ -1,5 +1,6 @@
 package net.thunderbird.feature.taskmail.internal.ui.relaydebug
 
+import java.io.File
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
@@ -28,6 +29,7 @@ internal class TaskMailRelayDebugViewModel(
     private val projectSyncDebugSettingsRepository: TaskMailProjectSyncDebugSettingsRepository,
     private val sendTaskMailTransportProbe: SendTaskMailTransportProbe,
     private val sendTaskMailFileSample: SendTaskMailFileSample,
+    private val taskMailStorageDirectory: File,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskMailRelayDebugContract.ViewModel {
@@ -84,6 +86,14 @@ internal class TaskMailRelayDebugViewModel(
                 port = config.port.toString(),
                 useTls = config.useTls,
                 transportToken = config.transportToken,
+                newTaskSendRecordsPath = File(
+                    taskMailStorageDirectory,
+                    TASKMAIL_NEW_TASK_SEND_RECORDS_FILE_NAME,
+                ).absolutePath,
+                sessionActionSendRecordsPath = File(
+                    taskMailStorageDirectory,
+                    TASKMAIL_SESSION_ACTION_SEND_RECORDS_FILE_NAME,
+                ).absolutePath,
             )
         }
     }
@@ -371,3 +381,6 @@ private fun nextFileSampleId(): String {
         .toString()
         .replace("-", "")
 }
+
+private const val TASKMAIL_NEW_TASK_SEND_RECORDS_FILE_NAME = "taskmail_new_task_send_records.json"
+private const val TASKMAIL_SESSION_ACTION_SEND_RECORDS_FILE_NAME = "taskmail_session_action_send_records.json"

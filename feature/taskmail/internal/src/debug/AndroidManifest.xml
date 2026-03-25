@@ -18,6 +18,16 @@
                     android:scheme="app" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name=".debug.TaskMailDebugFileProvider"
+            android:authorities="${applicationId}.taskmail.debug.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/taskmail_debug_file_provider_paths" />
+        </provider>
     </application>
 
 </manifest>

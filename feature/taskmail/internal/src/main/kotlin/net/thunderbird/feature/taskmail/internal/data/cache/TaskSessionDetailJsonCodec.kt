@@ -7,15 +7,21 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneArtifactManifest
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
@@ -26,6 +32,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
@@ -38,19 +45,19 @@ internal class TaskSessionDetailJsonCodec(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     fun encode(detail: TaskSessionDetail): String {
-        return detail.toJsonObject().toString()
+        return detail.toJsonObject(json).toString()
     }
 
     fun decode(detailJson: String): TaskSessionDetail? {
         return runCatching {
             json.parseToJsonElement(detailJson)
                 .jsonObject
-                .toTaskSessionDetail()
+                .toTaskSessionDetail(json)
         }.getOrNull()
     }
 }
 
-private fun TaskSessionDetail.toJsonObject(): JsonObject {
+private fun TaskSessionDetail.toJsonObject(json: Json): JsonObject {
     return buildJsonObject {
         put("key", key.toJsonObject())
         put("workspace", workspace.toJsonObject())
@@ -75,6 +82,42 @@ private fun TaskSessionDetail.toJsonObject(): JsonObject {
             "timeline",
             JsonArray(timeline.map(TaskTimelineItem::toJsonObject)),
         )
+        controlPlaneSnapshot?.let { snapshot ->
+            put("controlPlaneSnapshot", snapshot.toJsonObject(json))
+        }
+    }
+}
+
+private fun TaskSessionControlPlaneSnapshot.toJsonObject(json: Json): JsonObject {
+    return buildJsonObject {
+        commandAck?.let { ack ->
+            put(
+                "commandAck",
+                json.encodeToJsonElement(ControlPlaneCommandAck.serializer(), ack),
+            )
+        }
+        if (events.isNotEmpty()) {
+            put(
+                "events",
+                JsonArray(
+                    events.map { event ->
+                        json.encodeToJsonElement(ControlPlaneEvent.serializer(), event)
+                    },
+                ),
+            )
+        }
+        result?.let { terminalResult ->
+            put(
+                "result",
+                json.encodeToJsonElement(ControlPlaneResult.serializer(), terminalResult),
+            )
+        }
+        artifactManifest?.let { manifest ->
+            put(
+                "artifactManifest",
+                json.encodeToJsonElement(ControlPlaneArtifactManifest.serializer(), manifest),
+            )
+        }
     }
 }
 
@@ -82,7 +125,7 @@ private fun TaskSessionKey.toJsonObject(): JsonObject {
     return buildJsonObject {
         putNullable("workspaceId", workspaceId)
         putNullable("sessionId", sessionId)
-        put("threadId", threadId)
+        putNullable("threadId", threadId)
     }
 }
 
@@ -308,7 +351,7 @@ private fun TaskMessageAttachment.toJsonObject(): JsonObject {
     }
 }
 
-private fun JsonObject.toTaskSessionDetail(): TaskSessionDetail {
+private fun JsonObject.toTaskSessionDetail(json: Json): TaskSessionDetail {
     val pendingQuestions = arrayObjects("pendingQuestions").map(JsonObject::toTaskQuestionCapsule)
 
     return TaskSessionDetail(
@@ -332,6 +375,24 @@ private fun JsonObject.toTaskSessionDetail(): TaskSessionDetail {
         pendingQuestions = pendingQuestions,
         replyContext = objectValue("replyContext")?.toTaskSessionReplyContext(),
         timeline = arrayObjects("timeline").map(JsonObject::toTaskTimelineItem),
+        controlPlaneSnapshot = objectValue("controlPlaneSnapshot")?.toTaskSessionControlPlaneSnapshot(json),
+    )
+}
+
+private fun JsonObject.toTaskSessionControlPlaneSnapshot(json: Json): TaskSessionControlPlaneSnapshot {
+    return TaskSessionControlPlaneSnapshot(
+        commandAck = objectValue("commandAck")?.let { ackObject ->
+            json.decodeFromJsonElement(ControlPlaneCommandAck.serializer(), ackObject)
+        },
+        events = arrayObjects("events").map { eventObject ->
+            json.decodeFromJsonElement(ControlPlaneEvent.serializer(), eventObject)
+        },
+        result = objectValue("result")?.let { resultObject ->
+            json.decodeFromJsonElement(ControlPlaneResult.serializer(), resultObject)
+        },
+        artifactManifest = objectValue("artifactManifest")?.let { manifestObject ->
+            json.decodeFromJsonElement(ControlPlaneArtifactManifest.serializer(), manifestObject)
+        },
     )
 }
 
@@ -339,7 +400,7 @@ private fun JsonObject.toTaskSessionKey(): TaskSessionKey {
     return TaskSessionKey(
         workspaceId = optionalString("workspaceId"),
         sessionId = optionalString("sessionId"),
-        threadId = string("threadId"),
+        threadId = optionalString("threadId"),
     )
 }
 

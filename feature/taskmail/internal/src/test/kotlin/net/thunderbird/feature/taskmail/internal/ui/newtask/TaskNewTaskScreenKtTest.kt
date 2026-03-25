@@ -70,6 +70,9 @@ class TaskNewTaskScreenKtTest {
             }
         }
 
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Select an account"))
         composeTestRule.onNodeWithText("Select an account").assertIsDisplayed()
     }
 
@@ -84,6 +87,9 @@ class TaskNewTaskScreenKtTest {
             }
         }
 
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Primary <primary@example.com>"))
         composeTestRule.onNodeWithText("Primary <primary@example.com>").assertIsDisplayed()
     }
 
@@ -98,12 +104,12 @@ class TaskNewTaskScreenKtTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Control target").assertIsDisplayed()
-        composeTestRule.onAllNodesWithText("PC ID").assertCountEquals(2)
+        composeTestRule.onNodeWithText("Route target").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("PC ID").assertCountEquals(1)
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")
             .performScrollToNode(hasText("Workspace ID"))
-        composeTestRule.onAllNodesWithText("Workspace ID").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("Workspace ID").assertCountEquals(1)
     }
 
     @Test
@@ -116,7 +122,11 @@ class TaskNewTaskScreenKtTest {
                     state = state,
                     onEvent = { event ->
                         if (event == TaskNewTaskContract.Event.AdvancedToggleClicked) {
-                            state = state.copy(isAdvancedExpanded = !state.isAdvancedExpanded)
+                            state = state.copy(
+                                executionPolicyEditor = state.executionPolicyEditor.copy(
+                                    isExpanded = !state.executionPolicyEditor.isExpanded,
+                                ),
+                            )
                         }
                     },
                 )
@@ -144,7 +154,9 @@ class TaskNewTaskScreenKtTest {
             K9MailTheme2 {
                 TaskNewTaskContent(
                     state = formState().copy(
-                        sendError = "TaskMail bot mailbox is not configured.",
+                        submitState = TaskNewTaskSubmitUiState(
+                            sendError = "TaskMail bot mailbox is not configured.",
+                        ),
                     ),
                     onEvent = {},
                 )
@@ -157,8 +169,9 @@ class TaskNewTaskScreenKtTest {
         composeTestRule.onNodeWithText("TaskMail send failed").assertIsDisplayed()
         composeTestRule.onNodeWithText("TaskMail bot mailbox is not configured.").assertIsDisplayed()
         composeTestRule.onNodeWithText(
-            "TaskMail requests are sent from this account to your configured TaskMail service address.",
+            "Current relay submit still uses sender identity plus a repository bridge. PC/workspace is already the routing shape for the cutover path.",
         ).assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Compatibility bridge").assertCountEquals(0)
     }
 
     @Test
@@ -185,7 +198,7 @@ class TaskNewTaskScreenKtTest {
             .onNodeWithTag("TaskNewTaskFormList")
             .performScrollToNode(hasTestTag("TaskNewTaskLatestDirectEvidence"))
         composeTestRule.onNodeWithTag("TaskNewTaskLatestDirectEvidence").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Latest direct result").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Latest dispatch result").assertIsDisplayed()
         composeTestRule.onNodeWithText("Direct accepted").assertIsDisplayed()
         composeTestRule.onNodeWithText("Switch gate: Keep direct default").assertIsDisplayed()
         composeTestRule.onNodeWithText("Hello ack").assertIsDisplayed()
@@ -226,8 +239,8 @@ class TaskNewTaskScreenKtTest {
         composeTestRule.onNodeWithText("Switch gate: Switch blocker").assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Fallback reason"))
-        composeTestRule.onNodeWithText("Fallback reason").assertIsDisplayed()
+            .performScrollToNode(hasText("Dispatch detail"))
+        composeTestRule.onNodeWithText("Dispatch detail").assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")
             .performScrollToNode(hasText("unsupported_action"))

@@ -94,7 +94,7 @@ class RelayTaskMailDirectSessionActionSenderTest {
     }
 
     @Test
-    fun `send should route capability rejection to mail fallback`() = runTest {
+    fun `send should keep capability rejection on the direct-only classified path`() = runTest {
         val testSubject = RelayTaskMailDirectSessionActionSender(
             relayConnectionClient = FakeSessionActionRelayConnectionClient(
                 sendPacketResult = Result.failure(
@@ -149,7 +149,7 @@ class RelayTaskMailDirectSessionActionSenderTest {
     }
 
     @Test
-    fun `send should keep packet ack temporary direct failure on mail fallback path`() = runTest {
+    fun `send should keep packet ack temporary direct failure on the classified non-accepted path`() = runTest {
         val testSubject = RelayTaskMailDirectSessionActionSender(
             relayConnectionClient = FakeSessionActionRelayConnectionClient(
                 sendPacketResult = Result.success(
@@ -252,7 +252,7 @@ private fun assertCanonicalReplyPacket(sentPacket: RelayPacket) {
     assertThat(sentPacket.dispatchMetadata.string("schema_version"))
         .isEqualTo("post-creation-session-action-contract-v1")
     assertThat(sentPacket.dispatchMetadata.string("action")).isEqualTo("reply")
-    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("mail")
+    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("none")
     assertThat(sentPacket.taskRunPacket.string("schema_version"))
         .isEqualTo("post-creation-session-action-contract-v1")
     assertThat(sentPacket.taskRunPacket.string("action")).isEqualTo("reply")
@@ -278,7 +278,7 @@ private fun assertCanonicalStatusPacket(sentPacket: RelayPacket) {
     assertThat(sentPacket.dispatchMetadata.string("schema_version"))
         .isEqualTo("post-creation-session-action-contract-v1")
     assertThat(sentPacket.dispatchMetadata.string("action")).isEqualTo("status")
-    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("mail")
+    assertThat(sentPacket.dispatchMetadata.string("fallback_policy")).isEqualTo("none")
     assertThat(sentPacket.taskRunPacket.string("schema_version"))
         .isEqualTo("post-creation-session-action-contract-v1")
     assertThat(sentPacket.taskRunPacket.string("action")).isEqualTo("status")

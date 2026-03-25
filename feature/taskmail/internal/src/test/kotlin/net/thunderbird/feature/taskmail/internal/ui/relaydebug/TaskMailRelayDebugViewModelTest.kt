@@ -8,6 +8,7 @@ import app.k9mail.core.ui.compose.testing.mvi.turbinesWithInitialStateCheck
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEqualTo
+import java.io.File
 import kotlin.test.Test
 import kotlinx.coroutines.flow.MutableStateFlow
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
@@ -38,6 +39,10 @@ class TaskMailRelayDebugViewModelTest {
             loadData()
 
             assertThat(viewModelState().projectSyncDebugFileLoggingEnabled).isEqualTo(true)
+            assertThat(viewModelState().sessionActionSendRecordsPath)
+                .isEqualTo("E:\\tmp\\taskmail\\taskmail_session_action_send_records.json")
+            assertThat(viewModelState().newTaskSendRecordsPath)
+                .isEqualTo("E:\\tmp\\taskmail\\taskmail_new_task_send_records.json")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -123,11 +128,13 @@ private class TaskMailRelayDebugViewModelRobot(
     )
     private val transportProbeSender = FakeTaskMailTransportProbeSender()
     private val fileSampleSender = FakeTaskMailFileSampleSender()
+    private val taskMailStorageDirectory = File("E:\\tmp\\taskmail")
     private val viewModel = TaskMailRelayDebugViewModel(
         relayBootstrapManager = relayBootstrapManager,
         projectSyncDebugSettingsRepository = debugSettingsRepository,
         sendTaskMailTransportProbe = SendTaskMailTransportProbe(transportProbeSender),
         sendTaskMailFileSample = SendTaskMailFileSample(fileSampleSender),
+        taskMailStorageDirectory = taskMailStorageDirectory,
     )
     private lateinit var turbines: MviTurbines<TaskMailRelayDebugContract.State, TaskMailRelayDebugContract.Effect>
 

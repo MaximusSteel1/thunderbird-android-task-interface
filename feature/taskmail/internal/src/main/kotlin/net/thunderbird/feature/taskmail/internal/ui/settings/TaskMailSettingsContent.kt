@@ -29,6 +29,7 @@ import net.thunderbird.core.ui.compose.theme2.MainTheme
 internal fun TaskMailSettingsContent(
     state: TaskMailSettingsContract.State,
     onEvent: (TaskMailSettingsContract.Event) -> Unit,
+    onOpenRelayConfig: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -50,6 +51,7 @@ internal fun TaskMailSettingsContent(
             TaskMailSettingsForm(
                 state = state,
                 onEvent = onEvent,
+                onOpenRelayConfig = onOpenRelayConfig,
                 modifier = Modifier.padding(innerPadding),
             )
         }
@@ -60,6 +62,7 @@ internal fun TaskMailSettingsContent(
 private fun TaskMailSettingsForm(
     state: TaskMailSettingsContract.State,
     onEvent: (TaskMailSettingsContract.Event) -> Unit,
+    onOpenRelayConfig: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -108,6 +111,25 @@ private fun TaskMailSettingsForm(
                     "using generic reply-recipient heuristics.",
                 color = MainTheme.colors.onSurfaceVariant,
             )
+        }
+
+        onOpenRelayConfig?.let { openRelayConfig ->
+            item {
+                ButtonText(
+                    text = "Open relay config",
+                    onClick = openRelayConfig,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("TaskMailSettingsOpenRelayConfigButton"),
+                )
+            }
+
+            item {
+                TextBodySmall(
+                    text = "Debug builds can open TaskMail relay debug here if deep links are unreliable.",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
         }
 
         item {

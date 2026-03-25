@@ -32,7 +32,6 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDe
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,7 +58,6 @@ internal class TaskSessionDetailWorkdirDisplayTest {
             refreshTaskMail = RefreshTaskMail(NoOpTaskMailSyncRequester),
             observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(NoOpTaskMailStoreChangeObserver),
             foregroundRefreshTickerFactory = TaskMailForegroundRefreshTickerFactory { emptyFlow() },
-            sendTaskMailReply = SendTaskMailReply(NoOpTaskMailReplySender),
             replyAttachmentResolver = NoOpTaskMailReplyAttachmentResolver,
             timelineAttachmentHandler = NoOpTaskMailTimelineAttachmentHandler,
             logger = NoOpLogger,
@@ -69,7 +67,6 @@ internal class TaskSessionDetailWorkdirDisplayTest {
             TaskSessionDetailContract.Event.LoadDetail(
                 workspaceId = "workspace_001",
                 sessionId = "session_001",
-                threadId = "thread_001",
             ),
         )
         advanceUntilIdle()

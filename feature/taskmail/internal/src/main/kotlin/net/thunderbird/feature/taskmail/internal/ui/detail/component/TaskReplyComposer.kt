@@ -58,31 +58,37 @@ internal fun TaskReplyComposer(
                 onDismissSendError = onDismissSendError,
             )
 
-            if (!state.canReply) {
+            if (!state.canReply && !state.canQueryStatus) {
                 ReplyUnavailableWarning(reason = state.replyUnavailableReason)
                 return@CardElevated
             }
 
-            ReplyComposerInput(
-                state = state,
-                onDraftChanged = onDraftChanged,
-            )
-            ReplyAttachmentSection(
-                replyAttachments = state.replyAttachments,
-                isSending = state.isSending,
-                onPickAttachments = onPickAttachments,
-                onRemoveAttachment = onRemoveAttachment,
-            )
+            if (!state.canReply) {
+                ReplyUnavailableWarning(reason = state.replyUnavailableReason)
+            } else {
+                ReplyComposerInput(
+                    state = state,
+                    onDraftChanged = onDraftChanged,
+                )
+                ReplyAttachmentSection(
+                    replyAttachments = state.replyAttachments,
+                    isSending = state.isSending,
+                    onPickAttachments = onPickAttachments,
+                    onRemoveAttachment = onRemoveAttachment,
+                )
+            }
             ReplyComposerActions(
                 state = state,
                 onSendReply = onSendReply,
                 onStatusQuery = onStatusQuery,
             )
-            QuickAnswersSection(
-                quickAnswerChoices = state.quickAnswerChoices,
-                isSending = state.isSending,
-                onSendChoice = onSendChoice,
-            )
+            if (state.canReply) {
+                QuickAnswersSection(
+                    quickAnswerChoices = state.quickAnswerChoices,
+                    isSending = state.isSending,
+                    onSendChoice = onSendChoice,
+                )
+            }
         }
     }
 }
@@ -246,12 +252,14 @@ private fun ReplyComposerActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ButtonFilled(
-            text = state.sendButtonText,
-            onClick = onSendReply,
-            modifier = Modifier.testTag("TaskReplyComposerSendButton"),
-            enabled = !state.isSending && state.canSendReply,
-        )
+        if (state.canReply) {
+            ButtonFilled(
+                text = state.sendButtonText,
+                onClick = onSendReply,
+                modifier = Modifier.testTag("TaskReplyComposerSendButton"),
+                enabled = !state.isSending && state.canSendReply,
+            )
+        }
         ButtonOutlined(
             text = "/status",
             onClick = onStatusQuery,

@@ -29,14 +29,13 @@ import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
-import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
-import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskWorkspaceSummaries
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
@@ -65,7 +64,7 @@ class TaskWorkspaceViewModelTest {
     fun `load data should emit content state when repository returns data`() = runMviTest {
         val syncRequester = FakeTaskMailSyncRequester()
 
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository(), syncRequester = syncRequester)) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository(), syncRequester = syncRequester)) {
             start()
             loadData()
             assertLoadedContent()
@@ -76,7 +75,7 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `load data should emit empty state when repository returns empty list`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository(workspaces = emptyList()))) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository(sessionDetails = emptyList()))) {
             start()
             loadData()
             assertEmptyState()
@@ -86,17 +85,17 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `load data should show only the last workdir segment in workspace subtitle`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository())) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository())) {
             start()
             loadData()
-            assertThat(viewModelState().workspaces.single().subtitle).isEqualTo("taskmail")
+            assertThat(viewModelState().workspaceSummaries.single().subtitle).isEqualTo("taskmail")
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
     fun `load data should emit error state when repository throws`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository(shouldThrowWorkspaceError = true))) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository(shouldThrowSessionDetailError = true))) {
             start()
             loadData()
             assertErrorState()
@@ -106,7 +105,7 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `session clicked should emit open detail effect`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository())) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository())) {
             start()
             clickSession()
             assertOpenDetailEffect()
@@ -116,7 +115,7 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `project list clicked should emit open project sync effect`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository())) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository())) {
             start()
             clickProjectList()
             assertOpenProjectSyncEffect()
@@ -126,7 +125,7 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `new task clicked should emit open new task effect`() = runMviTest {
-        with(TaskWorkspaceViewModelRobot(this, FakeTaskMailRepository())) {
+        with(TaskWorkspaceViewModelRobot(this, FakeTaskSessionDetailRepository())) {
             start()
             clickNewTask()
             assertOpenNewTaskEffect()
@@ -136,16 +135,16 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `refresh requested should trigger sync and reload workspace data`() = runMviTest {
-        val repository = FakeTaskMailRepository()
+        val repository = FakeTaskSessionDetailRepository()
         val syncRequester = FakeTaskMailSyncRequester()
 
         with(TaskWorkspaceViewModelRobot(this, repository, syncRequester = syncRequester)) {
             start()
             loadData()
-            repository.workspaces = emptyList()
+            repository.sessionDetails = emptyList()
             refreshRequested()
             assertThat(syncRequester.requestCount).isEqualTo(1)
-            assertThat(viewModelState().workspaces).hasSize(0)
+            assertThat(viewModelState().workspaceSummaries).hasSize(0)
             assertThat(viewModelState().refreshError).isEqualTo(null)
             ensureThatAllEventsAreConsumed()
         }
@@ -153,7 +152,7 @@ class TaskWorkspaceViewModelTest {
 
     @Test
     fun `refresh failure should keep stale content and expose refresh error`() = runMviTest {
-        val repository = FakeTaskMailRepository()
+        val repository = FakeTaskSessionDetailRepository()
         val syncRequester = FakeTaskMailSyncRequester(
             result = Result.failure(IllegalStateException("sync error")),
         )
@@ -169,13 +168,13 @@ class TaskWorkspaceViewModelTest {
     }
 
     @Test
-    fun `load data should show cached workspaces before background cache sync completes`() = runMviTest {
+    fun `load data should show cached sessions before background cache sync completes`() = runMviTest {
         val cacheSyncGate = CompletableDeferred<Unit>()
 
         with(
             TaskWorkspaceViewModelRobot(
                 mviContext = this,
-                repository = FakeTaskMailRepository(),
+                repository = FakeTaskSessionDetailRepository(),
                 syncTaskMailCache = createBlockingSyncTaskMailCache(cacheSyncGate),
             ),
         ) {
@@ -195,16 +194,16 @@ class TaskWorkspaceViewModelTest {
     }
 
     @Test
-    fun `local mail change should reload workspaces after initial load`() = runMviTest {
-        val repository = FakeTaskMailRepository()
+    fun `local mail change should reload sessions after initial load`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
         val changeObserver = FakeTaskMailStoreChangeObserver()
 
         with(TaskWorkspaceViewModelRobot(this, repository, changeObserver = changeObserver)) {
             start()
             loadData()
-            repository.workspaces = emptyList()
+            repository.sessionDetails = emptyList()
             emitLocalChange()
-            assertThat(viewModelState().workspaces).hasSize(0)
+            assertThat(viewModelState().workspaceSummaries).hasSize(0)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -217,7 +216,7 @@ class TaskWorkspaceViewModelTest {
         with(
             TaskWorkspaceViewModelRobot(
                 mviContext = this,
-                repository = FakeTaskMailRepository(),
+                repository = FakeTaskSessionDetailRepository(),
                 syncRequester = syncRequester,
                 foregroundRefreshTickerFactory = tickerFactory,
             ),
@@ -236,8 +235,8 @@ class TaskWorkspaceViewModelTest {
     }
 
     @Test
-    fun `foreground refresh should reload current workspace summaries when returning visible`() = runMviTest {
-        val repository = FakeTaskMailRepository()
+    fun `foreground refresh should reload current sessions when returning visible`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
         val syncRequester = FakeTaskMailSyncRequester()
 
         with(
@@ -249,11 +248,11 @@ class TaskWorkspaceViewModelTest {
         ) {
             start()
             loadData()
-            repository.workspaces = emptyList()
+            repository.sessionDetails = emptyList()
 
             startForegroundRefresh()
 
-            assertThat(viewModelState().workspaces).hasSize(0)
+            assertThat(viewModelState().workspaceSummaries).hasSize(0)
             assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf("account_001"))
             ensureThatAllEventsAreConsumed()
         }
@@ -267,7 +266,7 @@ class TaskWorkspaceViewModelTest {
         with(
             TaskWorkspaceViewModelRobot(
                 mviContext = this,
-                repository = FakeTaskMailRepository(),
+                repository = FakeTaskSessionDetailRepository(),
                 syncRequester = syncRequester,
                 senderAccounts = listOf(
                     sampleSenderAccount(accountUuid = "account_001"),
@@ -288,7 +287,7 @@ class TaskWorkspaceViewModelTest {
 
 private class TaskWorkspaceViewModelRobot(
     private val mviContext: MviContext,
-    repository: TaskMailRepository,
+    repository: TaskSessionDetailRepository,
     syncRequester: FakeTaskMailSyncRequester = FakeTaskMailSyncRequester(),
     senderAccounts: List<TaskMailSenderAccount> = listOf(sampleSenderAccount()),
     private val changeObserver: FakeTaskMailStoreChangeObserver = FakeTaskMailStoreChangeObserver(),
@@ -297,8 +296,7 @@ private class TaskWorkspaceViewModelRobot(
     syncTaskMailCache: SyncTaskMailCache? = null,
 ) {
     private val viewModel = TaskWorkspaceViewModel(
-        repository = repository,
-        getTaskWorkspaceSummaries = GetTaskWorkspaceSummaries(repository),
+        getTaskSessionDetails = GetTaskSessionDetails(repository),
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(FakeTaskMailSenderAccountSource(senderAccounts)),
         refreshTaskMail = RefreshTaskMail(syncRequester),
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
@@ -345,9 +343,11 @@ private class TaskWorkspaceViewModelRobot(
         val state = viewModel.state.value
         assertThat(state.isLoading).isEqualTo(false)
         assertThat(state.error).isEqualTo(null)
-        assertThat(state.workspaces).hasSize(1)
-        assertThat(state.workspaces.first().sessions).hasSize(1)
-        assertThat(state.workspaces.first().sessions.first().workspaceId).isEqualTo("workspace_001")
+        assertThat(state.attentionSessions).hasSize(1)
+        assertThat(state.pcSummaries).hasSize(1)
+        assertThat(state.workspaceSummaries).hasSize(1)
+        assertThat(state.workspaceSummaries.first().sessions).hasSize(1)
+        assertThat(state.workspaceSummaries.first().sessions.first().workspaceId).isEqualTo("workspace_001")
     }
 
     suspend fun assertEmptyState() {
@@ -359,7 +359,7 @@ private class TaskWorkspaceViewModelRobot(
     suspend fun assertErrorState() {
         val state = viewModel.state.value
         assertThat(state.isLoading).isEqualTo(false)
-        assertThat(state.error).isEqualTo("Failed to load TaskMail workspaces.")
+        assertThat(state.error).isEqualTo("Failed to load TaskMail workbench.")
     }
 
     fun clickSession() {
@@ -367,7 +367,6 @@ private class TaskWorkspaceViewModelRobot(
             TaskWorkspaceContract.Event.SessionClicked(
                 workspaceId = "workspace_001",
                 sessionId = "session_001",
-                threadId = "thread_001",
             ),
         )
     }
@@ -385,7 +384,6 @@ private class TaskWorkspaceViewModelRobot(
             TaskWorkspaceContract.Effect.OpenSessionDetail(
                 workspaceId = "workspace_001",
                 sessionId = "session_001",
-                threadId = "thread_001",
             ),
         )
     }
@@ -406,16 +404,25 @@ private class TaskWorkspaceViewModelRobot(
     fun viewModelState(): TaskWorkspaceContract.State = viewModel.state.value
 }
 
-private class FakeTaskMailRepository(
-    var workspaces: List<TaskWorkspaceSummary> = TaskMailPreviewData.workspaceSummaries,
-    private val shouldThrowWorkspaceError: Boolean = false,
-) : TaskMailRepository {
-    override suspend fun getTaskWorkspaceSummaries(): List<TaskWorkspaceSummary> {
-        if (shouldThrowWorkspaceError) error("workspace error")
-        return workspaces
+private class FakeTaskSessionDetailRepository(
+    var sessionDetails: List<TaskSessionDetail> = listOf(TaskMailPreviewData.questionSessionDetail),
+    private val shouldThrowSessionDetailError: Boolean = false,
+) : TaskSessionDetailRepository {
+    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
+        return sessionDetails.firstOrNull { detail -> detail.key == key }
+            ?: sessionDetails.firstOrNull { detail -> detail.key.isCompatibleWith(key) }
     }
 
-    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? = null
+    override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> {
+        if (shouldThrowSessionDetailError) error("session detail error")
+        return sessionDetails
+    }
+
+    override suspend fun replaceAllSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun upsertSessionDetails(details: List<TaskSessionDetail>) = Unit
+
+    override suspend fun removeSessionDetails(keys: List<TaskSessionKey>) = Unit
 }
 
 private class FakeTaskMailSyncRequester(

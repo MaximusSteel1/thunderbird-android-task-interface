@@ -1,7 +1,11 @@
 package net.thunderbird.feature.taskmail.internal.debug
 
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import java.io.File
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,6 +30,7 @@ import app.k9mail.core.ui.compose.designsystem.organism.TopAppBarWithBackButton
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
+import androidx.core.content.FileProvider
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.core.ui.contract.mvi.observe
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -110,6 +115,47 @@ internal fun TaskMailRelayDebugScreen(
                     text = "Writes project-sync-debug.log under app external files only when enabled.",
                     color = MainTheme.colors.onSurfaceVariant,
                 )
+            }
+
+            item {
+                TextBodySmall(
+                    text = "Closeout evidence files stay under app internal storage. " +
+                        "Use the session-action file for guarded reply/status bind checks.",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
+
+            state.value.sessionActionSendRecordsPath?.let { path ->
+                item {
+                    TextBodySmall(
+                        text = "Session-action send records: $path",
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+
+                item {
+                    ButtonText(
+                        text = "Share session-action send records",
+                        onClick = {
+                            shareTaskMailDebugFile(
+                                context = context,
+                                filePath = path,
+                                chooserTitle = "Share TaskMail session-action send records",
+                                missingFileMessage = "No session-action send records are available yet.",
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            state.value.newTaskSendRecordsPath?.let { path ->
+                item {
+                    TextBodySmall(
+                        text = "New-task send records: $path",
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
             }
 
             if (!state.value.relayEnabled) {
@@ -345,5 +391,35 @@ private fun RelayConnectionState.toSummary(): String {
                 "server_time=$serverTime | heartbeat_seconds=$heartbeatSeconds"
         }
         is RelayConnectionState.Failed -> "connection=failed | message=$message"
+    }
+}
+
+private fun shareTaskMailDebugFile(
+    context: Context,
+    filePath: String,
+    chooserTitle: String,
+    missingFileMessage: String,
+) {
+    val file = File(filePath)
+    if (!file.exists() || !file.isFile) {
+        Toast.makeText(context, missingFileMessage, Toast.LENGTH_LONG).show()
+        return
+    }
+
+    val authority = "${context.packageName}.taskmail.debug.files"
+    val contentUri = FileProvider.getUriForFile(context, authority, file)
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/json"
+        putExtra(Intent.EXTRA_SUBJECT, chooserTitle)
+        putExtra(Intent.EXTRA_STREAM, contentUri)
+        putExtra(Intent.EXTRA_TEXT, file.absolutePath)
+        clipData = ClipData.newUri(context.contentResolver, file.name, contentUri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    runCatching {
+        context.startActivity(Intent.createChooser(shareIntent, chooserTitle))
+    }.onFailure {
+        Toast.makeText(context, "Unable to open the share sheet.", Toast.LENGTH_LONG).show()
     }
 }

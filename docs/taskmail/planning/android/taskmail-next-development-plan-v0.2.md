@@ -66,7 +66,7 @@
 
 它们现在更准确的读法是：
 
-- 当前兼容面
+- 当前遗留面
 - 当前行为证据面
 - 过渡期 closeout / reference 资料
 
@@ -76,13 +76,15 @@
 
 ### 1. 保持 current behavior 不撒谎
 
-- 继续按 `CURRENT-STATUS` 与 `MAIL-RULES` 维护今天已经存在的 mail / direct 兼容能力
+- 继续按 `CURRENT-STATUS` 与 `MAIL-RULES` 准确描述今天已经存在的 mail / direct 行为
 - 不把 future-direction authority 提前写成当前协议已经完成切换
+- 但后续切片不再以“继续保活 mail / direct 兼容能力”为默认目标
 
-### 2. 不再继续扩旧的 direct sidecar 主线
+### 2. 停止把旧的 direct / mail 结构当兼容基线
 
 - `new_task`、`reply/status`、`[SYNC]` 现有 direct 切片保留 closeout / evidence 价值
 - 但后续不再默认围绕它们继续扩大产品主线面积
+- 已落地代码中的 compatibility seam 也只按待删过渡实现读取，不再继续变成稳定接口
 
 ### 3. 为新的 VPS 控制面收口客户端抽象
 
@@ -126,13 +128,26 @@ Android 侧真正需要为新主线准备的，是后续与统一控制面接轨
 ## 当前建议顺序
 
 1. 先以 `taskmail-vps-first-control-plane-freeze-v0.1.md` 作为共享字段基线，稳定 `VPS-first 多 PC 控制面` 的领域模型与协议读法，包含 `backend / profile / permission / backend_transport` 的 `execution_policy`。
-2. Android 侧保持现有 mail/direct 兼容线稳定，不再继续把三条旧线扩成新的 owner planning。
-3. 在字段形状已冻结的前提下，按页面级 API 需求、Compose 页面骨架与主线页面信息架构推进 Android 新控制面的接入顺序。
-4. Android 编码阶段默认按 `taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md` 的 slice 顺序进入第一批骨架改造。
-5. 编码起手第一刀默认先按 `taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md` 落 `TaskSessionDetail` 的骨架改造。
-6. 与 PC 端的第一轮正式握手联调，默认按 `taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md` 判断是否已达到合适时机。
+2. Android 侧不再以“维持现有 mail/direct 兼容线稳定”作为默认目标，而是按 control-plane hard cutover 思路逐步替换旧入口。
+3. 任何迁移期 adapter 只允许短期存在于边界层，不再继续长进页面 state、路由、主仓库接口或产品主流程。
+4. 在字段形状已冻结的前提下，按页面级 API 需求、Compose 页面骨架与主线页面信息架构推进 Android 新控制面的接入顺序。
+5. Android 编码阶段默认按 `taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md` 的 slice 顺序进入第一批骨架改造。
+6. 编码起手第一刀默认先按 `taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md` 落 `TaskSessionDetail` 的骨架改造。
+7. 与 PC 端的第一轮正式握手联调，默认按 `taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md` 判断是否已达到合适时机。
 
-## 当前兼容 / closeout 参考线
+## 无 Legacy Baseline 约束
+
+从本计划生效后，后续切片默认不再保留或扩展以下对象作为长期基线：
+
+- `RunTaskMailDirectOrFallback`
+- `SendTaskMailNewTask`
+- `threadId` route fallback
+- `mail-backed summary`
+- UI/state 中的 compatibility getter 与 bridge 文案
+
+如果迁移期暂时还存在这类结构，它们也只应被视为待删过渡实现，而不是新的稳定设计。
+
+## 当前历史 / closeout 参考线
 
 以下文档继续保留，但它们不再构成未来唯一主线：
 
@@ -144,7 +159,7 @@ Android 侧真正需要为新主线准备的，是后续与统一控制面接轨
 
 ## 当前结论
 
-当前最重要的规划动作，不再是继续为旧的 direct-mail 混合结构增写 planning，而是把 Android 侧 future-direction 读法统一收敛到：
+当前最重要的规划动作，不再是继续为旧的 direct-mail 混合结构增写 planning 或保兼容，而是把 Android 侧 future-direction 读法统一收敛到：
 
 - 一个 `VPS-first` 主控制面
 - 多个 `PC` 执行节点

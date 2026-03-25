@@ -3,6 +3,13 @@ package net.thunderbird.feature.taskmail.internal.data.cache
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlin.test.Test
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneStructuredPayload
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailStatusLabel
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
@@ -10,6 +17,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
@@ -112,6 +120,42 @@ class TaskSessionDetailJsonCodecTest {
                         "status/running/2026-03-21T18:00:00",
                         "reply/2026-03-21T18:00:00",
                     ),
+                ),
+            ),
+            controlPlaneSnapshot = TaskSessionControlPlaneSnapshot(
+                commandAck = ControlPlaneCommandAck(
+                    commandId = "cmd_001",
+                    ackStatus = "accepted_but_queued",
+                    queuePosition = 1,
+                ),
+                events = listOf(
+                    ControlPlaneEvent(
+                        eventId = "evt_001",
+                        commandId = "cmd_001",
+                        workspaceId = "workspace_001",
+                        sessionId = "session_001",
+                        runId = "run_001",
+                        eventType = "running",
+                        payload = buildJsonObject {
+                            put("summary", "Working through the round-trip test.")
+                        },
+                    ),
+                ),
+                result = ControlPlaneResult(
+                    resultId = "res_001",
+                    commandId = "cmd_001",
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                    runId = "run_001",
+                    finalStatus = "done",
+                    summary = "Round-trip completed.",
+                    effectiveExecution = ControlPlaneExecutionPolicy(
+                        backend = "codex",
+                        profile = "strong",
+                        permission = "highest",
+                        resolvedModel = "gpt-5-codex",
+                    ),
+                    structuredPayload = ControlPlaneStructuredPayload(kind = "task_outcome"),
                 ),
             ),
         )

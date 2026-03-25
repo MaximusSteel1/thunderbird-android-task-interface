@@ -2,10 +2,13 @@ package net.thunderbird.feature.taskmail.internal.ui.workspace
 
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
@@ -135,25 +138,21 @@ class TaskWorkspaceScreenKtTest {
             K9MailTheme2 {
                 TaskWorkspaceContent(
                     state = TaskWorkspaceContract.State(
-                        workspaces = listOf(
-                            TaskWorkspaceItemUi(
-                                title = "android_task_manager",
-                                subtitle = "feature/taskmail",
-                                sessionCountLabel = "1 session",
-                                sessions = listOf(
-                                    TaskSessionItemUi(
-                                        workspaceId = "workspace_001",
-                                        sessionId = "session_001",
-                                        threadId = "thread_001",
-                                        sessionName = "Build TaskMail Phase 1",
-                                        status = "WaitingUser",
-                                        backend = "Codex",
-                                        lastSummary = "Parser layer is complete.",
-                                        pendingQuestion = true,
-                                    ),
-                                ),
+                        attentionSessions = listOf(
+                            TaskSessionItemUi(
+                                workspaceId = "workspace_001",
+                                sessionId = "session_001",
+                                stableId = "workspace_001::session_001",
+                                sessionName = "Build TaskMail Phase 1",
+                                status = "WaitingUser",
+                                backend = "Codex",
+                                lastSummary = "Parser layer is complete.",
+                                pendingQuestion = true,
+                                routeLabel = "android_task_manager · feature/taskmail",
+                                lastUpdatedAt = 1_742_000_000_000,
                             ),
                         ),
+                        workspaceSummaries = sampleWorkspaceSummaries(),
                     ),
                     onEvent = { event ->
                         if (event is TaskWorkspaceContract.Event.SessionClicked) {
@@ -172,32 +171,28 @@ class TaskWorkspaceScreenKtTest {
     }
 
     @Test
-    fun `content should keep null session id when fallback thread session row is pressed`() {
+    fun `content should ignore session rows that do not have a session id`() {
         var clickedSessionId: String? = "initial"
 
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskWorkspaceContent(
                     state = TaskWorkspaceContract.State(
-                        workspaces = listOf(
-                            TaskWorkspaceItemUi(
-                                title = "android_task_manager",
-                                subtitle = "feature/taskmail",
-                                sessionCountLabel = "1 session",
-                                sessions = listOf(
-                                    TaskSessionItemUi(
-                                        workspaceId = "workspace_001",
-                                        sessionId = null,
-                                        threadId = "thread_321",
-                                        sessionName = "Fallback thread session",
-                                        status = "Unknown",
-                                        backend = "Codex",
-                                        lastSummary = "No session id yet.",
-                                        pendingQuestion = false,
-                                    ),
-                                ),
+                        recentSessions = listOf(
+                            TaskSessionItemUi(
+                                workspaceId = "workspace_001",
+                                sessionId = null,
+                                stableId = "compat::workspace_001::thread_321",
+                                sessionName = "Fallback thread session",
+                                status = "Unknown",
+                                backend = "Codex",
+                                lastSummary = "No session id yet.",
+                                pendingQuestion = false,
+                                routeLabel = "android_task_manager · feature/taskmail",
+                                lastUpdatedAt = 1_742_000_000_000,
                             ),
                         ),
+                        workspaceSummaries = sampleWorkspaceSummaries(),
                     ),
                     onEvent = { event ->
                         if (event is TaskWorkspaceContract.Event.SessionClicked) {
@@ -208,9 +203,12 @@ class TaskWorkspaceScreenKtTest {
             }
         }
 
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceHomeList")
+            .performScrollToNode(hasText("Fallback thread session", substring = true))
         composeTestRule.onNodeWithText("Fallback thread session", substring = true).performClick()
 
-        assertThat(clickedSessionId).isEqualTo(null)
+        assertThat(clickedSessionId).isEqualTo("initial")
     }
 
     @Test
@@ -220,25 +218,21 @@ class TaskWorkspaceScreenKtTest {
                 TaskWorkspaceContent(
                     state = TaskWorkspaceContract.State(
                         refreshError = "TaskMail sync did not complete.",
-                        workspaces = listOf(
-                            TaskWorkspaceItemUi(
-                                title = "android_task_manager",
-                                subtitle = "feature/taskmail",
-                                sessionCountLabel = "1 session",
-                                sessions = listOf(
-                                    TaskSessionItemUi(
-                                        workspaceId = "workspace_001",
-                                        sessionId = "session_001",
-                                        threadId = "thread_001",
-                                        sessionName = "Build TaskMail Phase 1",
-                                        status = "WaitingUser",
-                                        backend = "Codex",
-                                        lastSummary = "Parser layer is complete.",
-                                        pendingQuestion = true,
-                                    ),
-                                ),
+                        attentionSessions = listOf(
+                            TaskSessionItemUi(
+                                workspaceId = "workspace_001",
+                                sessionId = "session_001",
+                                stableId = "workspace_001::session_001",
+                                sessionName = "Build TaskMail Phase 1",
+                                status = "WaitingUser",
+                                backend = "Codex",
+                                lastSummary = "Parser layer is complete.",
+                                pendingQuestion = true,
+                                routeLabel = "android_task_manager · feature/taskmail",
+                                lastUpdatedAt = 1_742_000_000_000,
                             ),
                         ),
+                        workspaceSummaries = sampleWorkspaceSummaries(),
                     ),
                     onEvent = {},
                 )
@@ -248,4 +242,28 @@ class TaskWorkspaceScreenKtTest {
         composeTestRule.onNodeWithText("TaskMail refresh failed").assertIsDisplayed()
         composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).assertExists()
     }
+}
+
+private fun sampleWorkspaceSummaries(): List<TaskWorkspaceItemUi> {
+    return listOf(
+        TaskWorkspaceItemUi(
+            title = "android_task_manager",
+            subtitle = "feature/taskmail",
+            sessionCountLabel = "1 session",
+            sessions = listOf(
+                TaskSessionItemUi(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                    stableId = "workspace_001::session_001",
+                    sessionName = "Build TaskMail Phase 1",
+                    status = "WaitingUser",
+                    backend = "Codex",
+                    lastSummary = "Parser layer is complete.",
+                    pendingQuestion = true,
+                    routeLabel = "android_task_manager · feature/taskmail",
+                    lastUpdatedAt = 1_742_000_000_000,
+                ),
+            ),
+        ),
+    )
 }

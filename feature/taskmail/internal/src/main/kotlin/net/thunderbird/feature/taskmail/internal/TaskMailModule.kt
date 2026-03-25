@@ -112,13 +112,14 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMai
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
-import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskWorkspaceSummaries
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RequestTaskMailProjectSync
+import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SaveTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
@@ -491,13 +492,13 @@ val taskMailModule: Module = module {
     }
 
     factory {
-        GetTaskWorkspaceSummaries(
+        GetTaskSessionDetail(
             repository = get(),
         )
     }
 
     factory {
-        GetTaskSessionDetail(
+        GetTaskSessionDetails(
             repository = get(),
         )
     }
@@ -564,6 +565,12 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        RunTaskMailDirectDispatch(
+            relayBootstrapManager = get(),
+        )
+    }
+
+    factory {
         SendTaskMailDirectNewTask(
             directNewTaskSender = get(),
         )
@@ -613,8 +620,7 @@ val taskMailModule: Module = module {
 
     viewModel {
         TaskWorkspaceViewModel(
-            repository = get(),
-            getTaskWorkspaceSummaries = get(),
+            getTaskSessionDetails = get(),
             getTaskMailSenderAccounts = get(),
             refreshTaskMail = get(),
             observeTaskMailStoreChanges = get(),
@@ -630,14 +636,13 @@ val taskMailModule: Module = module {
             refreshTaskMail = get(),
             observeTaskMailStoreChanges = get(),
             foregroundRefreshTickerFactory = get(),
-            sendTaskMailReply = get(),
             sendTaskMailDirectSessionAction = get(),
             getLatestTaskMailSessionActionSendRecord = get(),
             recordTaskMailSessionActionSendRecord = get(),
             replyAttachmentResolver = get(),
             timelineAttachmentHandler = get(),
             logger = get(),
-            runTaskMailDirectOrFallback = get(),
+            runTaskMailDirectDispatch = get(),
             syncTaskMailCache = get(),
             observeTaskMailDirectSessionDetail = get(),
         )
@@ -649,8 +654,7 @@ val taskMailModule: Module = module {
             getLatestTaskMailNewTaskSendRecord = get(),
             recordTaskMailNewTaskSendRecord = get(),
             sendTaskMailDirectNewTask = get(),
-            sendTaskMailNewTask = get(),
-            runTaskMailDirectOrFallback = get(),
+            runTaskMailDirectDispatch = get(),
         )
     }
 
@@ -680,6 +684,7 @@ val taskMailModule: Module = module {
             projectSyncDebugSettingsRepository = get(),
             sendTaskMailTransportProbe = get(),
             sendTaskMailFileSample = get(),
+            taskMailStorageDirectory = File(androidContext().filesDir, "taskmail"),
         )
     }
 }

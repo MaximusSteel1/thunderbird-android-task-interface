@@ -75,12 +75,11 @@ internal class DefaultTaskMailNavigation : TaskMailNavigation {
 private fun NavGraphBuilder.registerWorkspaceRoute(onFinish: (TaskMailRoute) -> Unit) {
     deepLinkComposable<TaskMailRoute.Workspace>(TaskMailRoute.Workspace.BASE_PATH) {
         TaskWorkspaceScreen(
-            onOpenSession = { workspaceId, sessionId, threadId ->
+            onOpenSession = { workspaceId, sessionId ->
                 onFinish(
                     createSessionDetailRoute(
                         workspaceId = workspaceId,
                         sessionId = sessionId,
-                        threadId = threadId,
                     ),
                 )
             },
@@ -100,8 +99,7 @@ private fun NavGraphBuilder.registerSessionDetailRoute(onBack: () -> Unit) {
 
         TaskSessionDetailScreen(
             workspaceId = route.workspaceId,
-            sessionId = decodeTaskMailSessionId(route.sessionId),
-            threadId = route.threadId,
+            sessionId = route.sessionId,
             onBack = onBack,
         )
     }
@@ -109,12 +107,10 @@ private fun NavGraphBuilder.registerSessionDetailRoute(onBack: () -> Unit) {
 
 private fun createSessionDetailRoute(
     workspaceId: String?,
-    sessionId: String?,
-    threadId: String,
+    sessionId: String,
 ): TaskMailRoute.SessionDetail {
     return TaskMailRoute.SessionDetail(
         workspaceId = workspaceId,
-        sessionId = encodeTaskMailSessionId(sessionId),
-        threadId = threadId,
+        sessionId = sessionId,
     )
 }
