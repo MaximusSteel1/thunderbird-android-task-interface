@@ -15,6 +15,7 @@ internal interface TaskSessionDetailContract {
         val isRefreshing: Boolean = false,
         val error: String? = null,
         val refreshError: String? = null,
+        val isHistoryVisible: Boolean = false,
         val draftText: String = "",
         val isSending: Boolean = false,
         val sendError: String? = null,
@@ -45,6 +46,8 @@ internal interface TaskSessionDetailContract {
         data class SendChoiceClicked(val choice: String) : Event
         data object StatusQueryClicked : Event
         data object RefreshClicked : Event
+        data object HistoryClicked : Event
+        data object HistoryDismissed : Event
         data object DismissSendError : Event
         data object BackClicked : Event
     }

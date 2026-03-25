@@ -15,6 +15,10 @@ internal data class TaskSessionDetailUiState(
     val repoPath: String,
     val workdir: String? = null,
     val lastSummary: String? = null,
+    val recentContext: TaskRecentContextUi? = null,
+    val resultSummary: TaskResultSummaryUi? = null,
+    val artifacts: ImmutableList<TaskSessionArtifactUi> = persistentListOf(),
+    val historyPreview: ImmutableList<TaskHistoryRoundUi> = persistentListOf(),
     val pendingQuestions: ImmutableList<TaskPendingQuestionUi> = persistentListOf(),
     val quickAnswerChoices: ImmutableList<TaskPendingQuestionChoiceUi> = persistentListOf(),
     val requiresStructuredReply: Boolean = false,
@@ -48,6 +52,36 @@ internal data class TaskSessionDetailUiState(
         return !requiresStructuredReply && quickAnswerChoices.any { it.value == choice }
     }
 }
+
+@Immutable
+internal data class TaskRecentContextUi(
+    val latestUserMessage: String? = null,
+    val latestAssistantMessage: String? = null,
+    val waitingForUserText: String? = null,
+)
+
+@Immutable
+internal data class TaskResultSummaryUi(
+    val headline: String,
+    val supportingText: String? = null,
+    val statusLabel: String,
+)
+
+@Immutable
+internal data class TaskSessionArtifactUi(
+    val id: String,
+    val title: String,
+    val supportingText: String? = null,
+)
+
+@Immutable
+internal data class TaskHistoryRoundUi(
+    val id: String,
+    val title: String,
+    val summary: String? = null,
+    val statusLabel: String? = null,
+    val messagePreview: String? = null,
+)
 
 @Immutable
 internal data class TaskPendingQuestionUi(

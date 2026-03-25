@@ -14,6 +14,8 @@ internal data class TaskMailNewTaskDraft(
     val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
     val profile: String? = null,
     val acceptanceCriteria: List<String> = emptyList(),
+    val pcId: String? = null,
+    val workspaceId: String? = null,
 )
 
 internal enum class TaskMailNewTaskMode(

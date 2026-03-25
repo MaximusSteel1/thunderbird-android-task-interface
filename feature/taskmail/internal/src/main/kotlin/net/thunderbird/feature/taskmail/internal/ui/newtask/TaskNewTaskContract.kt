@@ -18,6 +18,8 @@ internal interface TaskNewTaskContract {
         val senderAccountBlockingError: String? = null,
         val senderAccounts: ImmutableList<TaskMailSenderAccount> = persistentListOf(),
         val selectedSenderAccountId: String? = null,
+        val pcId: String = "",
+        val workspaceId: String = "",
         val selectedBackend: TaskMailBackend? = null,
         val repoPath: String = "",
         val taskText: String = "",
@@ -58,6 +60,8 @@ internal interface TaskNewTaskContract {
         data object BackClicked : Event
         data object ChooseRepoClicked : Event
         data class SenderAccountSelected(val accountUuid: String?) : Event
+        data class PcChanged(val value: String) : Event
+        data class WorkspaceChanged(val value: String) : Event
         data class BackendSelected(val backend: TaskMailBackend) : Event
         data class RepoChanged(val value: String) : Event
         data class TaskChanged(val value: String) : Event

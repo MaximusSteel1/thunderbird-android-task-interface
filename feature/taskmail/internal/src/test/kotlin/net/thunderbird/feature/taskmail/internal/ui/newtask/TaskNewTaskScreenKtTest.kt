@@ -5,10 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -83,6 +85,25 @@ class TaskNewTaskScreenKtTest {
         }
 
         composeTestRule.onNodeWithText("Primary <primary@example.com>").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should show control target fields`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskNewTaskContent(
+                    state = formState(),
+                    onEvent = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Control target").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("PC ID").assertCountEquals(2)
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Workspace ID"))
+        composeTestRule.onAllNodesWithText("Workspace ID").assertCountEquals(2)
     }
 
     @Test
@@ -203,6 +224,9 @@ class TaskNewTaskScreenKtTest {
             .performScrollToNode(hasText("Direct rejected"))
         composeTestRule.onNodeWithText("Direct rejected").assertIsDisplayed()
         composeTestRule.onNodeWithText("Switch gate: Switch blocker").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Fallback reason"))
         composeTestRule.onNodeWithText("Fallback reason").assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")

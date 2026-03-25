@@ -116,11 +116,16 @@
 
 详细验证摘要见 `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`。
 
-## 当前活跃主线
+## 当前实现侧焦点
 
 - `new_task`：保持 observation 与 rollback guardrail，不再主动扩 scope
 - `reply` / `/status`：继续收口 same-run strong bind、PC fallback artifact gaps，以及 relay-visible task root 前置条件
 - `[SYNC]`：继续联调 direct request 与 canonical reply 回流时间线，必要时再决定是否扩大 follow-up refresh 窗口
+
+说明：
+
+- 上述三条是“当前实现与兼容面仍需维护的焦点”，不是 2026-03-25 之后的 future-direction 唯一主线
+- future-direction authority 已切到 `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
 
 ## 当前下一步
 

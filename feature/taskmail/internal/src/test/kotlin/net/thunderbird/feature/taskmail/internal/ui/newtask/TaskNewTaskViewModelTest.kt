@@ -160,6 +160,19 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
+    fun `control target changes should update pc and workspace ids`() = runMviTest {
+        with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
+            start()
+            loadData()
+            changePcId("pc_workstation_01")
+            changeWorkspaceId("workspace_android_app")
+            assertThat(viewModelState().pcId).isEqualTo("pc_workstation_01")
+            assertThat(viewModelState().workspaceId).isEqualTo("workspace_android_app")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `choose repo clicked should emit open project sync effect`() = runMviTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
             start()
@@ -501,6 +514,14 @@ private class TaskNewTaskViewModelRobot(
 
     fun changeRepo(value: String) {
         viewModel.event(TaskNewTaskContract.Event.RepoChanged(value))
+    }
+
+    fun changePcId(value: String) {
+        viewModel.event(TaskNewTaskContract.Event.PcChanged(value))
+    }
+
+    fun changeWorkspaceId(value: String) {
+        viewModel.event(TaskNewTaskContract.Event.WorkspaceChanged(value))
     }
 
     fun changeTask(value: String) {

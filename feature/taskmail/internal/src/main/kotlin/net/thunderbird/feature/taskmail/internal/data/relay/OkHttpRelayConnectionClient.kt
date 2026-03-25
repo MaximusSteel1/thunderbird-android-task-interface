@@ -306,7 +306,7 @@ internal class OkHttpRelayConnectionClient(
     }
 
     private fun handleCommandAck(message: RelayCommandAck) {
-        if (message.accepted) {
+        if (message.isAcceptedLike) {
             logger.debug(TAG) {
                 "Received relay command ack for packetId=${message.packetId.orEmpty()}"
             }

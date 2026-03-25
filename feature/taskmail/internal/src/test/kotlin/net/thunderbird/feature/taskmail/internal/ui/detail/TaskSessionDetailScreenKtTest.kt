@@ -104,6 +104,100 @@ class TaskSessionDetailScreenKtTest {
     }
 
     @Test
+    fun `content should render recent context result summary and artifacts`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail().copy(
+                            recentContext = TaskRecentContextUi(
+                                latestUserMessage = "Please continue with the cleanup.",
+                                latestAssistantMessage = "Cleanup finished and waiting for review.",
+                                waitingForUserText = "Confirm whether to merge the cleanup.",
+                            ),
+                            resultSummary = TaskResultSummaryUi(
+                                headline = "Waiting for your reply",
+                                supportingText = "Cleanup finished · 1 file",
+                                statusLabel = "WaitingUser",
+                            ),
+                            artifacts = persistentListOf(
+                                TaskSessionArtifactUi(
+                                    id = "artifact_001",
+                                    title = "cleanup_report.md",
+                                    supportingText = "text/markdown · 4096 B",
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailRecentContext"))
+
+        composeTestRule.onNodeWithTag("TaskSessionDetailRecentContext").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Please continue with the cleanup.").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
+        composeTestRule.onNodeWithTag("TaskSessionDetailResultSummary").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Waiting for your reply").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailArtifacts"))
+        composeTestRule.onNodeWithTag("TaskSessionDetailArtifacts").assertIsDisplayed()
+        composeTestRule.onNodeWithText("cleanup_report.md").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should dispatch history click and render history sheet`() {
+        var historyClicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        isHistoryVisible = true,
+                        detail = replyCapableDetail().copy(
+                            recentContext = TaskRecentContextUi(
+                                latestAssistantMessage = "Waiting for review.",
+                            ),
+                            historyPreview = persistentListOf(
+                                TaskHistoryRoundUi(
+                                    id = "history_001",
+                                    title = "Need confirmation",
+                                    summary = "Question",
+                                    statusLabel = "Question",
+                                    messagePreview = "Parser layer is complete. Waiting for the next step.",
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = { event ->
+                        if (event == TaskSessionDetailContract.Event.HistoryClicked) {
+                            historyClicked = true
+                        }
+                    },
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailHistoryButton"))
+        composeTestRule.onNodeWithTag("TaskSessionDetailHistoryButton").performClick()
+
+        assertThat(historyClicked).isEqualTo(true)
+        composeTestRule.onNodeWithTag("TaskSessionDetailHistorySheet").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Need confirmation").assertIsDisplayed()
+    }
+
+    @Test
     fun `content should render rich text timeline body when rich document is available`() {
         composeTestRule.setContent {
             K9MailTheme2 {

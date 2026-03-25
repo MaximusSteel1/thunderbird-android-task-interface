@@ -55,3 +55,9 @@ eml-files/
 
 # Local-only TaskMail environment notes
 docs/taskmail/planning/android/_local/
+
+# Local TaskMail debug and device captures
+_tmp_device/
+_tmp_taskmail_*
+taskmail_preferences_storage.db
+taskmail_relay_debug*.xml

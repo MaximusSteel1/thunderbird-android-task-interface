@@ -21,7 +21,11 @@ import app.k9mail.core.ui.compose.designsystem.organism.SubtitleTopAppBarWithBac
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.ArtifactSection
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.HistoryContextSheet
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.PendingQuestionCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.RecentContextCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.ResultSummaryCard
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionHeader
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposer
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposerState
@@ -136,7 +140,10 @@ private fun TaskSessionDetailLoadedContent(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            overviewItems(detail = detail)
+            overviewItems(
+                detail = detail,
+                onEvent = onEvent,
+            )
             refreshErrorItem(refreshError = state.refreshError)
             latestDirectSessionActionItem(state = state)
             replyItem(
@@ -149,7 +156,18 @@ private fun TaskSessionDetailLoadedContent(
                 onOpenTimelineAttachment = onOpenTimelineAttachment,
                 onSaveTimelineAttachment = onSaveTimelineAttachment,
             )
+            resultSummaryItem(detail = detail)
+            artifactItem(detail = detail)
         }
+    }
+
+    if (state.isHistoryVisible) {
+        HistoryContextSheet(
+            historyPreview = detail.historyPreview,
+            onDismissRequest = {
+                onEvent(TaskSessionDetailContract.Event.HistoryDismissed)
+            },
+        )
     }
 }
 
@@ -165,7 +183,10 @@ private fun LazyListScope.refreshErrorItem(refreshError: String?) {
     }
 }
 
-private fun LazyListScope.overviewItems(detail: TaskSessionDetailUiState) {
+private fun LazyListScope.overviewItems(
+    detail: TaskSessionDetailUiState,
+    onEvent: (TaskSessionDetailContract.Event) -> Unit,
+) {
     item {
         SessionHeader(
             sessionName = detail.sessionName,
@@ -179,6 +200,16 @@ private fun LazyListScope.overviewItems(detail: TaskSessionDetailUiState) {
             workdir = detail.workdir,
             lastSummary = detail.lastSummary,
         )
+    }
+    detail.recentContext?.let { context ->
+        item {
+            RecentContextCard(
+                context = context,
+                onHistoryClick = {
+                    onEvent(TaskSessionDetailContract.Event.HistoryClicked)
+                },
+            )
+        }
     }
 
     if (detail.pendingQuestions.isNotEmpty()) {
@@ -237,6 +268,22 @@ private fun LazyListScope.timelineItems(
             onOpenAttachment = onOpenTimelineAttachment,
             onSaveAttachment = onSaveTimelineAttachment,
         )
+    }
+}
+
+private fun LazyListScope.resultSummaryItem(detail: TaskSessionDetailUiState) {
+    detail.resultSummary?.let { result ->
+        item {
+            ResultSummaryCard(result = result)
+        }
+    }
+}
+
+private fun LazyListScope.artifactItem(detail: TaskSessionDetailUiState) {
+    if (detail.artifacts.isEmpty()) return
+
+    item {
+        ArtifactSection(artifacts = detail.artifacts)
     }
 }
 

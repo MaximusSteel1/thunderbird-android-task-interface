@@ -1,6 +1,6 @@
 # TaskMail Planning 索引
 
-更新时间：2026-03-23
+更新时间：2026-03-25
 
 本目录只保留当前仍然活跃的 planning owner docs 与少量 reference docs。
 
@@ -8,19 +8,46 @@
 
 ## 当前 active planning
 
-- 总体架构：`android/taskmail-unified-control-plane-architecture-v0.1.md`
-- 收敛蓝图：`android/taskmail-unified-control-plane-cutover-map-v0.1.md`
-- 共享协议：`android/taskmail-android-pc-control-artifact-contract-v0.1.md`
-- 开发条件：`android/taskmail-android-pc-communication-development-conditions-v0.1.md`
-- probe payload：`android/taskmail-transport-probe-payload-contract-v0.1.md`
-- 通讯 harness：`android/taskmail-transport-observability-harness-v0.1.md`
-- 总主线：`android/taskmail-next-development-plan-v0.2.md`
-- `new_task`：`android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
-- `reply` / `/status`：`android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
-- `[SYNC] Project list`：`android/taskmail-phase5-project-sync-android-implementation-plan-v0.1.md`
+- 主线 authority：`android/taskmail-vps-first-multi-pc-authority-v0.1.md`
+- 用户需求 authority：`android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
+- Android 信息架构：`android/taskmail-vps-first-multi-pc-information-architecture-v0.1.md`
+- 页面状态与交互映射：`android/taskmail-vps-first-multi-pc-viewstate-action-mapping-v0.1.md`
+- 核心页面低保真方案：`android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
+- 高保真视觉方向：`android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`
+- 高保真 HTML 预览：`android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
+- 页面级 API 需求：`android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
+- Compose 页面结构与实现骨架：`android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
+- Android 骨架实施计划：`android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
+- Session Slice 1 文件计划：`android/taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md`
+- 与 PC 端握手联调时机清单：`android/taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md`
+- 控制面全量字段冻结：`platform/taskmail-vps-first-control-plane-freeze-v0.1.md`
+- 平台控制面设计：`platform/taskmail-multi-pc-control-plane-v0.1.md`
+- `PC <-> VPS` 协议草案：`platform/taskmail-pc-vps-control-protocol-v0.1.md`
+- 执行策略附录：`platform/taskmail-execution-policy-appendix-v0.1.md`
+- 旧 mail 语义映射附录：`platform/taskmail-legacy-mail-to-control-plane-mapping-v0.1.md`
+- `command / event` payload 附录：`platform/taskmail-command-event-payload-appendix-v0.1.md`
+- `result / artifact / error_code` 附录：`platform/taskmail-result-artifact-errorcode-appendix-v0.1.md`
+- Android 总主线 roadmap：`android/taskmail-next-development-plan-v0.2.md`
 
-## 当前 reference docs
+## 跨仓 repo-side 参考
 
+以下文档建议作为 Android planning 阶段的跨仓参考输入保留：
+
+- `E:\projects\mail_based_task_manager\docs\plans\README.md`
+- `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_control_plane_mainline_v0.1.md`
+- `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_phase1_execution_plan_v0.1.md`
+
+这些文档当前的正确读法是：
+
+- repo-side mainline / phase ordering / implementation sequencing reference
+- 不替代 Android 当前 truth
+- 不替代 Android authority / companion planning 链
+
+## 当前兼容 / closeout / reference docs
+
+- `android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
+- `android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
+- `android/taskmail-phase5-project-sync-android-implementation-plan-v0.1.md`
 - `android/taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
 - `android/taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
 - `android/taskmail-phase0-public-plaintext-baseline-v1.md`

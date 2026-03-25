@@ -5,6 +5,7 @@ import assertk.assertions.isEqualTo
 import kotlin.test.Test
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestion
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestionState
@@ -262,6 +263,37 @@ class RelayProtocolJsonCodecTest {
     }
 
     @Test
+    fun `decodeServerMessage should decode vps-first command_ack status`() {
+        val message = testSubject.decodeServerMessage(
+            """
+            {
+              "message_type": "command_ack",
+              "request_id": "cmd_req_001",
+              "command_type": "new_task",
+              "accepted": true,
+              "ack_status": "accepted_but_queued",
+              "receipt_id": "receipt-queued-1",
+              "received_at": "2026-03-25T08:00:01Z"
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(message).isEqualTo(
+            RelayServerMessage.CommandAck(
+                RelayCommandAck(
+                    messageType = "command_ack",
+                    requestId = "cmd_req_001",
+                    commandType = "new_task",
+                    accepted = true,
+                    ackStatus = "accepted_but_queued",
+                    receiptId = "receipt-queued-1",
+                    receivedAt = "2026-03-25T08:00:01Z",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `decodeServerMessage should decode event`() {
         val message = testSubject.decodeServerMessage(
             """
@@ -332,6 +364,60 @@ class RelayProtocolJsonCodecTest {
                     payloadSchema = "taskmail-transport-probe-payload-v1",
                     payload = Json.parseToJsonElement(
                         """{"probe_id":"probe_001","outcome":"observed"}""",
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `decodeServerMessage should decode vps-first result fields`() {
+        val message = testSubject.decodeServerMessage(
+            """
+            {
+              "message_type": "result",
+              "request_id": "req_002",
+              "receipt_id": "receipt_002",
+              "result_id": "result_002",
+              "result_type": "session_action_result",
+              "status": "completed",
+              "final_status": "done",
+              "result_scope": "session",
+              "structured_payload": {
+                "kind": "session_result",
+                "payload": {
+                  "session_id": "session_002"
+                }
+              },
+              "effective_execution": {
+                "backend": "codex",
+                "profile": "balanced",
+                "permission": "highest",
+                "resolved_model": "gpt-5.4"
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(message).isEqualTo(
+            RelayServerMessage.Result(
+                RelayResult(
+                    requestId = "req_002",
+                    receiptId = "receipt_002",
+                    resultId = "result_002",
+                    resultType = "session_action_result",
+                    status = "completed",
+                    finalStatus = "done",
+                    resultScope = "session",
+                    structuredPayload = RelayStructuredPayload(
+                        kind = "session_result",
+                        payload = Json.parseToJsonElement("""{"session_id":"session_002"}""").jsonObject,
+                    ),
+                    effectiveExecution = RelayEffectiveExecution(
+                        backend = "codex",
+                        profile = "balanced",
+                        permission = "highest",
+                        resolvedModel = "gpt-5.4",
                     ),
                 ),
             ),

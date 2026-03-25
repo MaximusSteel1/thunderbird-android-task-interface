@@ -1,92 +1,153 @@
 # TaskMail Android 下一阶段开发计划（v0.2）
 
-更新时间：2026-03-23
+更新时间：2026-03-25
 
 ## 状态
 
-- 本文是当前 Android TaskMail 的总主线 roadmap。
+- 本文是 Android 侧在新 authority 下的总主线 roadmap。
 - 本文不承担实现 truth，也不承担验证证据 authority。
-- 本文只回答：当前有哪些 active 主线，它们各自处于什么阶段，下一步先后顺序是什么。
+- 本文只回答：在 `VPS-first 多 PC 控制面` 成为唯一主线后，Android 侧当前应如何排序后续工作。
 
 ## Read First
 
 - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 - `docs/TASKMAIL-MAIL-RULES.md`
 - `docs/TASKMAIL-ANDROID-VALIDATION-LEDGER.md`
-- `docs/taskmail/planning/android/taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
-- `docs/taskmail/planning/android/taskmail-phase5-project-sync-android-implementation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-information-architecture-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-viewstate-action-mapping-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`
+- `docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md`
+- `docs/taskmail/planning/platform/taskmail-vps-first-control-plane-freeze-v0.1.md`
+- `docs/taskmail/planning/platform/taskmail-multi-pc-control-plane-v0.1.md`
+- `docs/taskmail/planning/platform/taskmail-pc-vps-control-protocol-v0.1.md`
+- `docs/taskmail/planning/platform/taskmail-execution-policy-appendix-v0.1.md`
+
+## 跨仓实现参考
+
+当 Android 侧任务从“冻结页面与字段”进入“开始按 Phase 1 骨架接线”时，推荐额外参考：
+
+- `E:\projects\mail_based_task_manager\docs\plans\README.md`
+- `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_control_plane_mainline_v0.1.md`
+- `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_phase1_execution_plan_v0.1.md`
+
+这些文档的作用是帮助 Android 侧理解：
+
+- repo-side 当前 active mainline 的读法
+- Phase 1 的切片顺序
+- 哪些协议对象会优先进入 PC/VPS 代码实现
+
+它们不替代：
+
+- `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
+- `docs/TASKMAIL-MAIL-RULES.md`
+- Android 侧 authority / companion docs
 
 ## 当前主线图
 
-截至 2026-03-23，Android TaskMail 的活跃工程主线应固定为三条：
+截至 2026-03-25，Android 侧 future-direction mainline 只保留一条：
 
-1. `new_task`
-2. `reply` / `/status`
-3. `[SYNC] Project list`
+1. `VPS-first 多 PC 控制面`
 
-### 1. `new_task`
+这条主线下，Android 侧当前不再把：
 
-当前读法：
+- `new_task`
+- `reply` / `/status`
+- `[SYNC] Project list`
 
-- formal-host `new_task` direct-first / mail-fallback 已经落地
-- durable evidence、request-first bind、review surface 都已经存在
-- 当前阶段不是继续开新 transport seam，也不是继续加 activation/config
-- 当前阶段是 observation / rollback guardrail
+继续读成三个并行扩 scope 的产品主线。
 
-因此：
+它们现在更准确的读法是：
 
-- 没有 fresh mismatch / rollback signal 时，不应再为 `new_task` 继续扩 planning 面积
+- 当前兼容面
+- 当前行为证据面
+- 过渡期 closeout / reference 资料
 
-### 2. `reply` / `/status`
+## Android 侧当前角色
 
-当前读法：
+在这条新主线下，Android 侧当前角色应这样理解：
 
-- guarded direct lane 已经存在
-- v1 scope 仍只限 `current-session plain reply` 与 `current-session /status`
-- `thread_105` 已正向证明 direct accepted path 可行
-- 当前剩余工作不是继续拉新 scope，而是把 closeout 做强
+### 1. 保持 current behavior 不撒谎
 
-因此：
+- 继续按 `CURRENT-STATUS` 与 `MAIL-RULES` 维护今天已经存在的 mail / direct 兼容能力
+- 不把 future-direction authority 提前写成当前协议已经完成切换
 
-- 继续围绕 stronger bind、PC fallback artifact gaps、relay-visible task root 前置条件推进
+### 2. 不再继续扩旧的 direct sidecar 主线
 
-### 3. `[SYNC] Project list`
+- `new_task`、`reply/status`、`[SYNC]` 现有 direct 切片保留 closeout / evidence 价值
+- 但后续不再默认围绕它们继续扩大产品主线面积
 
-当前读法：
+### 3. 为新的 VPS 控制面收口客户端抽象
 
-- `Project list` 读取、渲染、`Use this repo` 回填已经存在
-- `[SYNC]` request 当前已经推进到 direct-first
-- canonical `[SYNC] Project Folder List` mail 仍是唯一结果面
-- 当前问题不再是 Android 15 秒早超时，而是上游回流时间线仍可能偏慢
+Android 侧真正需要为新主线准备的，是后续与统一控制面接轨的抽象边界，例如：
 
-因此：
+- `pc`
+- `workspace`
+- `session`
+- `run`
+- `execution_policy`
+- `command`
+- `event`
+- `output_chunk`
+- `result`
+- `artifact`
 
-- 这条主线当前属于 active implementation / live closeout 阶段
+同时，Android 侧对这些抽象的用户读法，应以：
+
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
+
+为默认 authority，而不是回退到 mail thread 或底层协议对象直读。
+
+而 Android 侧对这些抽象的页面组织与页面状态映射，应默认继续读取：
+
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-information-architecture-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-viewstate-action-mapping-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`
+- `docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
+
+其中 `execution_policy` 当前应按以下稳定读法进入计划，而不要继续散落在旧 mail 字段或本地脚本参数里：
+
+- `backend = codex | opencode`
+- `profile` 作为稳定档位标签，而不是 raw model id
+- `permission = default | highest`
+- 可选 `backend_transport`
+- `resolved_model` 由目标 `PC` 按本地配置解析并回报
 
 ## 当前建议顺序
 
-1. 先保持 `new_task` 只读为 observation 主线，不再制造新的 decision note
-2. 再优先收口 `reply` / `/status` closeout，因为 direct lane 已有正向 live 样本，但强绑定还未最终关单
-3. 同步推进 `[SYNC]`，重点拿到 direct request 到 canonical reply 的同轮时间线，判断 Android follow-up refresh 是否需要扩大
+1. 先以 `taskmail-vps-first-control-plane-freeze-v0.1.md` 作为共享字段基线，稳定 `VPS-first 多 PC 控制面` 的领域模型与协议读法，包含 `backend / profile / permission / backend_transport` 的 `execution_policy`。
+2. Android 侧保持现有 mail/direct 兼容线稳定，不再继续把三条旧线扩成新的 owner planning。
+3. 在字段形状已冻结的前提下，按页面级 API 需求、Compose 页面骨架与主线页面信息架构推进 Android 新控制面的接入顺序。
+4. Android 编码阶段默认按 `taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md` 的 slice 顺序进入第一批骨架改造。
+5. 编码起手第一刀默认先按 `taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md` 落 `TaskSessionDetail` 的骨架改造。
+6. 与 PC 端的第一轮正式握手联调，默认按 `taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md` 判断是否已达到合适时机。
 
-## 当前 reference docs
+## 当前兼容 / closeout 参考线
 
-以下文档仍有现实约束价值，但不再是默认主线入口：
+以下文档继续保留，但它们不再构成未来唯一主线：
 
+- `taskmail-phase5-new-task-guarded-rollout-observation-plan-v0.1.md`
+- `taskmail-phase5-reply-status-android-implementation-plan-v0.1.md`
+- `taskmail-phase5-project-sync-android-implementation-plan-v0.1.md`
 - `taskmail-android-public-plaintext-direct-connect-authority-v0.1.md`
 - `taskmail-android-public-plaintext-direct-connect-plan-v0.1.md`
-- `taskmail-phase0-public-plaintext-baseline-v1.md`
-- `taskmail-phase2-direct-outbound-contract-v0.1.md`
-- `taskmail-phase4-dual-stack-boundary-freeze-v0.1.md`
-- `phase4_dual_stack_parity_checklist.md`
-- `phase4_mismatch_ledger.md`
-- `phase4_rollback_trigger_note.md`
 
 ## 当前结论
 
-当前最重要的规划动作不是继续扩文档，而是稳定以下读法：
+当前最重要的规划动作，不再是继续为旧的 direct-mail 混合结构增写 planning，而是把 Android 侧 future-direction 读法统一收敛到：
 
-- `new_task` 已从实施主线降到观察主线
-- `reply` / `/status` 仍是 guarded closeout 主线
-- `[SYNC] Project list` 是新近抬升出来的 active 主线，必须从 handoff 提升为 owner planning，而不是继续躺在会话记录里
+- 一个 `VPS-first` 主控制面
+- 多个 `PC` 执行节点
+- `pc-scoped workspace`
+- 一等 `execution_policy`
+- 结构化 `command / event / output_chunk / result / artifact`

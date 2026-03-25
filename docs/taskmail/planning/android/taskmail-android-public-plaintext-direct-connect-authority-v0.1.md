@@ -2,6 +2,19 @@
 
 更新时间：2026-03-21
 
+> 2026-03-25 说明：
+>
+> 本文已被新的主线 authority 取代：
+>
+> - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
+>
+> 当前应把本文读作：
+>
+> - `2026-03-21` 那次 public plaintext direct-connect 转向的历史 authority
+> - 后续 `VPS-first 多 PC 控制面` 主线之前的过渡阶段背景材料
+>
+> 本文不再是当前 active planning authority。
+
 ## 状态
 
 本文是 2026-03-21 选定的 public-IP plaintext direct-connect 方向在 Android 侧的当前宏观规划 authority。

@@ -58,6 +58,8 @@ internal class TaskNewTaskViewModel(
             Event.SendClicked -> sendTask()
             Event.DismissSendError -> updateState { it.copy(sendError = null) }
             is Event.SenderAccountSelected,
+            is Event.PcChanged,
+            is Event.WorkspaceChanged,
             is Event.BackendSelected,
             is Event.RepoChanged,
             is Event.TaskChanged,
@@ -76,6 +78,8 @@ internal class TaskNewTaskViewModel(
     private fun handleInputEvent(event: Event) {
         when (event) {
             is Event.SenderAccountSelected,
+            is Event.PcChanged,
+            is Event.WorkspaceChanged,
             is Event.BackendSelected,
             is Event.RepoChanged,
             is Event.TaskChanged,
@@ -96,6 +100,20 @@ internal class TaskNewTaskViewModel(
     private fun handleRequiredFieldEvent(event: Event) {
         when (event) {
             is Event.SenderAccountSelected -> handleSenderAccountSelected(event.accountUuid)
+
+            is Event.PcChanged -> updateState {
+                it.copy(
+                    pcId = event.value,
+                    sendError = null,
+                )
+            }
+
+            is Event.WorkspaceChanged -> updateState {
+                it.copy(
+                    workspaceId = event.value,
+                    sendError = null,
+                )
+            }
 
             is Event.BackendSelected -> updateState {
                 it.copy(
@@ -532,6 +550,8 @@ private data class ValidationResult(
                     .map(String::trim)
                     .filter(String::isNotEmpty)
                     .toList(),
+                pcId = state.pcId.trim().takeIf { it.isNotEmpty() },
+                workspaceId = state.workspaceId.trim().takeIf { it.isNotEmpty() },
             )
         } else {
             null

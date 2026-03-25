@@ -249,6 +249,27 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `history clicked should expose history sheet state`() = runMviTest {
+        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository())) {
+            start()
+            openHistory()
+            assertThat(viewModelState().isHistoryVisible).isEqualTo(true)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `history dismissed should hide history sheet state`() = runMviTest {
+        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository())) {
+            start()
+            openHistory()
+            dismissHistory()
+            assertThat(viewModelState().isHistoryVisible).isEqualTo(false)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `load detail should prefill structured answer template for multi question sessions`() = runMviTest {
         with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(detail = multiQuestionDetail()))) {
             start()
@@ -1308,6 +1329,14 @@ private class TaskSessionDetailViewModelRobot(
     suspend fun refresh() {
         viewModel.event(TaskSessionDetailContract.Event.RefreshClicked)
         mviContext.advanceUntilIdle()
+    }
+
+    fun openHistory() {
+        viewModel.event(TaskSessionDetailContract.Event.HistoryClicked)
+    }
+
+    fun dismissHistory() {
+        viewModel.event(TaskSessionDetailContract.Event.HistoryDismissed)
     }
 
     suspend fun emitLocalChange() {

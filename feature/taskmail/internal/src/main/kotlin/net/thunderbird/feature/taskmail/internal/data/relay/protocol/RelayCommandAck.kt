@@ -17,6 +17,8 @@ internal data class RelayCommandAck(
     @SerialName("payload_schema")
     val payloadSchema: String? = null,
     val accepted: Boolean,
+    @SerialName("ack_status")
+    val ackStatus: String? = null,
     @SerialName("receipt_id")
     val receiptId: String,
     @SerialName("received_at")
@@ -29,6 +31,16 @@ internal data class RelayCommandAck(
     @SerialName("error_message")
     val errorMessage: String? = null,
 ) {
+    val isAcceptedLike: Boolean
+        get() = when (ackStatus?.trim()?.lowercase()) {
+            "accepted",
+            "accepted_but_queued",
+            -> true
+
+            "rejected" -> false
+            else -> accepted
+        }
+
     companion object {
         const val MESSAGE_TYPE = "command_ack"
     }

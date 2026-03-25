@@ -200,12 +200,12 @@ internal class RelayTaskMailTransportProbeSender(
     ): TaskMailTransportProbeDispatchResult {
         recordEvent(
             context = context,
-            eventType = if (commandAck.accepted) {
+            eventType = if (commandAck.isAcceptedLike) {
                 "android_relay_probe_submitted"
             } else {
                 "android_probe_dispatch_failed"
             },
-            summary = if (commandAck.accepted) {
+            summary = if (commandAck.isAcceptedLike) {
                 "Relay control command accepted."
             } else {
                 "Relay control command rejected."
@@ -215,7 +215,7 @@ internal class RelayTaskMailTransportProbeSender(
             errorMessage = commandAck.errorMessage,
         )
 
-        if (!commandAck.accepted) {
+        if (!commandAck.isAcceptedLike) {
             return context.toDispatchResult(
                 status = TaskMailTransportProbeDispatchStatus.Rejected,
                 receiptId = commandAck.receiptId,
@@ -270,7 +270,7 @@ internal class RelayTaskMailTransportProbeSender(
             receiptId = receiptId,
             resultId = relayResult.resultId,
             relayResultType = relayResult.resultType,
-            relayStatus = relayResult.status,
+            relayStatus = relayResult.terminalStatus,
         )
 
         return context.toDispatchResult(
@@ -278,7 +278,7 @@ internal class RelayTaskMailTransportProbeSender(
             receiptId = receiptId,
             resultId = relayResult.resultId,
             resultType = relayResult.resultType,
-            resultStatus = relayResult.status,
+            resultStatus = relayResult.terminalStatus,
         )
     }
 
@@ -485,7 +485,7 @@ private fun net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayE
 }
 
 private fun RelayResult.toDispatchStatus(): TaskMailTransportProbeDispatchStatus {
-    return when (status) {
+    return when (terminalStatus) {
         "completed" -> TaskMailTransportProbeDispatchStatus.ResultCompleted
         "partial" -> TaskMailTransportProbeDispatchStatus.ResultPartial
         "failed" -> TaskMailTransportProbeDispatchStatus.ResultFailed

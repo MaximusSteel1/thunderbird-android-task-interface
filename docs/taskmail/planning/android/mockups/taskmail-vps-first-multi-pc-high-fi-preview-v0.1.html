@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskMail VPS-First 多 PC 高保真预览 v0.1</title>
+  <style>
+    :root {
+      --bg: #f4f2ec;
+      --surface: #fffdf8;
+      --surface-2: #f8f5ef;
+      --surface-3: #f1ede4;
+      --line: #ddd5c6;
+      --text: #1e1d1a;
+      --muted: #6f6b62;
+      --accent: #17624d;
+      --accent-soft: #d7eadf;
+      --warn: #9c4f1a;
+      --warn-soft: #f7e0d1;
+      --danger: #a13333;
+      --danger-soft: #f5d8d8;
+      --live: #1f4c8f;
+      --live-soft: #dbe7f7;
+      --shadow: 0 10px 30px rgba(74, 61, 39, 0.10);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --phone-w: 390px;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at top left, #f1e7d8 0, rgba(241, 231, 216, 0) 28%),
+        radial-gradient(circle at top right, #e0ece4 0, rgba(224, 236, 228, 0) 26%),
+        linear-gradient(180deg, #f7f4ef 0%, #efe9de 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .hero {
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(23, 98, 77, 0.08);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 18px 0 10px;
+      font-size: clamp(34px, 5vw, 60px);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      max-width: 880px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    .screens {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(280px, 1fr));
+      gap: 28px;
+      align-items: start;
+    }
+
+    .screen-wrap {
+      display: grid;
+      gap: 16px;
+    }
+
+    .screen-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .screen-label h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .screen-label .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .phone {
+      width: 100%;
+      max-width: var(--phone-w);
+      margin: 0 auto;
+      background: linear-gradient(180deg, #fbfaf7 0%, #f2eee5 100%);
+      border: 1px solid rgba(119, 103, 76, 0.12);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .phone-inner {
+      border-radius: 26px;
+      overflow: hidden;
+      background: var(--surface);
+      min-height: 820px;
+      border: 1px solid rgba(119, 103, 76, 0.08);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      background: rgba(255, 253, 248, 0.92);
+      border-bottom: 1px solid rgba(119, 103, 76, 0.08);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar h3 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+
+    .icon-btn, .icon-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid rgba(119, 103, 76, 0.08);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .body {
+      padding: 16px 16px 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .cta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, #1f7057 0%, #114d3d 100%);
+      color: white;
+      box-shadow: 0 14px 28px rgba(17, 77, 61, 0.18);
+    }
+
+    .cta .title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .cta .sub {
+      margin-top: 4px;
+      color: rgba(255,255,255,0.82);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+
+    .section-head .title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .section-head .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .card {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(119, 103, 76, 0.10);
+    }
+
+    .card.urgent {
+      background: linear-gradient(180deg, #fff7f1 0%, #f8e3d2 100%);
+      border-color: rgba(156, 79, 26, 0.18);
+    }
+
+    .card.live {
+      background: linear-gradient(180deg, #f7fbff 0%, #e2eefb 100%);
+      border-color: rgba(31, 76, 143, 0.14);
+    }
+
+    .card.done {
+      background: linear-gradient(180deg, #f8fcf8 0%, #e4f2e8 100%);
+      border-color: rgba(23, 98, 77, 0.12);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .primary {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .secondary, .micro {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .secondary { font-size: 12px; }
+    .micro { font-size: 11px; }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(30, 29, 26, 0.06);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .badge.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .badge.ok {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .badge.live {
+      background: var(--live-soft);
+      color: var(--live);
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(119, 103, 76, 0.12);
+    }
+
+    .list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .list-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,0.52);
+      border: 1px solid rgba(119, 103, 76, 0.08);
+    }
+
+    .form-card {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border-radius: var(--radius-xl);
+      background: var(--surface);
+      border: 1px solid rgba(119, 103, 76, 0.10);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field label {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .select, .textarea, .policy {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(119, 103, 76, 0.12);
+      background: var(--surface-2);
+    }
+
+    .select {
+      padding: 14px 14px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .textarea {
+      min-height: 196px;
+      padding: 16px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .policy {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .policy-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.60);
+    }
+
+    .primary-btn, .secondary-btn {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 16px 18px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      cursor: default;
+    }
+
+    .primary-btn {
+      background: linear-gradient(135deg, #194f3f 0%, #0f3f31 100%);
+      color: white;
+      box-shadow: 0 12px 22px rgba(15, 63, 49, 0.16);
+    }
+
+    .secondary-btn {
+      background: var(--surface-3);
+      color: var(--text);
+    }
+
+    .hero-card {
+      padding: 18px;
+      border-radius: 0 0 24px 24px;
+      background:
+        linear-gradient(180deg, rgba(252, 249, 241, 0.98) 0%, rgba(245, 239, 228, 1) 100%);
+      border-bottom: 1px solid rgba(119, 103, 76, 0.10);
+      display: grid;
+      gap: 12px;
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .status-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #f5f9ff 0%, #e4eef8 100%);
+      border: 1px solid rgba(31, 76, 143, 0.14);
+      display: grid;
+      gap: 10px;
+    }
+
+    .status-banner {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fff6ef 0%, #f8e3d3 100%);
+      border: 1px solid rgba(156, 79, 26, 0.18);
+      display: grid;
+      gap: 4px;
+    }
+
+    .stream {
+      padding: 16px;
+      border-radius: 20px;
+      background: #19212c;
+      color: #eef4fb;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.65;
+      display: grid;
+      gap: 8px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .stream .line-muted {
+      color: #95a8bf;
+    }
+
+    .result-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #f8fcf8 0%, #e5f2e9 100%);
+      border: 1px solid rgba(23, 98, 77, 0.14);
+      display: grid;
+      gap: 10px;
+    }
+
+    .context-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #fffaf3 0%, #efe6d7 100%);
+      border: 1px solid rgba(119, 103, 76, 0.14);
+      display: grid;
+      gap: 10px;
+    }
+
+    .round-card {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.68);
+      border: 1px solid rgba(119, 103, 76, 0.08);
+      display: grid;
+      gap: 8px;
+    }
+
+    .artifact-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .artifact {
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--surface-2);
+      border: 1px solid rgba(119, 103, 76, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .composer {
+      padding: 16px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, #fffefa 0%, #f5f0e6 100%);
+      border: 1px solid rgba(119, 103, 76, 0.10);
+      display: grid;
+      gap: 12px;
+      position: sticky;
+      bottom: 0;
+    }
+
+    .composer-input {
+      min-height: 86px;
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.88);
+      border: 1px solid rgba(119, 103, 76, 0.10);
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr auto;
+      gap: 10px;
+    }
+
+    .mini-btn {
+      padding: 13px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(119, 103, 76, 0.10);
+      background: var(--surface-2);
+      font-weight: 800;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .caption {
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.72);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      border: 1px solid rgba(119, 103, 76, 0.08);
+    }
+
+    @media (max-width: 1200px) {
+      .screens {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-wrap {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div class="eyebrow">TaskMail High-Fidelity Preview v0.1</div>
+      <h1>VPS-First 多 PC 工作台</h1>
+      <p>
+        这份静态 mockup 把首页、新任务页、Session 页的高保真方向落成可直接打开的页面草稿。
+        目标不是 mail inbox，也不是聊天玩具，而是一个适合长时间盯进度、继续任务和收结果的移动端轻量工作台。
+        Session 页默认先看当前态，前续对话通过最近上下文摘要和单独的历史上下文层进入。
+      </p>
+    </div>
+
+    <div class="screens">
+      <section class="screen-wrap">
+        <div class="screen-label">
+          <h2>首页 / 工作台</h2>
+          <div class="hint">关注顺序：需要我处理 → 进行中 → 最近结束</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="stack">
+                <h3>TaskMail</h3>
+                <div class="micro">VPS-first workspace console</div>
+              </div>
+              <div class="row">
+                <div class="icon-btn">筛选</div>
+                <div class="icon-btn">设置</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="cta">
+                <div>
+                  <div class="title">新建任务</div>
+                  <div class="sub">选择电脑与工作目录，开始一条新的 session。</div>
+                </div>
+                <div class="icon-pill">+</div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">需要我处理</div>
+                  <div class="meta">2 条</div>
+                </div>
+                <div class="card urgent">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">thread_041 · 需要你的回复</div>
+                      <div class="secondary">Home PC · android_task_manager</div>
+                    </div>
+                    <div class="badge warn">Awaiting Input</div>
+                  </div>
+                  <div class="secondary">
+                    它已经整理完当前 smoke 结论，正在等你确认是否切换到 VPS-first 接口草案。
+                  </div>
+                  <div class="badge-row">
+                    <div class="badge">Session</div>
+                    <div class="badge">Codex / Strong</div>
+                    <div class="badge">2 分钟前</div>
+                  </div>
+                </div>
+                <div class="card urgent" style="background: linear-gradient(180deg,#fff9f4 0%,#f6e7db 100%);">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">thread_038 · 失败</div>
+                      <div class="secondary">Office PC · mail_runner</div>
+                    </div>
+                    <div class="badge warn">Failed</div>
+                  </div>
+                  <div class="secondary">
+                    上一次运行在 profile 解析阶段被拒绝。可以打开后直接调整执行设置。
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">进行中</div>
+                  <div class="meta">2 条</div>
+                </div>
+                <div class="card live">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">thread_023 · 运行中</div>
+                      <div class="secondary">Home PC · android_task_manager</div>
+                    </div>
+                    <div class="badge live">Live</div>
+                  </div>
+                  <div class="secondary">正在整理 Android 页面状态与 VPS 对象映射…</div>
+                </div>
+                <div class="card live" style="background: linear-gradient(180deg,#f8fbff 0%,#ebf3fa 100%);">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">thread_017 · 排队中</div>
+                      <div class="secondary">Mini PC · taskmail_workspace</div>
+                    </div>
+                    <div class="badge">Queued</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">最近结束</div>
+                  <div class="meta">Today</div>
+                </div>
+                <div class="card done">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">thread_012 · 已完成</div>
+                      <div class="secondary">Summary + 2 artifacts</div>
+                    </div>
+                    <div class="badge ok">Done</div>
+                  </div>
+                  <div class="secondary">产出了 closeout bundle 和 status evidence，结果可以直接打开查看。</div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">可用电脑</div>
+                  <div class="meta">3 台</div>
+                </div>
+                <div class="list">
+                  <div class="list-item">
+                    <div class="stack">
+                      <div class="primary">Home PC</div>
+                      <div class="secondary">3 workspaces · last seen 5s ago</div>
+                    </div>
+                    <div class="badge ok">Online</div>
+                  </div>
+                  <div class="list-item">
+                    <div class="stack">
+                      <div class="primary">Office PC</div>
+                      <div class="secondary">2 workspaces · last seen 4m ago</div>
+                    </div>
+                    <div class="badge">Stale</div>
+                  </div>
+                  <div class="list-item">
+                    <div class="stack">
+                      <div class="primary">Mini PC</div>
+                      <div class="secondary">1 workspace · currently unavailable</div>
+                    </div>
+                    <div class="badge" style="background: var(--danger-soft); color: var(--danger);">Offline</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="caption">
+                首页的主对象是 session，不是 PC。PC 和 workspace 在这里提供环境上下文，但不抢走主要视觉焦点。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen-wrap">
+        <div class="screen-label">
+          <h2>新任务页</h2>
+          <div class="hint">重心：任务输入 > 路由选择 > 执行策略</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="row">
+                <div class="icon-btn">返回</div>
+                <h3>新建任务</h3>
+              </div>
+              <div class="icon-btn">帮助</div>
+            </div>
+            <div class="body">
+              <div class="form-card">
+                <div class="field">
+                  <label>目标电脑</label>
+                  <div class="select">
+                    <span>Home PC</span>
+                    <span class="micro">3 workspaces</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>工作目录</label>
+                  <div class="select">
+                    <span>android_task_manager / feature/taskmail</span>
+                    <span class="micro">workspace</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>任务内容</label>
+                  <div class="textarea">
+                    请基于当前 VPS-first 主线，起草首页、新任务页和 Session 页的 Compose 原型页面。
+                    先只做 ViewState 和静态预览，不直接对接实时 transport。
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>高级执行设置</label>
+                  <div class="policy">
+                    <div class="policy-item">
+                      <div class="stack">
+                        <div class="primary">Backend</div>
+                        <div class="secondary">执行后端</div>
+                      </div>
+                      <div class="badge">Codex</div>
+                    </div>
+                    <div class="policy-item">
+                      <div class="stack">
+                        <div class="primary">Profile</div>
+                        <div class="secondary">运行档位</div>
+                      </div>
+                      <div class="badge">Strong</div>
+                    </div>
+                    <div class="policy-item">
+                      <div class="stack">
+                        <div class="primary">Permission</div>
+                        <div class="secondary">执行权限档位</div>
+                      </div>
+                      <div class="badge ok">Highest</div>
+                    </div>
+                    <div class="policy-item">
+                      <div class="stack">
+                        <div class="primary">Transport</div>
+                        <div class="secondary">实现细节</div>
+                      </div>
+                      <div class="badge">Auto</div>
+                    </div>
+                  </div>
+                </div>
+
+                <button class="primary-btn">发送任务</button>
+              </div>
+
+              <div class="caption">
+                `profile / permission` 在这里被当作“这次怎么跑”的高级执行设置，而不是全局权限中心。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen-wrap">
+        <div class="screen-label">
+          <h2>Session 页</h2>
+          <div class="hint">主次：状态 → 最近上下文 → 可操作性 → 直播 → 结果</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="row">
+                <div class="icon-btn">返回</div>
+                <h3>Session</h3>
+              </div>
+              <div class="icon-btn">更多</div>
+            </div>
+
+            <div class="hero-card">
+              <div class="header-title">起草 VPS-first 页面级 API 需求</div>
+              <div class="badge-row">
+                <div class="badge">Home PC</div>
+                <div class="badge">feature/taskmail</div>
+                <div class="badge live">session_023</div>
+              </div>
+            </div>
+
+            <div class="body">
+              <div class="status-banner">
+                <div class="primary">需要你的回复</div>
+                <div class="secondary">系统已经整理完页面级 API 需求草案，正在等你确认是否直接进入 Compose skeleton。</div>
+              </div>
+
+              <div class="status-card">
+                <div class="row">
+                  <div class="stack">
+                    <div class="primary">当前状态：Awaiting User Input</div>
+                    <div class="secondary">最近一次动作：reply/status closeout discussion</div>
+                  </div>
+                  <div class="badge warn">Needs Reply</div>
+                </div>
+                <div class="badge-row">
+                  <div class="badge">Backend: Codex</div>
+                  <div class="badge">Profile: Strong</div>
+                  <div class="badge">Permission: Highest</div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">最近上下文</div>
+                  <div class="meta">Continue this session</div>
+                </div>
+                <div class="context-card">
+                  <div class="stack">
+                    <div class="primary">上一轮：先做高保真稿</div>
+                    <div class="secondary">最近结论：三张核心页面的静态 HTML 预览已落地，下一步是确认是否直接进入 Compose skeleton。</div>
+                  </div>
+                  <div class="badge-row">
+                    <div class="badge">最近结果：Ready</div>
+                    <div class="badge">2 artifacts</div>
+                    <div class="badge">1 分钟前</div>
+                  </div>
+                  <div class="row">
+                    <div class="secondary">如果继续回复，大多数场景下不需要先翻完整历史。</div>
+                    <div class="badge">查看前续</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">过程直播</div>
+                  <div class="meta">Live stream</div>
+                </div>
+                <div class="stream">
+                  <div><span class="line-muted">assistant</span> 读取 Android 侧 authority / roadmap / control-plane 草案…</div>
+                  <div><span class="line-muted">system</span> freeze: user requirements authority</div>
+                  <div><span class="line-muted">assistant</span> 起草信息架构、页面状态映射、低保真 UI 方案…</div>
+                  <div><span class="line-muted">assistant</span> 当前正在整理页面级 API 需求，准备进入 Compose skeleton 阶段。</div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">最新结果</div>
+                  <div class="meta">Canonical summary</div>
+                </div>
+                <div class="result-card">
+                  <div class="row">
+                    <div class="stack">
+                      <div class="primary">文档链已收口</div>
+                      <div class="secondary">用户需求 / IA / ViewState / 低保真 / 视觉方向 / 页面级 API 已齐。</div>
+                    </div>
+                    <div class="badge ok">Ready</div>
+                  </div>
+                  <div class="secondary">
+                    下一步建议：直接起 Compose 页面 skeleton，而不是继续加抽象文档。
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">文件</div>
+                  <div class="meta">2 artifacts</div>
+                </div>
+                <div class="artifact-grid">
+                  <div class="artifact">
+                    <div class="stack">
+                      <div class="primary">taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md</div>
+                      <div class="secondary">Markdown · 8.4 KB</div>
+                    </div>
+                    <div class="badge">打开</div>
+                  </div>
+                  <div class="artifact">
+                    <div class="stack">
+                      <div class="primary">taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html</div>
+                      <div class="secondary">HTML mockup · preview</div>
+                    </div>
+                    <div class="badge">预览</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-head">
+                  <div class="title">历史上下文层预览</div>
+                  <div class="meta">按回合组织</div>
+                </div>
+                <div class="card">
+                  <div class="round-card">
+                    <div class="row">
+                      <div class="primary">最近回合</div>
+                      <div class="badge ok">展开</div>
+                    </div>
+                    <div class="secondary">你：先做高保真稿</div>
+                    <div class="secondary">系统：已生成高保真 HTML 预览，并建议下一步进入 Compose skeleton。</div>
+                  </div>
+                  <div class="round-card">
+                    <div class="row">
+                      <div class="primary">更早回合</div>
+                      <div class="badge">折叠</div>
+                    </div>
+                    <div class="secondary">按回合卡片收纳，不默认把完整历史铺满 Session 首页。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="composer">
+                <div class="primary">继续这条任务</div>
+                <div class="composer-input">可以开始起 Compose skeleton，首页、新任务页、Session 页都先做静态 ViewState。</div>
+                <div class="actions">
+                  <div class="mini-btn">查看状态</div>
+                  <div class="primary-btn" style="padding: 13px 14px; border-radius: 16px;">发送回复</div>
+                  <div class="mini-btn">更多</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

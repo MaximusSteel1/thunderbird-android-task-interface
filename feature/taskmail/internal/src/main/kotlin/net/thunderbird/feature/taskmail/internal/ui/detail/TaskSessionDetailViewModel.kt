@@ -129,7 +129,8 @@ internal class TaskSessionDetailViewModel(
                 refreshTransportBeforeLoad = true,
                 syncCacheBeforeLoad = true,
             )
-
+            Event.HistoryClicked -> updateState { it.copy(isHistoryVisible = true) }
+            Event.HistoryDismissed -> updateState { it.copy(isHistoryVisible = false) }
             Event.DismissSendError -> updateState { it.copy(sendError = null) }
             Event.BackClicked -> emitEffect(Effect.NavigateBack)
         }
@@ -986,6 +987,18 @@ private fun TaskSessionDetail.toUiState(
         .map(TaskQuestionCapsule::toUiState)
         .toImmutableList()
     val replyUiState = pendingQuestionItems.toReplyUiState(effectiveStatus)
+    val mergedTimeline = mergeTimeline(
+        mailTimeline = timeline,
+        directTimeline = directTimeline,
+    )
+        .asReversed()
+        .map(TaskTimelineItem::toUiState)
+        .toImmutableList()
+    val artifactItems = mergedTimeline
+        .flatMap(TaskTimelineItemUi::attachments)
+        .distinctBy(TaskTimelineAttachmentUi::id)
+        .map(TaskTimelineAttachmentUi::toArtifactUi)
+        .toImmutableList()
 
     return TaskSessionDetailUiState(
         sessionName = sessionName,
@@ -994,6 +1007,21 @@ private fun TaskSessionDetail.toUiState(
         repoPath = repoPath,
         workdir = workdir.toDisplayWorkdir(),
         lastSummary = effectiveSummary,
+        recentContext = buildRecentContext(
+            timeline = mergedTimeline,
+            summary = effectiveSummary,
+            pendingQuestions = pendingQuestionItems,
+        ),
+        resultSummary = buildResultSummary(
+            status = effectiveStatus,
+            summary = effectiveSummary,
+            artifactCount = artifactItems.size,
+        ),
+        artifacts = artifactItems,
+        historyPreview = mergedTimeline
+            .take(HISTORY_PREVIEW_COUNT)
+            .map(TaskTimelineItemUi::toHistoryRoundUi)
+            .toImmutableList(),
         pendingQuestions = pendingQuestionItems,
         quickAnswerChoices = replyUiState.quickAnswerChoices,
         requiresStructuredReply = replyUiState.requiresStructuredReply,
@@ -1005,13 +1033,7 @@ private fun TaskSessionDetail.toUiState(
         canReply = canReply,
         canQueryStatus = canReply,
         replyUnavailableReason = if (canReply) null else "Reply unavailable for this session.",
-        timeline = mergeTimeline(
-            mailTimeline = timeline,
-            directTimeline = directTimeline,
-        )
-            .asReversed()
-            .map(TaskTimelineItem::toUiState)
-            .toImmutableList(),
+        timeline = mergedTimeline,
     )
 }
 
@@ -1026,6 +1048,90 @@ private fun TaskTimelineItem.toUiState(): TaskTimelineItemUi {
         renderMode = body.renderMode,
         richDocument = body.richDocument,
         attachments = attachments.map(TaskMessageAttachment::toUiState).toImmutableList(),
+    )
+}
+
+private fun buildRecentContext(
+    timeline: ImmutableList<TaskTimelineItemUi>,
+    summary: String?,
+    pendingQuestions: ImmutableList<TaskPendingQuestionUi>,
+): TaskRecentContextUi? {
+    val latestUserMessage = timeline
+        .firstOrNull { item -> item.direction.equals("Outgoing", ignoreCase = true) }
+        ?.plainText
+        ?.takeIf(String::isNotBlank)
+    val latestAssistantMessage = timeline
+        .firstOrNull { item ->
+            item.direction.equals("Incoming", ignoreCase = true) ||
+                item.direction.equals("System", ignoreCase = true)
+        }
+        ?.plainText
+        ?.takeIf(String::isNotBlank)
+    val waitingForUserText = pendingQuestions.firstOrNull()?.questionText
+        ?: summary?.takeIf(String::isNotBlank)
+
+    if (latestUserMessage == null && latestAssistantMessage == null && waitingForUserText == null) {
+        return null
+    }
+
+    return TaskRecentContextUi(
+        latestUserMessage = latestUserMessage,
+        latestAssistantMessage = latestAssistantMessage,
+        waitingForUserText = waitingForUserText,
+    )
+}
+
+private fun buildResultSummary(
+    status: TaskMailSessionStatus,
+    summary: String?,
+    artifactCount: Int,
+): TaskResultSummaryUi {
+    val headline = when (status) {
+        TaskMailSessionStatus.Done -> "Latest run completed"
+        TaskMailSessionStatus.Failed -> "Latest run failed"
+        TaskMailSessionStatus.Running -> "Run in progress"
+        TaskMailSessionStatus.WaitingUser -> "Waiting for your reply"
+        TaskMailSessionStatus.Paused -> "Session paused"
+        else -> "Latest session result"
+    }
+    val supportingText = buildList {
+        summary?.takeIf(String::isNotBlank)?.let(::add)
+        if (artifactCount > 0) {
+            add("$artifactCount file" + if (artifactCount == 1) "" else "s")
+        }
+    }
+        .joinToString(separator = " · ")
+        .ifBlank { null }
+
+    return TaskResultSummaryUi(
+        headline = headline,
+        supportingText = supportingText,
+        statusLabel = status.name,
+    )
+}
+
+private fun TaskTimelineAttachmentUi.toArtifactUi(): TaskSessionArtifactUi {
+    val supportingText = buildList {
+        contentType?.takeIf(String::isNotBlank)?.let(::add)
+        sizeBytes?.takeIf { it > 0 }?.let { add("${it} B") }
+    }
+        .joinToString(separator = " · ")
+        .ifBlank { null }
+
+    return TaskSessionArtifactUi(
+        id = id,
+        title = displayName,
+        supportingText = supportingText,
+    )
+}
+
+private fun TaskTimelineItemUi.toHistoryRoundUi(): TaskHistoryRoundUi {
+    return TaskHistoryRoundUi(
+        id = id,
+        title = summary ?: statusLabel ?: direction,
+        summary = statusLabel,
+        statusLabel = statusLabel,
+        messagePreview = plainText.takeIf(String::isNotBlank),
     )
 }
 
@@ -1144,6 +1250,8 @@ private fun State.resolveDraftText(detail: TaskSessionDetailUiState): String {
         else -> currentDraft
     }
 }
+
+private const val HISTORY_PREVIEW_COUNT = 5
 
 private fun TaskMailReplyResult.toUiSendResult(
     successMessage: String,

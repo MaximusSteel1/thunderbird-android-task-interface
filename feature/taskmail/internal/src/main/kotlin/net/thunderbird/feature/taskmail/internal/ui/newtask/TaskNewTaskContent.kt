@@ -133,6 +133,11 @@ private fun TaskNewTaskForm(
             onEvent = onEvent,
         )
 
+        controlTargetItems(
+            state = state,
+            onEvent = onEvent,
+        )
+
         requiredItems(
             state = state,
             onEvent = onEvent,
@@ -227,6 +232,50 @@ private fun LazyListScope.requiredItems(
                 label = "Title",
                 isRequired = true,
                 errorMessage = state.titleError,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.controlTargetItems(
+    state: TaskNewTaskContract.State,
+    onEvent: (TaskNewTaskContract.Event) -> Unit,
+) {
+    item {
+        TaskSectionHeader(
+            title = "Control target",
+            supportingText = "Prepare the future VPS-first route target. These stay optional while repo-based sending is still active.",
+        )
+    }
+
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TaskSectionHeader(
+                title = "PC ID",
+                supportingText = "Target PC for the future control-plane session.",
+            )
+            TextInput(
+                onTextChange = {
+                    onEvent(TaskNewTaskContract.Event.PcChanged(it))
+                },
+                text = state.pcId,
+                label = "PC ID",
+            )
+        }
+    }
+
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TaskSectionHeader(
+                title = "Workspace ID",
+                supportingText = "Target workspace on the selected PC.",
+            )
+            TextInput(
+                onTextChange = {
+                    onEvent(TaskNewTaskContract.Event.WorkspaceChanged(it))
+                },
+                text = state.workspaceId,
+                label = "Workspace ID",
             )
         }
     }
