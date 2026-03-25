@@ -33,6 +33,10 @@
 
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
 
+同仓配套 Android-facing facade authority：
+
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-facing-facade-authority-v0.1.md`
+
 ## 目的
 
 本文用于把 TaskMail 的 future-direction authority 从：
@@ -139,6 +143,7 @@
 
 - 本文
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-facing-facade-authority-v0.1.md`
 - `docs/taskmail/planning/platform/taskmail-multi-pc-control-plane-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
 - current-truth 文档

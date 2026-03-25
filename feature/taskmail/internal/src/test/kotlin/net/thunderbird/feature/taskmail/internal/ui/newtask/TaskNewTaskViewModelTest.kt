@@ -11,33 +11,28 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.core.android.account.LegacyAccountDto
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSenderAccountSource
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
-import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
-import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionAckStatus
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionBinding
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionClient
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionResult
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionSubmitAck
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTaskSendRecordRepository
+import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
 
 class TaskNewTaskViewModelTest {
 
@@ -193,7 +188,7 @@ class TaskNewTaskViewModelTest {
             changeTask("Audit the new flow")
             send()
             assertThat(viewModelState().validationErrors.senderAccountError).isEqualTo("Select the sending account.")
-            assertThat(directSendCallCount()).isEqualTo(0)
+            assertThat(createSessionCallCount()).isEqualTo(0)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -206,6 +201,8 @@ class TaskNewTaskViewModelTest {
             toggleAdvanced()
             changeTimeout("0")
             send()
+            assertThat(viewModelState().validationErrors.pcError).isEqualTo("Select a target PC.")
+            assertThat(viewModelState().validationErrors.workspaceError).isEqualTo("Select a workspace.")
             assertThat(viewModelState().validationErrors.backendError).isEqualTo("Select a backend.")
             assertThat(viewModelState().validationErrors.repoError).isEqualTo("Repository bridge is required.")
             assertThat(viewModelState().validationErrors.taskError).isEqualTo("Task details are required.")
@@ -213,7 +210,7 @@ class TaskNewTaskViewModelTest {
             assertThat(viewModelState().validationErrors.timeoutError).isEqualTo("Timeout must be a positive integer.")
             assertThat(viewModelState().executionPolicyEditor.timeoutText).isEqualTo("0")
             assertThat(viewModelState().executionPolicyEditor.isExpanded).isEqualTo(true)
-            assertThat(directSendCallCount()).isEqualTo(0)
+            assertThat(createSessionCallCount()).isEqualTo(0)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -223,16 +220,17 @@ class TaskNewTaskViewModelTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow\nList only blockers.")
             send()
 
-            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "[Relay] Task request sent. It will appear after the first TaskMail update arrives.",
+                        "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
@@ -246,8 +244,6 @@ class TaskNewTaskViewModelTest {
                     receiptId = "receipt-1",
                 ),
             )
-            assertThat(bootstrapCallCount()).isEqualTo(1)
-            assertThat(disconnectCallCount()).isEqualTo(1)
             assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(
                 TaskMailNewTaskSendRecord(
                     recordedAt = 456L,
@@ -273,14 +269,20 @@ class TaskNewTaskViewModelTest {
             TaskNewTaskViewModelRobot(
                 this,
                 senderAccounts = listOf(primarySenderAccount),
-                bootstrapResult = RelayBootstrapResult(
-                    status = RelayBootstrapStatus.NotConfigured,
-                    detailMessage = "Relay host, port, and transport token are required.",
+                createSessionResult = TaskMailCreateSessionResult.Failed(
+                    errorMessage = "Relay host, port, and transport token are required.",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.NotConfigured,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        errorMessage = "Relay host, port, and transport token are required.",
+                    ),
                 ),
             ),
         ) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
@@ -289,7 +291,7 @@ class TaskNewTaskViewModelTest {
             assertThat(viewModelState().submitState.sendError).isEqualTo(
                 "Relay host, port, and transport token are required.",
             )
-            assertThat(directSendCallCount()).isEqualTo(0)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
                 TaskMailDirectSendEvidence(
                     bootstrapStatus = RelayBootstrapStatus.NotConfigured,
@@ -298,8 +300,6 @@ class TaskNewTaskViewModelTest {
                     errorMessage = "Relay host, port, and transport token are required.",
                 ),
             )
-            assertThat(bootstrapCallCount()).isEqualTo(1)
-            assertThat(disconnectCallCount()).isEqualTo(0)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -310,17 +310,27 @@ class TaskNewTaskViewModelTest {
             TaskNewTaskViewModelRobot(
                 this,
                 senderAccounts = listOf(primarySenderAccount),
-                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail("unsupported_action"),
+                createSessionResult = TaskMailCreateSessionResult.Failed(
+                    errorMessage = "unsupported_action",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        fallbackReason = "unsupported_action",
+                        errorMessage = "unsupported_action",
+                    ),
+                ),
             ),
         ) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
             send()
 
-            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             assertThat(viewModelState().submitState.sendError).isEqualTo("unsupported_action")
             assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
                 TaskMailDirectSendEvidence(
@@ -331,7 +341,6 @@ class TaskNewTaskViewModelTest {
                     errorMessage = "unsupported_action",
                 ),
             )
-            assertThat(disconnectCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -342,12 +351,22 @@ class TaskNewTaskViewModelTest {
             TaskNewTaskViewModelRobot(
                 this,
                 senderAccounts = listOf(primarySenderAccount),
-                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail("unsupported_action"),
+                createSessionResult = TaskMailCreateSessionResult.Failed(
+                    errorMessage = "unsupported_action",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        fallbackReason = "unsupported_action",
+                        errorMessage = "unsupported_action",
+                    ),
+                ),
             ),
         ) {
             start()
             loadData()
             toggleAdvanced()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.OpenCode)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
@@ -358,8 +377,7 @@ class TaskNewTaskViewModelTest {
             assertThat(viewModelState().workspaceSelection.repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskInput.taskText).isEqualTo("Audit the new flow")
             assertThat(viewModelState().executionPolicyEditor.isExpanded).isEqualTo(true)
-            assertThat(directSendCallCount()).isEqualTo(1)
-            assertThat(disconnectCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -370,13 +388,25 @@ class TaskNewTaskViewModelTest {
             TaskNewTaskViewModelRobot(
                 this,
                 senderAccounts = listOf(primarySenderAccount),
-                directSendResult = TaskMailDirectNewTaskResult.Rejected(
-                    "invalid_payload: task_text is required",
+                createSessionResult = TaskMailCreateSessionResult.Rejected(
+                    commandId = "cmd_001",
+                    submitAck = TaskMailCreateSessionSubmitAck(
+                        ackStatus = TaskMailCreateSessionAckStatus.Rejected,
+                        reason = "invalid_payload: task_text is required",
+                    ),
+                    errorMessage = "invalid_payload: task_text is required",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        errorMessage = "invalid_payload: task_text is required",
+                    ),
                 ),
             ),
         ) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
@@ -393,8 +423,7 @@ class TaskNewTaskViewModelTest {
             )
             assertThat(viewModelState().workspaceSelection.repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskInput.taskText).isEqualTo("Audit the new flow")
-            assertThat(directSendCallCount()).isEqualTo(1)
-            assertThat(disconnectCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -405,11 +434,20 @@ class TaskNewTaskViewModelTest {
             TaskNewTaskViewModelRobot(
                 this,
                 senderAccounts = listOf(primarySenderAccount),
-                directSendResult = TaskMailDirectNewTaskResult.FallbackToMail(),
+                createSessionResult = TaskMailCreateSessionResult.Failed(
+                    errorMessage = "Relay dispatch failed.",
+                    evidence = TaskMailDirectSendEvidence(
+                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
+                        outcome = TaskMailDirectOutcome.DirectRejected,
+                        switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                        errorMessage = "Relay dispatch failed.",
+                    ),
+                ),
             ),
         ) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
@@ -418,8 +456,7 @@ class TaskNewTaskViewModelTest {
             assertThat(viewModelState().submitState.sendError).isEqualTo("Relay dispatch failed.")
             assertThat(viewModelState().workspaceSelection.repoPath).isEqualTo("E:/projects/android_task_manager")
             assertThat(viewModelState().taskInput.taskText).isEqualTo("Audit the new flow")
-            assertThat(directSendCallCount()).isEqualTo(1)
-            assertThat(disconnectCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -475,13 +512,12 @@ class TaskNewTaskViewModelTest {
         ) {
             start()
             loadData()
-            changePcId("pc_workstation_01")
-            changeWorkspaceId("workspace_android_app")
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeTask("Audit the new flow")
             send()
 
-            assertThat(directSendCallCount()).isEqualTo(1)
+            assertThat(createSessionCallCount()).isEqualTo(1)
             assertThat(latestSentDraft()?.pcId).isEqualTo("pc_workstation_01")
             assertThat(latestSentDraft()?.workspaceId).isEqualTo("workspace_android_app")
             assertThat(latestSentDraft()?.repoPath).isEqualTo("E:/projects/android_task_manager")
@@ -489,7 +525,7 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "[Relay] Task request sent. It will appear after the first TaskMail update arrives.",
+                        "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives.",
                     ),
                     TaskNewTaskContract.Effect.NavigateBack,
                 ),
@@ -502,21 +538,31 @@ class TaskNewTaskViewModelTest {
 private class TaskNewTaskViewModelRobot(
     private val mviContext: MviContext,
     senderAccounts: List<TaskMailSenderAccount>,
-    directSendResult: TaskMailDirectNewTaskResult = TaskMailDirectNewTaskResult.Accepted(
-        requestId = "req_001",
-        receiptId = "receipt-1",
+    createSessionResult: TaskMailCreateSessionResult = TaskMailCreateSessionResult.Submitted(
+        commandId = "cmd_001",
+        submitAck = TaskMailCreateSessionSubmitAck(
+            ackStatus = TaskMailCreateSessionAckStatus.Accepted,
+        ),
+        sessionBinding = TaskMailCreateSessionBinding(
+            sessionId = "sess_001",
+            pcId = "pc_workstation_01",
+            workspaceId = "workspace_android_app",
+        ),
+        evidence = TaskMailDirectSendEvidence(
+            bootstrapStatus = RelayBootstrapStatus.HelloAck,
+            outcome = TaskMailDirectOutcome.DirectAccepted,
+            switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
+            requestId = "req_001",
+            receiptId = "receipt-1",
+        ),
     ),
     latestSendRecord: TaskMailNewTaskSendRecord? = null,
-    bootstrapResult: RelayBootstrapResult = RelayBootstrapResult(
-        status = RelayBootstrapStatus.HelloAck,
-    ),
     initialState: TaskNewTaskContract.State = TaskNewTaskContract.State(),
 ) {
     private val expectedInitialState = initialState
     private val senderAccountSource = FakeTaskMailSenderAccountSource(senderAccounts)
-    private val directNewTaskSender = FakeTaskMailDirectNewTaskSender(directSendResult)
+    private val createSessionClient = FakeTaskMailCreateSessionClient(createSessionResult)
     private val sendRecordRepository = FakeTaskMailNewTaskSendRecordRepository(latestSendRecord)
-    private val relayBootstrapManager = FakeRelayBootstrapManager(bootstrapResult)
     private val viewModel = TaskNewTaskViewModel(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(senderAccountSource),
         getLatestTaskMailNewTaskSendRecord = GetLatestTaskMailNewTaskSendRecord(sendRecordRepository),
@@ -524,8 +570,7 @@ private class TaskNewTaskViewModelRobot(
             repository = sendRecordRepository,
             clock = { 456L },
         ),
-        sendTaskMailDirectNewTask = SendTaskMailDirectNewTask(directNewTaskSender),
-        runTaskMailDirectDispatch = RunTaskMailDirectDispatch(relayBootstrapManager),
+        createTaskMailSession = CreateTaskMailSession(createSessionClient),
         initialState = initialState,
     )
     private lateinit var turbines: MviTurbines<TaskNewTaskContract.State, TaskNewTaskContract.Effect>
@@ -553,6 +598,14 @@ private class TaskNewTaskViewModelRobot(
 
     fun changeWorkspaceId(value: String) {
         viewModel.event(TaskNewTaskContract.Event.WorkspaceChanged(value))
+    }
+
+    fun selectRouteTarget(
+        pcId: String = "pc_workstation_01",
+        workspaceId: String = "workspace_android_app",
+    ) {
+        changePcId(pcId)
+        changeWorkspaceId(workspaceId)
     }
 
     fun changeTask(value: String) {
@@ -584,15 +637,11 @@ private class TaskNewTaskViewModelRobot(
         return turbines.awaitEffectItem()
     }
 
-    fun directSendCallCount(): Int = directNewTaskSender.sendCallCount
+    fun createSessionCallCount(): Int = createSessionClient.createSessionCallCount
 
     fun latestSentDraft(): net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft? {
-        return directNewTaskSender.sentDrafts.lastOrNull()
+        return createSessionClient.sentDrafts.lastOrNull()
     }
-
-    fun bootstrapCallCount(): Int = relayBootstrapManager.bootstrapCallCount
-
-    fun disconnectCallCount(): Int = relayBootstrapManager.disconnectCallCount
 
     suspend fun latestSendRecord(senderAccountId: String): TaskMailNewTaskSendRecord? {
         return sendRecordRepository.getLatestRecord(senderAccountId)
@@ -639,69 +688,18 @@ private class FakeTaskMailNewTaskSendRecordRepository(
     }
 }
 
-private class FakeTaskMailDirectNewTaskSender(
-    private val result: TaskMailDirectNewTaskResult,
-) : TaskMailDirectNewTaskSender {
-    var sendCallCount: Int = 0
+private class FakeTaskMailCreateSessionClient(
+    private val result: TaskMailCreateSessionResult,
+) : TaskMailCreateSessionClient {
+    var createSessionCallCount: Int = 0
     val sentDrafts = mutableListOf<net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft>()
 
-    override suspend fun send(
+    override suspend fun createSession(
         draft: net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft,
-    ): TaskMailDirectNewTaskResult {
-        sendCallCount += 1
+    ): TaskMailCreateSessionResult {
+        createSessionCallCount += 1
         sentDrafts += draft
         return result
-    }
-}
-
-private class FakeRelayBootstrapManager(
-    private val bootstrapResult: RelayBootstrapResult,
-) : RelayBootstrapManager {
-    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
-
-    var bootstrapCallCount: Int = 0
-    var disconnectCallCount: Int = 0
-
-    override val connectionState = mutableConnectionState
-
-    override fun loadConfig(): RelayTransportConfig = RelayTransportConfig()
-
-    override fun saveConfig(config: RelayTransportConfig): Boolean = true
-
-    override suspend fun probeHealth(config: RelayTransportConfig): Result<RelayHealthStatus> {
-        return Result.success(
-            RelayHealthStatus(
-                status = "ok",
-                service = "mail-runner-relay",
-                listenHost = "0.0.0.0",
-                listenPort = 8787,
-                sessionCount = 0,
-                packetCount = 0,
-                tlsEnabled = false,
-                transportTokenId = "token-id",
-            ),
-        )
-    }
-
-    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
-        return Result.success(
-            RelayHelloAck(
-                messageType = "hello_ack",
-                connectionId = "connection-1",
-                serverTime = "2026-03-21T12:00:00Z",
-                heartbeatSeconds = 30,
-            ),
-        )
-    }
-
-    override suspend fun disconnect() {
-        disconnectCallCount += 1
-        mutableConnectionState.value = RelayConnectionState.Idle
-    }
-
-    override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
-        bootstrapCallCount += 1
-        return bootstrapResult
     }
 }
 

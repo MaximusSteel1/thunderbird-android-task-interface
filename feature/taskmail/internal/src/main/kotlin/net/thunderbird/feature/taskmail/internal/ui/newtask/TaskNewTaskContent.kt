@@ -46,8 +46,8 @@ private val permissionOptions = TaskMailNewTaskPermission.entries.toImmutableLis
 private const val EXECUTION_POLICY_SUPPORTING_TEXT =
     "Backend is part of the new control-plane shape. Advanced values stay optional for now."
 private const val SUBMIT_REQUIREMENTS_SUPPORTING_TEXT =
-    "Current relay submit still depends on sender identity plus a repository bridge. " +
-        "PC/workspace is already the main route shape, but the bridge remains active until workspace APIs are wired."
+    "PC/workspace is now the required route target. " +
+        "Sender identity plus repository bridge still stays visible as a temporary compatibility bridge."
 private val backendLabel: (TaskMailBackend) -> String = { backend ->
     when (backend) {
         TaskMailBackend.OpenCode -> "OpenCode"
@@ -128,7 +128,7 @@ private fun TaskNewTaskForm(
             TextBodyLarge(
                 text = "Create a new TaskMail request. " +
                     "The page now starts from PC and workspace routing. " +
-                    "Sender account plus repository bridge stays visible only because the current relay submit path still needs it.",
+                    "Sender account plus repository bridge stays visible only because the current compatibility bridge still needs it.",
             )
         }
 
@@ -175,7 +175,7 @@ private fun LazyListScope.routeTargetItems(
     item {
         TaskSectionHeader(
             title = "Route target",
-            supportingText = "Pick the intended PC and workspace first. These fields can stay blank until PC/workspace list APIs are connected.",
+            supportingText = "Pick the intended PC and workspace first. Both fields are required for create-session submit.",
         )
     }
 
@@ -187,10 +187,12 @@ private fun LazyListScope.routeTargetItems(
                 },
                 text = state.pcSelection.selectedPcId,
                 label = "PC ID",
+                isRequired = true,
+                errorMessage = state.validationErrors.pcError,
             )
             RouteHint(
                 optionsCount = state.pcSelection.pcOptions.size,
-                emptyText = "PC list is not wired yet. Enter a future target ID or leave blank.",
+                emptyText = "PC list is not wired yet. Enter the intended target ID manually for now.",
                 nonEmptyText = "${state.pcSelection.pcOptions.size} PC option(s) available.",
             )
         }
@@ -204,10 +206,12 @@ private fun LazyListScope.routeTargetItems(
                 },
                 text = state.workspaceSelection.selectedWorkspaceId,
                 label = "Workspace ID",
+                isRequired = true,
+                errorMessage = state.validationErrors.workspaceError,
             )
             RouteHint(
                 optionsCount = state.workspaceSelection.workspaceOptions.size,
-                emptyText = "Workspace list is not wired yet. Current relay submit may still fall back to the repository bridge.",
+                emptyText = "Workspace list is not wired yet. Enter the intended workspace ID manually for now.",
                 nonEmptyText = "${state.workspaceSelection.workspaceOptions.size} workspace option(s) available.",
             )
         }
@@ -536,8 +540,8 @@ private fun TaskNewTaskSendSection(
         }
 
         TextBodySmall(
-            text = "Current relay submit still uses sender identity plus a repository bridge. " +
-                "PC/workspace is already the routing shape for the cutover path.",
+            text = "PC/workspace is the route target now. " +
+                "Sender identity plus repository bridge remains only as a temporary compatibility bridge.",
             color = MainTheme.colors.onSurfaceVariant,
         )
 

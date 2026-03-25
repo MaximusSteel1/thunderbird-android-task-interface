@@ -66,6 +66,7 @@ import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
 import net.thunderbird.feature.taskmail.internal.data.parser.EmailMessageParser
 import net.thunderbird.feature.taskmail.internal.data.parser.IncomingMessageParser
 import net.thunderbird.feature.taskmail.internal.data.relay.DefaultRelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.CompatibilityRelayTaskMailCreateSessionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayFileSurfaceClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayHealthProbe
@@ -85,6 +86,7 @@ import net.thunderbird.feature.taskmail.internal.data.transport.EmailTaskMailRep
 import net.thunderbird.feature.taskmail.internal.data.transport.TaskMailNewTaskTransport
 import net.thunderbird.feature.taskmail.internal.data.transport.TaskMailReplyTransport
 import net.thunderbird.feature.taskmail.internal.domain.newtask.RealTaskMailNewTaskSender
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionClient
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskSender
 import net.thunderbird.feature.taskmail.internal.domain.filesample.TaskMailFileSampleSender
@@ -106,6 +108,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransport
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.DefaultObserveTaskMailDirectSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailProjectSyncResult
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
@@ -182,6 +185,12 @@ val taskMailModule: Module = module {
     single<TaskMailDirectNewTaskSender> {
         RelayTaskMailDirectNewTaskSender(
             relayConnectionClient = get(),
+        )
+    }
+    single<TaskMailCreateSessionClient> {
+        CompatibilityRelayTaskMailCreateSessionClient(
+            relayBootstrapManager = get(),
+            directNewTaskSender = get(),
         )
     }
     single<TaskMailDirectProjectSyncSender> {
@@ -571,6 +580,12 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        CreateTaskMailSession(
+            createSessionClient = get(),
+        )
+    }
+
+    factory {
         SendTaskMailDirectNewTask(
             directNewTaskSender = get(),
         )
@@ -653,8 +668,7 @@ val taskMailModule: Module = module {
             getTaskMailSenderAccounts = get(),
             getLatestTaskMailNewTaskSendRecord = get(),
             recordTaskMailNewTaskSendRecord = get(),
-            sendTaskMailDirectNewTask = get(),
-            runTaskMailDirectDispatch = get(),
+            createTaskMailSession = get(),
         )
     }
 

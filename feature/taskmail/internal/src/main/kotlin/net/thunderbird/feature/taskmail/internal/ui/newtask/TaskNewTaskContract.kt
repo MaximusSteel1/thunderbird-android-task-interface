@@ -42,7 +42,7 @@ internal interface TaskNewTaskContract {
                 ?: selectedWorkspaceOption?.workdir?.trim()?.takeIf(String::isNotEmpty)
 
         val hasControlPlaneRouteTarget: Boolean
-            get() = pcSelection.selectedPcId.isNotBlank() || workspaceSelection.selectedWorkspaceId.isNotBlank()
+            get() = pcSelection.selectedPcId.isNotBlank() && workspaceSelection.selectedWorkspaceId.isNotBlank()
 
         val requiresSenderAccountSelection: Boolean
             get() = senderAccounts.size > 1
@@ -141,6 +141,8 @@ internal data class TaskNewTaskSubmitUiState(
 @Immutable
 internal data class TaskNewTaskValidationErrors(
     val senderAccountError: String? = null,
+    val pcError: String? = null,
+    val workspaceError: String? = null,
     val backendError: String? = null,
     val repoError: String? = null,
     val taskError: String? = null,

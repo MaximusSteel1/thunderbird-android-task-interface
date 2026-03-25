@@ -105,11 +105,11 @@ class TaskNewTaskScreenKtTest {
         }
 
         composeTestRule.onNodeWithText("Route target").assertIsDisplayed()
-        composeTestRule.onAllNodesWithText("PC ID").assertCountEquals(1)
+        composeTestRule.onAllNodes(hasText("PC ID", substring = true)).assertCountEquals(1)
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Workspace ID"))
-        composeTestRule.onAllNodesWithText("Workspace ID").assertCountEquals(1)
+            .performScrollToNode(hasText("Workspace ID", substring = true))
+        composeTestRule.onAllNodes(hasText("Workspace ID", substring = true)).assertCountEquals(1)
     }
 
     @Test
@@ -169,7 +169,7 @@ class TaskNewTaskScreenKtTest {
         composeTestRule.onNodeWithText("TaskMail send failed").assertIsDisplayed()
         composeTestRule.onNodeWithText("TaskMail bot mailbox is not configured.").assertIsDisplayed()
         composeTestRule.onNodeWithText(
-            "Current relay submit still uses sender identity plus a repository bridge. PC/workspace is already the routing shape for the cutover path.",
+            "PC/workspace is the route target now. Sender identity plus repository bridge remains only as a temporary compatibility bridge.",
         ).assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Compatibility bridge").assertCountEquals(0)
     }

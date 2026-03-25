@@ -6,18 +6,14 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
-import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailDirectNewTaskResult
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
+import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectNewTask
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectAttemptResult
-import net.thunderbird.feature.taskmail.internal.domain.usecase.TaskMailDirectDispatchResult
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Effect
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.State
@@ -27,6 +23,8 @@ private const val NO_SENDER_ACCOUNT_MESSAGE =
 private const val LOAD_SENDER_ACCOUNTS_ERROR =
     "Unable to load mailbox accounts for TaskMail sending."
 private const val SENDER_ACCOUNT_REQUIRED_ERROR = "Select the sending account."
+private const val PC_REQUIRED_ERROR = "Select a target PC."
+private const val WORKSPACE_REQUIRED_ERROR = "Select a workspace."
 private const val BACKEND_REQUIRED_ERROR = "Select a backend."
 private const val REPO_REQUIRED_ERROR = "Repository bridge is required."
 private const val TASK_REQUIRED_ERROR = "Task details are required."
@@ -34,15 +32,14 @@ private const val TITLE_REQUIRED_ERROR = "Title is required."
 private const val TIMEOUT_INVALID_ERROR = "Timeout must be a positive integer."
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail task request."
 private const val SEND_SUCCESS_MESSAGE =
-    "[Relay] Task request sent. It will appear after the first TaskMail update arrives."
+    "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives."
 
 @Suppress("TooManyFunctions")
 internal class TaskNewTaskViewModel(
     private val getTaskMailSenderAccounts: GetTaskMailSenderAccounts,
     private val getLatestTaskMailNewTaskSendRecord: GetLatestTaskMailNewTaskSendRecord,
     private val recordTaskMailNewTaskSendRecord: RecordTaskMailNewTaskSendRecord,
-    private val sendTaskMailDirectNewTask: SendTaskMailDirectNewTask,
-    private val runTaskMailDirectDispatch: RunTaskMailDirectDispatch,
+    private val createTaskMailSession: CreateTaskMailSession,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskNewTaskContract.ViewModel {
@@ -108,6 +105,7 @@ internal class TaskNewTaskViewModel(
             is Event.PcChanged -> updateState {
                 it.copy(
                     pcSelection = it.pcSelection.copy(selectedPcId = event.value),
+                    validationErrors = it.validationErrors.copy(pcError = null),
                     submitState = it.submitState.copy(sendError = null),
                 )
             }
@@ -129,7 +127,10 @@ internal class TaskNewTaskViewModel(
                             }
                             ?: it.workspaceSelection.workdir,
                     ),
-                    validationErrors = it.validationErrors.copy(repoError = null),
+                    validationErrors = it.validationErrors.copy(
+                        workspaceError = null,
+                        repoError = null,
+                    ),
                     submitState = it.submitState.copy(sendError = null),
                 )
             }
@@ -329,26 +330,24 @@ internal class TaskNewTaskViewModel(
         }
 
         viewModelScope.launch {
-            val sendResult = runTaskMailDirectDispatch.execute(
-                directSend = {
-                    sendTaskMailDirectNewTask(draft).toDirectAttemptResult()
-                },
-            )
-            runCatching {
-                recordTaskMailNewTaskSendRecord(
-                    draft = draft,
-                    evidence = sendResult.evidence,
-                )
+            val sendResult = createTaskMailSession(draft)
+            sendResult.evidence?.let { evidence ->
+                runCatching {
+                    recordTaskMailNewTaskSendRecord(
+                        draft = draft,
+                        evidence = evidence,
+                    )
+                }
             }
             handleSendResult(sendResult)
         }
     }
 
     private suspend fun handleSendResult(
-        sendResult: TaskMailDirectDispatchResult<TaskMailDirectNewTaskResult.Accepted>,
+        sendResult: TaskMailCreateSessionResult,
     ) {
         when (sendResult) {
-            is TaskMailDirectDispatchResult.DirectAccepted -> {
+            is TaskMailCreateSessionResult.Submitted -> {
                 updateState {
                     it.copy(
                         submitState = it.submitState.copy(
@@ -362,7 +361,19 @@ internal class TaskNewTaskViewModel(
                 emitEffect(Effect.NavigateBack)
             }
 
-            is TaskMailDirectDispatchResult.DirectRejected -> {
+            is TaskMailCreateSessionResult.Rejected -> {
+                updateState {
+                    it.copy(
+                        submitState = it.submitState.copy(
+                            isSending = false,
+                            sendError = sendResult.errorMessage.ifBlank { SEND_FAILURE_MESSAGE },
+                        ),
+                        lastDirectSendEvidence = sendResult.evidence,
+                    )
+                }
+            }
+
+            is TaskMailCreateSessionResult.Failed -> {
                 updateState {
                     it.copy(
                         submitState = it.submitState.copy(
@@ -381,6 +392,8 @@ internal class TaskNewTaskViewModel(
             it.copy(
                 validationErrors = TaskNewTaskValidationErrors(
                     senderAccountError = validation.senderAccountError,
+                    pcError = validation.pcError,
+                    workspaceError = validation.workspaceError,
                     backendError = validation.backendError,
                     repoError = validation.repoError,
                     taskError = validation.taskError,
@@ -397,6 +410,8 @@ internal class TaskNewTaskViewModel(
             ?.takeIf { accountUuid ->
                 state.senderAccounts.any { it.accountUuid == accountUuid }
             }
+        val pcId = state.pcSelection.selectedPcId.trim()
+        val workspaceId = state.workspaceSelection.selectedWorkspaceId.trim()
         val repoPath = state.resolvedRepoBridgePath.orEmpty().trim()
         val taskText = state.taskInput.taskText.trim()
         val subjectTitle = state.taskInput.subjectTitle.trim()
@@ -412,12 +427,16 @@ internal class TaskNewTaskViewModel(
             } else {
                 null
             },
+            pcError = if (pcId.isEmpty()) PC_REQUIRED_ERROR else null,
+            workspaceError = if (workspaceId.isEmpty()) WORKSPACE_REQUIRED_ERROR else null,
             backendError = if (state.executionPolicyEditor.backend == null) BACKEND_REQUIRED_ERROR else null,
             repoError = if (repoPath.isEmpty()) REPO_REQUIRED_ERROR else null,
             taskError = if (taskText.isEmpty()) TASK_REQUIRED_ERROR else null,
             titleError = if (subjectTitle.isEmpty()) TITLE_REQUIRED_ERROR else null,
             timeoutError = validateTimeoutText(timeoutText),
             normalizedSenderAccountId = selectedSenderAccountId,
+            normalizedPcId = pcId.takeIf(String::isNotEmpty),
+            normalizedWorkspaceId = workspaceId.takeIf(String::isNotEmpty),
             normalizedRepoPath = repoPath,
             normalizedTaskText = taskText,
             normalizedSubjectTitle = subjectTitle,
@@ -472,25 +491,6 @@ private fun List<TaskMailSenderAccount>.blockingErrorOrNull(): String? {
     }
 }
 
-private fun TaskMailDirectNewTaskResult.toDirectAttemptResult():
-    TaskMailDirectAttemptResult<TaskMailDirectNewTaskResult.Accepted> {
-    return when (this) {
-        is TaskMailDirectNewTaskResult.Accepted -> {
-            TaskMailDirectAttemptResult.Accepted(
-                payload = this,
-                acceptedEvidence = TaskMailDirectAcceptedEvidence(
-                    requestId = requestId,
-                    receiptId = receiptId,
-                    transportMessageId = transportMessageId,
-                ),
-            )
-        }
-
-        is TaskMailDirectNewTaskResult.FallbackToMail -> TaskMailDirectAttemptResult.FallbackToMail(detailMessage)
-        is TaskMailDirectNewTaskResult.Rejected -> TaskMailDirectAttemptResult.Rejected(errorMessage)
-    }
-}
-
 private fun validateTimeoutText(value: String): String? {
     val trimmedValue = value.trim()
     if (trimmedValue.isEmpty()) return null
@@ -517,12 +517,16 @@ private fun resolveSelectedSenderAccountId(
 
 private data class ValidationResult(
     val senderAccountError: String?,
+    val pcError: String?,
+    val workspaceError: String?,
     val backendError: String?,
     val repoError: String?,
     val taskError: String?,
     val titleError: String?,
     val timeoutError: String?,
     val normalizedSenderAccountId: String?,
+    val normalizedPcId: String?,
+    val normalizedWorkspaceId: String?,
     val normalizedRepoPath: String,
     val normalizedTaskText: String,
     val normalizedSubjectTitle: String,
@@ -530,6 +534,8 @@ private data class ValidationResult(
 ) {
     fun hasNoErrors(): Boolean {
         return senderAccountError == null &&
+            pcError == null &&
+            workspaceError == null &&
             backendError == null &&
             repoError == null &&
             taskError == null &&
@@ -540,9 +546,11 @@ private data class ValidationResult(
     fun buildDraft(state: State): TaskMailNewTaskDraft? {
         if (!hasNoErrors()) return null
         val senderAccountId = normalizedSenderAccountId
+        val pcId = normalizedPcId
+        val workspaceId = normalizedWorkspaceId
         val backend = state.executionPolicyEditor.backend
 
-        return if (senderAccountId != null && backend != null) {
+        return if (senderAccountId != null && backend != null && pcId != null && workspaceId != null) {
             TaskMailNewTaskDraft(
                 senderAccountId = senderAccountId,
                 backend = backend,
@@ -559,8 +567,8 @@ private data class ValidationResult(
                     .map(String::trim)
                     .filter(String::isNotEmpty)
                     .toList(),
-                pcId = state.pcSelection.selectedPcId.trim().takeIf { it.isNotEmpty() },
-                workspaceId = state.workspaceSelection.selectedWorkspaceId.trim().takeIf { it.isNotEmpty() },
+                pcId = pcId,
+                workspaceId = workspaceId,
                 executionPolicy = state.executionPolicyEditor.toControlPlaneExecutionPolicy(),
             )
         } else {
