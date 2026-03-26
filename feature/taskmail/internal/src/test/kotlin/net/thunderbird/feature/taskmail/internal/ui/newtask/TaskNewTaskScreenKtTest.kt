@@ -315,6 +315,7 @@ class TaskNewTaskScreenKtTest {
             K9MailTheme2 {
                 TaskNewTaskScreen(
                     onBack = {},
+                    onOpenSession = { _, _ -> },
                     onOpenProjectSync = {},
                     selectedRepoPath = repoPath,
                     onSelectedRepoPathConsumed = {

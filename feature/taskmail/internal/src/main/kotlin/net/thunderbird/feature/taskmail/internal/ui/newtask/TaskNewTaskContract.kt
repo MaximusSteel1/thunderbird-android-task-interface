@@ -78,6 +78,7 @@ internal interface TaskNewTaskContract {
 
     sealed interface Effect {
         data object NavigateBack : Effect
+        data class NavigateToSession(val workspaceId: String?, val sessionId: String) : Effect
         data object OpenProjectSync : Effect
         data class ShowMessage(val message: String) : Effect
     }

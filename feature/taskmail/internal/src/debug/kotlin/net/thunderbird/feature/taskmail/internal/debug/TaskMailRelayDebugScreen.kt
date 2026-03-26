@@ -233,6 +233,24 @@ internal fun TaskMailRelayDebugScreen(
                 )
             }
 
+            item {
+                TextFieldOutlined(
+                    value = state.value.androidAppToken,
+                    onValueChange = {
+                        dispatch(TaskMailRelayDebugContract.Event.AndroidAppTokenChanged(it))
+                    },
+                    label = "Android app token",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            item {
+                TextBodySmall(
+                    text = "Used by /v1/android/create-session. Keep it aligned with the VPS android_app_token.",
+                    color = MainTheme.colors.onSurfaceVariant,
+                )
+            }
+
             state.value.healthSummary?.let { summary ->
                 item {
                     TextBodySmall(

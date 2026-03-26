@@ -29,6 +29,9 @@ internal class DefaultTaskTransportConfigRepository(
         val transportToken = settingsStorage.getStringOrNull(TaskMailSettingsKeys.RELAY_TRANSPORT_TOKEN)
             ?.trim()
             .orEmpty()
+        val androidAppToken = settingsStorage.getStringOrNull(TaskMailSettingsKeys.ANDROID_APP_TOKEN)
+            ?.trim()
+            .orEmpty()
 
         return RelayTransportConfig(
             enabled = enabled,
@@ -37,6 +40,7 @@ internal class DefaultTaskTransportConfigRepository(
             useTls = useTls,
             path = path,
             transportToken = transportToken,
+            androidAppToken = androidAppToken,
         )
     }
 
@@ -51,6 +55,10 @@ internal class DefaultTaskTransportConfigRepository(
             settingsStorage.putString(
                 TaskMailSettingsKeys.RELAY_TRANSPORT_TOKEN,
                 normalized.transportToken.takeIf(String::isNotBlank),
+            ),
+            settingsStorage.putString(
+                TaskMailSettingsKeys.ANDROID_APP_TOKEN,
+                normalized.androidAppToken.takeIf(String::isNotBlank),
             ),
         )
 

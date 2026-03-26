@@ -21,7 +21,8 @@ import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebu
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.relaydebug.TaskMailRelayDebugContract.State
 
-private const val CONFIG_REQUIRED_ERROR = "Relay host, port, and transport token are required."
+private const val HOST_AND_PORT_REQUIRED_ERROR = "Relay host and port are required."
+private const val RELAY_CONFIG_REQUIRED_ERROR = "Relay host, port, and transport token are required."
 private const val PORT_INVALID_ERROR = "Enter a valid relay port."
 
 internal class TaskMailRelayDebugViewModel(
@@ -71,6 +72,7 @@ internal class TaskMailRelayDebugViewModel(
             is Event.PortChanged -> updateState { it.copy(port = event.value) }
             is Event.UseTlsChanged -> updateState { it.copy(useTls = event.value) }
             is Event.TransportTokenChanged -> updateState { it.copy(transportToken = event.value) }
+            is Event.AndroidAppTokenChanged -> updateState { it.copy(androidAppToken = event.value) }
             is Event.ProbePayloadTextChanged -> updateState { it.copy(probePayloadText = event.value) }
             else -> Unit
         }
@@ -86,6 +88,7 @@ internal class TaskMailRelayDebugViewModel(
                 port = config.port.toString(),
                 useTls = config.useTls,
                 transportToken = config.transportToken,
+                androidAppToken = config.androidAppToken,
                 newTaskSendRecordsPath = File(
                     taskMailStorageDirectory,
                     TASKMAIL_NEW_TASK_SEND_RECORDS_FILE_NAME,
@@ -99,7 +102,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun saveConfig() {
-        val config = currentConfig() ?: return
+        val config = currentConfig(requireTransportToken = false) ?: return
         updateState { it.copy(isSaving = true, actionError = null) }
         val isRelayConfigSaved = relayBootstrapManager.saveConfig(config)
         val isDebugSettingSaved = projectSyncDebugSettingsRepository.setFileLoggingEnabled(
@@ -118,7 +121,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun probeHealth() {
-        val config = currentConfig() ?: return
+        val config = currentConfig(requireTransportToken = false) ?: return
         updateState {
             it.copy(
                 isProbingHealth = true,
@@ -150,7 +153,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun connect() {
-        val config = currentConfig() ?: return
+        val config = currentConfig(requireTransportToken = true) ?: return
         updateState { it.copy(actionError = null) }
         viewModelScope.launch {
             relayBootstrapManager.connect(config).fold(
@@ -173,7 +176,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun sendDirectProbe() {
-        val config = currentConfig() ?: return
+        val config = currentConfig(requireTransportToken = true) ?: return
         val payloadText = state.value.probePayloadText.trim()
         if (payloadText.isEmpty()) {
             updateState { it.copy(actionError = "Debug text payload is required.") }
@@ -225,7 +228,7 @@ internal class TaskMailRelayDebugViewModel(
     }
 
     private fun sendFileSample() {
-        val config = currentConfig() ?: return
+        val config = currentConfig(requireTransportToken = true) ?: return
         val payloadText = state.value.probePayloadText.trim()
         if (payloadText.isEmpty()) {
             updateState { it.copy(actionError = "Debug text payload is required.") }
@@ -283,19 +286,24 @@ internal class TaskMailRelayDebugViewModel(
         }
     }
 
-    private fun currentConfig(): RelayTransportConfig? {
+    private fun currentConfig(requireTransportToken: Boolean): RelayTransportConfig? {
         val port = state.value.port.trim()
             .toIntOrNull()
             ?.takeIf { it > 0 }
 
         return when {
-            state.value.host.trim().isEmpty() || state.value.transportToken.trim().isEmpty() -> {
-                updateState { it.copy(actionError = CONFIG_REQUIRED_ERROR) }
+            state.value.host.trim().isEmpty() -> {
+                updateState { it.copy(actionError = HOST_AND_PORT_REQUIRED_ERROR) }
                 null
             }
 
             port == null -> {
                 updateState { it.copy(actionError = PORT_INVALID_ERROR) }
+                null
+            }
+
+            requireTransportToken && state.value.transportToken.trim().isEmpty() -> {
+                updateState { it.copy(actionError = RELAY_CONFIG_REQUIRED_ERROR) }
                 null
             }
 
@@ -305,6 +313,7 @@ internal class TaskMailRelayDebugViewModel(
                 port = port,
                 useTls = state.value.useTls,
                 transportToken = state.value.transportToken.trim(),
+                androidAppToken = state.value.androidAppToken.trim(),
             )
         }
     }

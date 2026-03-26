@@ -9,6 +9,7 @@ internal data class RelayTransportConfig(
     val useTls: Boolean = DEFAULT_USE_TLS,
     val path: String = DEFAULT_PATH,
     val transportToken: String = "",
+    val androidAppToken: String = "",
 ) {
     fun healthUrl(): String {
         return absoluteHttpUrl("/healthz")
@@ -16,6 +17,10 @@ internal data class RelayTransportConfig(
 
     fun fileSurfaceUrl(): String {
         return absoluteHttpUrl("/v1/files")
+    }
+
+    fun androidCreateSessionUrl(): String {
+        return absoluteHttpUrl(ANDROID_CREATE_SESSION_PATH)
     }
 
     fun relayUrl(): String {
@@ -38,6 +43,10 @@ internal data class RelayTransportConfig(
         return host.isNotBlank() && port > 0 && transportToken.isNotBlank()
     }
 
+    fun isAndroidCreateSessionConfigured(): Boolean {
+        return host.isNotBlank() && port > 0 && androidAppToken.isNotBlank()
+    }
+
     fun tokenFingerprint(): String? {
         val token = transportToken.trim().takeIf(String::isNotBlank) ?: return null
         val digest = MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
@@ -50,6 +59,7 @@ internal data class RelayTransportConfig(
             host = host.trim(),
             path = normalizedPath(),
             transportToken = transportToken.trim(),
+            androidAppToken = androidAppToken.trim(),
         )
     }
 
@@ -67,6 +77,7 @@ internal data class RelayTransportConfig(
         const val DEFAULT_PORT = 8787
         const val DEFAULT_USE_TLS = false
         const val DEFAULT_PATH = "/relay"
+        const val ANDROID_CREATE_SESSION_PATH = "/v1/android/create-session"
         private const val TOKEN_FINGERPRINT_LENGTH = 12
     }
 }

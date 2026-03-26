@@ -23,6 +23,7 @@
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-vps-only-cutover-campaign-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md`
 - `docs/taskmail/planning/platform/taskmail-vps-first-control-plane-freeze-v0.1.md`
@@ -134,6 +135,13 @@ Android 侧真正需要为新主线准备的，是后续与统一控制面接轨
 5. Android 编码阶段默认按 `taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md` 的 slice 顺序进入第一批骨架改造。
 6. 编码起手第一刀默认先按 `taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md` 落 `TaskSessionDetail` 的骨架改造。
 7. 与 PC 端的第一轮正式握手联调，默认按 `taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md` 判断是否已达到合适时机。
+
+说明：
+
+- 上述顺序仍然是默认骨架推进读法
+- 如果当前目标被明确收紧为“尽快切到 Android-facing VPS-only”，owner campaign 顺序改读：
+  `taskmail-vps-first-multi-pc-android-vps-only-cutover-campaign-plan-v0.1.md`
+- 也就是说，存在“按骨架顺序更稳”和“按 cutover 价值更快”的张力时，快切主线时优先按 campaign 文档执行
 
 ## 无 Legacy Baseline 约束
 

@@ -10,6 +10,7 @@
 
 - `docs/TASKMAIL-ANDROID-CURRENT-STATUS.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-vps-only-cutover-campaign-plan-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
 - `docs/taskmail/planning/platform/taskmail-vps-first-control-plane-freeze-v0.1.md`
@@ -26,6 +27,22 @@
 本文回答的问题是：
 
 **在当前 Android 仓库里，真正进入代码阶段后，第一批 VPS-first 骨架改造应按什么顺序推进、落在哪些文件、以什么边界推进。**
+
+如果当前目标被进一步收紧为：
+
+- 尽快切到 Android-facing VPS-only
+- 尽快停止把 mail / relay compatibility 当公共主流程真相
+
+则 owner campaign 顺序改由：
+
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-vps-only-cutover-campaign-plan-v0.1.md`
+
+本文继续负责的是：
+
+- 页面骨架
+- DTO 骨架
+- 文件级落点
+- 各 slice 的局部验收读法
 
 ## 目标
 
@@ -344,6 +361,12 @@ Android 侧推荐按以下顺序编码：
 3. Slice 3 `新任务页表单骨架`
 4. Slice 4 `首页 / 工作台骨架`
 5. Slice 5 `路由与主键收口`
+
+说明：
+
+- 这是默认骨架顺序
+- 当目标是“最短路径切到 Android-facing VPS-only”时，允许按 campaign 文档把 `NewTask 写路径` 与
+  `SessionDetail control-plane 承载` 提前到更高 owner 优先级
 
 原因：
 

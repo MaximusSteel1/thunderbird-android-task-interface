@@ -8,8 +8,8 @@
 
 ## 日期
 
-- 最后更新：2026-03-24
-- 当前摘要覆盖到的最新可执行验证会话：2026-03-24
+- 最后更新：2026-03-26
+- 当前摘要覆盖到的最新可执行验证会话：2026-03-26
 
 ## 文档维护约定
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 真实读路径、session 投影、协议感知解析 | 已有 focused repository/parser/test coverage；当前读法包括 `[SYNC]` 不进入 session 投影 | 更宽的外部样本 replay 仍不是当前 captured summary 的一部分 |
 | formal-host 入口、drawer handoff、workspace/detail 读面 | 已有 focused navigation/UI/test 证据与设备 smoke | 更宽设备覆盖仍有限 |
-| `new_task` direct-first + mail fallback | 已有 focused sender/usecase/ViewModel/screen/persistence coverage；current latest evidence 保留 `requestId` / `receiptId` / `transportMessageId`；live evidence 已闭到 observation 边界 | 不再缺 Android 侧 narrow blocker；后续只在 fresh rollback / mismatch signal 出现时再扩大 |
+| `new_task` Android-facing create-session facade | 已有 focused transport-config / HTTP client / ViewModel / navigation / screen coverage；accepted + `session_binding` 已能在 Android 侧直接打开 `session detail`；`TaskMail relay debug` 现可保存独立 `android_app_token` | 尚无 fresh Android / VPS / PC live smoke；当前仍是 facade cutover，不是 raw `pc-control` websocket cutover |
 | `reply` / `/status` guarded direct lane | 已有 focused persistence/ViewModel/screen coverage；formal-host `thread_105` 已正向证明 `/status` 与 plain reply 的 direct accepted path | fallback artifact 的 same-run strong bind 仍未完全收口；PC-side canonical fallback artifact 仍需补齐 `action_type`、`target_session_identity` 与 ingress anchors |
 | plain reply / attachment / quick answer / multi-question / paused `/resume` mail path | 已有 focused tests 和既有 live/manual smoke，当前仍应按 mail semantics 读取 | 更宽语料库覆盖不是当前摘要目标 |
 | `[SYNC] Project list` 渲染、repo prefill、projection boundary | formal-host smoke 已证明页面可读、`Use this repo` 可回填、`[SYNC]` 不进入 session/detail 投影 | “这次点击触发的 direct request”与“同轮 canonical `[SYNC] Project Folder List` 回流”仍需更强 closeout |
@@ -38,6 +38,7 @@
 以下命令代表当前 TaskMail Android 近端验证的最新干净读法：
 
 ```powershell
+.\\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*DefaultTaskTransportConfigRepositoryTest" --tests "*OkHttpTaskMailCreateSessionFacadeClientTest" --tests "*TaskNewTaskViewModelTest" --tests "*TaskNewTaskScreenKtTest" --tests "*TaskMailRelayDebugViewModelTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*RelayProtocolJsonCodecTest" --tests "*OkHttpRelayConnectionClientTest" --tests "*RelayTaskMailTransportProbeSenderTest" --tests "*OkHttpRelayFileSurfaceClientTest" --tests "*RelayTaskMailFileSampleSenderTest" --tests "*TaskMailRelayDebugViewModelTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*RelayTaskMailDirectProjectSyncSenderTest" --tests "*TaskProjectSyncViewModelTest" --tests "*OkHttpRelayConnectionClientTest" --console=plain
 .\gradlew.bat :feature:taskmail:internal:testDebugUnitTest --tests "*TaskSessionDetailViewModelTest" --tests "*RelayTaskMailDirectSessionActionSenderTest" --console=plain
@@ -63,6 +64,7 @@
 
 ## 当前仍未完全闭环的点
 
+- `new_task`：还需要 fresh device / VPS smoke 来确认 `android_app_token -> create-session -> session binding -> detail` 真机闭环
 - `reply` / `/status`：需要继续收口 fallback artifact 的 stronger same-run bind，而不是继续扩 direct scope
 - `[SYNC]`：需要拿到 direct request、relay ingress、canonical `[SYNC] Project Folder List` reply 的同轮时间线，再判断是否需要扩大 Android follow-up refresh 窗口
 - `Project list` 当前 direct-first 只应按 single-account available 读取，多账号严格协商不在当前验证结论内

@@ -39,6 +39,7 @@ class TaskMailRelayDebugViewModelTest {
             loadData()
 
             assertThat(viewModelState().projectSyncDebugFileLoggingEnabled).isEqualTo(true)
+            assertThat(viewModelState().androidAppToken).isEqualTo("android-app-token")
             assertThat(viewModelState().sessionActionSendRecordsPath)
                 .isEqualTo("E:\\tmp\\taskmail\\taskmail_session_action_send_records.json")
             assertThat(viewModelState().newTaskSendRecordsPath)
@@ -53,9 +54,11 @@ class TaskMailRelayDebugViewModelTest {
             start()
             loadData()
             changeProjectSyncDebugFileLoggingEnabled(true)
+            changeAndroidAppToken("android-app-token-updated")
             save()
 
             assertThat(savedDebugFileLoggingValues).containsExactly(true)
+            assertThat(savedAndroidAppToken()).isEqualTo("android-app-token-updated")
             assertThat(awaitEffect()).isEqualTo(
                 TaskMailRelayDebugContract.Effect.ShowMessage("Relay config saved."),
             )
@@ -154,6 +157,10 @@ private class TaskMailRelayDebugViewModelRobot(
         viewModel.event(TaskMailRelayDebugContract.Event.ProjectSyncDebugFileLoggingChanged(value))
     }
 
+    fun changeAndroidAppToken(value: String) {
+        viewModel.event(TaskMailRelayDebugContract.Event.AndroidAppTokenChanged(value))
+    }
+
     fun changeProbePayloadText(value: String) {
         viewModel.event(TaskMailRelayDebugContract.Event.ProbePayloadTextChanged(value))
     }
@@ -181,6 +188,8 @@ private class TaskMailRelayDebugViewModelRobot(
         return turbines.awaitStateItem()
     }
 
+    fun savedAndroidAppToken(): String = relayBootstrapManager.loadConfig().androidAppToken
+
     fun viewModelState(): TaskMailRelayDebugContract.State = viewModel.state.value
 
     suspend fun ensureThatAllEventsAreConsumed() {
@@ -197,6 +206,7 @@ private class FakeRelayBootstrapManager : RelayBootstrapManager {
         port = 9443,
         useTls = true,
         transportToken = "transport-token",
+        androidAppToken = "android-app-token",
     )
 
     override fun loadConfig(): RelayTransportConfig = config

@@ -11,6 +11,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 internal fun TaskNewTaskScreen(
     onBack: () -> Unit,
+    onOpenSession: (workspaceId: String?, sessionId: String) -> Unit,
     onOpenProjectSync: () -> Unit,
     modifier: Modifier = Modifier,
     selectedRepoPath: String? = null,
@@ -21,6 +22,9 @@ internal fun TaskNewTaskScreen(
     val (state, dispatch) = viewModel.observe { effect ->
         when (effect) {
             TaskNewTaskContract.Effect.NavigateBack -> onBack()
+            is TaskNewTaskContract.Effect.NavigateToSession -> {
+                onOpenSession(effect.workspaceId, effect.sessionId)
+            }
             TaskNewTaskContract.Effect.OpenProjectSync -> onOpenProjectSync()
             is TaskNewTaskContract.Effect.ShowMessage -> {
                 Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()

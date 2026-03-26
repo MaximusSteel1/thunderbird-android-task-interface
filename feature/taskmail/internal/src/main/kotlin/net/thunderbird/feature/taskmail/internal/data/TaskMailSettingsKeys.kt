@@ -8,5 +8,6 @@ internal object TaskMailSettingsKeys {
     const val RELAY_USE_TLS = "taskmail.relay_use_tls"
     const val RELAY_PATH = "taskmail.relay_path"
     const val RELAY_TRANSPORT_TOKEN = "taskmail.relay_transport_token"
+    const val ANDROID_APP_TOKEN = "taskmail.android_app_token"
     const val PROJECT_SYNC_DEBUG_FILE_LOGGING_ENABLED = "taskmail.project_sync_debug_file_logging_enabled"
 }

@@ -216,7 +216,7 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
-    fun `send should prefer direct path after successful bootstrap`() = runMviTest {
+    fun `send should open session detail when create session returns binding`() = runMviTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
             start()
             loadData()
@@ -230,33 +230,48 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives.",
+                        "[VPS] Session accepted. Opening session detail.",
                     ),
+                    TaskNewTaskContract.Effect.NavigateToSession(
+                        workspaceId = "workspace_android_app",
+                        sessionId = "sess_001",
+                    ),
+                ),
+            )
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(null)
+            assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(null)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send should navigate back when create session submit has no binding`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                createSessionResult = TaskMailCreateSessionResult.Submitted(
+                    commandId = "cmd_queued",
+                    submitAck = TaskMailCreateSessionSubmitAck(
+                        ackStatus = TaskMailCreateSessionAckStatus.AcceptedButQueued,
+                        queuePosition = 1,
+                    ),
+                    sessionBinding = null,
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            selectRouteTarget()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
+            send()
+
+            assertThat(collectedEffects().toSet()).isEqualTo(
+                setOf(
+                    TaskNewTaskContract.Effect.ShowMessage("[VPS] Task request submitted."),
                     TaskNewTaskContract.Effect.NavigateBack,
-                ),
-            )
-            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(
-                TaskMailDirectSendEvidence(
-                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                    outcome = TaskMailDirectOutcome.DirectAccepted,
-                    switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
-                    requestId = "req_001",
-                    receiptId = "receipt-1",
-                ),
-            )
-            assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(
-                TaskMailNewTaskSendRecord(
-                    recordedAt = 456L,
-                    senderAccountId = primarySenderAccount.accountUuid,
-                    backend = TaskMailBackend.Codex,
-                    repoPath = "E:/projects/android_task_manager",
-                    evidence = TaskMailDirectSendEvidence(
-                        bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                        outcome = TaskMailDirectOutcome.DirectAccepted,
-                        switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
-                        requestId = "req_001",
-                        receiptId = "receipt-1",
-                    ),
                 ),
             )
             ensureThatAllEventsAreConsumed()
@@ -525,9 +540,12 @@ class TaskNewTaskViewModelTest {
             assertThat(collectedEffects().toSet()).isEqualTo(
                 setOf(
                     TaskNewTaskContract.Effect.ShowMessage(
-                        "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives.",
+                        "[VPS] Session accepted. Opening session detail.",
                     ),
-                    TaskNewTaskContract.Effect.NavigateBack,
+                    TaskNewTaskContract.Effect.NavigateToSession(
+                        workspaceId = "workspace_android_app",
+                        sessionId = "sess_001",
+                    ),
                 ),
             )
             ensureThatAllEventsAreConsumed()
@@ -547,13 +565,6 @@ private class TaskNewTaskViewModelRobot(
             sessionId = "sess_001",
             pcId = "pc_workstation_01",
             workspaceId = "workspace_android_app",
-        ),
-        evidence = TaskMailDirectSendEvidence(
-            bootstrapStatus = RelayBootstrapStatus.HelloAck,
-            outcome = TaskMailDirectOutcome.DirectAccepted,
-            switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
-            requestId = "req_001",
-            receiptId = "receipt-1",
         ),
     ),
     latestSendRecord: TaskMailNewTaskSendRecord? = null,

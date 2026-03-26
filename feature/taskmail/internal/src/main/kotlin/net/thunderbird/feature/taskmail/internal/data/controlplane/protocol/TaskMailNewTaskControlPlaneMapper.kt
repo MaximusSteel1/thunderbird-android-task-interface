@@ -83,7 +83,7 @@ internal fun TaskMailNewTaskDraft.toControlPlaneNewTaskDispatchMessage(
     )
 }
 
-private fun TaskMailNewTaskDraft.toCanonicalExecutionPolicy(): ControlPlaneExecutionPolicy {
+internal fun TaskMailNewTaskDraft.toCanonicalExecutionPolicy(): ControlPlaneExecutionPolicy {
     val requestedPolicy = executionPolicy
     return ControlPlaneExecutionPolicy(
         backend = requestedPolicy?.backend?.trim()?.takeIf(String::isNotEmpty) ?: backend.wireValue,
@@ -103,7 +103,7 @@ private fun TaskMailNewTaskPermission.toControlPlanePermission(): String? {
     }
 }
 
-private fun List<String>.toCanonicalAcceptanceCriteria(): List<String> {
+internal fun List<String>.toCanonicalAcceptanceCriteria(): List<String> {
     return map { item ->
         item.trim()
             .removePrefix("- ")

@@ -6,7 +6,7 @@
 
 ## 日期
 
-- 最后更新：2026-03-24
+- 最后更新：2026-03-26
 
 ## 文档维护约定
 
@@ -21,14 +21,16 @@
 
 ## 当前基线
 
-截至 2026-03-24，Android TaskMail 不再是 debug-only 原型。
+截至 2026-03-26，Android TaskMail 不再是 debug-only 原型。
 
 当前更准确的读法是：
 
 - 真实 TaskMail 邮件已接入本地 mail store，并驱动 `workspace -> session -> detail`
 - formal host 已存在，`Tasks` 入口、launcher 路径和正式宿主链路都已落地
 - `New task`、`Project list`、workspace、detail 都是正式 TaskMail 宿主内的真实表面，而不是只留在 debug activity 的实验路径
-- mail 仍然是当前 canonical truth layer；direct lane 只能按已验证的窄边界理解
+- `new_task` 当前主写路径已切到 Android-facing `POST /v1/android/create-session` facade，而不是旧 `/relay` phase2 packet
+- Android 还没有直接接入 live `pc-control` websocket；当前只是先完成 Android-facing facade cutover
+- mail 仍然是当前 workspace/detail user-visible outcome 的 canonical truth layer；direct lane 只能按已验证的窄边界理解
 - `TaskMail relay debug` 当前还承载一组 transport readiness / observability debug-only 入口，但这不等于业务 cutover 已完成
 
 ## 当前已实现的主要能力
@@ -43,11 +45,14 @@
 ### 2. `new_task`
 
 - formal-host `New task` 页面与 sender-account 解析已经存在
-- 当前 `new_task` 发送是 direct-first / mail-fallback
-- hard rejection 会显式停止，不会静默回退
-- latest direct result 已归一到本地 durable evidence，并可在正式 `New task` 页面复读
-- Android 侧 `new_task` latest evidence 现在保留 `requestId`、可用时的 `receiptId` 和可用时的 `transportMessageId`
-- 当前 `new_task` 主线已经进入 observation / guardrail 读法，而不是继续开新配置开关
+- 当前 `new_task` 主写路径是 Android-facing `create-session` facade：
+  - `POST /v1/android/create-session`
+  - 请求主键是 `pc_id + workspace_id`
+  - 认证令牌是独立 `android_app_token`
+- accepted submit 若返回 `session_binding`，Android 会直接打开对应 `session detail`
+- hard rejection 仍会显式停止，不会静默回退
+- 当前这条主线不应再读成“旧 `/relay` packet 的 observation 阶段”，而应读成“Batch A facade cutover 已落地，后续继续承接 SessionDetail / route-key / reply-status”
+- relay-era `latest direct result` durable evidence 仍可作为历史 guardrail 读法存在，但当前 facade 主线不再追加这类 relay evidence
 
 ### 3. `reply` / `/status`
 
@@ -106,10 +111,11 @@
 
 ## 当前验证读法
 
-截至 2026-03-24，应这样理解验证状态：
+截至 2026-03-26，应这样理解验证状态：
 
-- 读路径、projection、reply 基础语义、attachments、refresh、`new_task` durable evidence、`reply/status` durable evidence、`Project list` 渲染与 repo prefill 都已有 focused automated coverage
-- `new_task` live evidence 已闭到 observation 边界
+- 读路径、projection、reply 基础语义、attachments、refresh、`reply/status` durable evidence、`Project list` 渲染与 repo prefill 都已有 focused automated coverage
+- `new_task` facade create-session client、config、ViewModel、navigation 与 screen 接线已有 focused automated coverage
+- `new_task` 当前仍缺 fresh Android / VPS / PC live smoke；因此不能把它误写成 raw `pc-control` websocket 已经在设备侧跑通
 - `reply/status` 已有正向 direct accepted live 样本，但仍需继续收口 same-run strong bind 与 fallback artifact 对齐
 - `[SYNC]` 当前已证明 request path、waiting UI、follow-up refresh 与“不进入 session projection”边界，但对“同一轮 direct request 到 canonical reply”的时序闭环仍未完全关单
 - transport readiness / observability 当前已有真机 + PC/VPS focused live evidence，但这些证据只覆盖 `transport_probe` 与 `/v1/files` 单样本，不直接扩展 TaskMail 业务 cutover 结论
@@ -118,7 +124,7 @@
 
 ## 当前实现侧焦点
 
-- `new_task`：保持 observation 与 rollback guardrail，不再主动扩 scope
+- `new_task`：保持 facade cutover 主线，继续把 SessionDetail / route-key 承接到 VPS-first 主线，不再回头扩旧 `/relay` packet
 - `reply` / `/status`：继续收口 same-run strong bind、PC fallback artifact gaps，以及 relay-visible task root 前置条件
 - `[SYNC]`：继续联调 direct request 与 canonical reply 回流时间线，必要时再决定是否扩大 follow-up refresh 窗口
 
@@ -131,6 +137,6 @@
 
 如果只看当前工程主线，最重要的不是继续新增文档，而是保持三条主线读法稳定：
 
-- `new_task` 不再制造新的平行 decision note
+- `new_task` 继续围绕 `create-session facade -> session binding -> SessionDetail 承接` 推进
 - `reply` / `/status` 继续围绕 closeout 做窄验证，而不是误写成全量 direct 化
 - `[SYNC]` 继续围绕 direct request + canonical mail result 的边界闭环，而不是把它拉进 TaskMail session 投影

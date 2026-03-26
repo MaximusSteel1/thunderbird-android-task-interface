@@ -16,6 +16,7 @@ class DefaultTaskTransportConfigRepositoryTest {
             putString(TaskMailSettingsKeys.RELAY_USE_TLS, "true")
             putString(TaskMailSettingsKeys.RELAY_PATH, "/relay")
             putString(TaskMailSettingsKeys.RELAY_TRANSPORT_TOKEN, "secret-token")
+            putString(TaskMailSettingsKeys.ANDROID_APP_TOKEN, "android-app-token")
         }
         val testSubject = DefaultTaskTransportConfigRepository(settingsStorage)
 
@@ -29,6 +30,7 @@ class DefaultTaskTransportConfigRepositoryTest {
                 useTls = true,
                 path = "/relay",
                 transportToken = "secret-token",
+                androidAppToken = "android-app-token",
             ),
         )
     }
@@ -46,6 +48,7 @@ class DefaultTaskTransportConfigRepositoryTest {
                 useTls = false,
                 path = "relay",
                 transportToken = " secret-token ",
+                androidAppToken = " android-app-token ",
             ),
         )
 
@@ -54,5 +57,7 @@ class DefaultTaskTransportConfigRepositoryTest {
         assertThat(settingsStorage.getStringOrNull(TaskMailSettingsKeys.RELAY_PATH)).isEqualTo("/relay")
         assertThat(settingsStorage.getStringOrNull(TaskMailSettingsKeys.RELAY_TRANSPORT_TOKEN))
             .isEqualTo("secret-token")
+        assertThat(settingsStorage.getStringOrNull(TaskMailSettingsKeys.ANDROID_APP_TOKEN))
+            .isEqualTo("android-app-token")
     }
 }

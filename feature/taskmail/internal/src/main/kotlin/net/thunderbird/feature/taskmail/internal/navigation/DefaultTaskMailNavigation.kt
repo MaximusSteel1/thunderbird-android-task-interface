@@ -46,6 +46,14 @@ internal class DefaultTaskMailNavigation : TaskMailNavigation {
 
                 TaskNewTaskScreen(
                     onBack = onBack,
+                    onOpenSession = { workspaceId, sessionId ->
+                        onFinish(
+                            createSessionDetailRoute(
+                                workspaceId = workspaceId,
+                                sessionId = sessionId,
+                            ),
+                        )
+                    },
                     onOpenProjectSync = {
                         onFinish(TaskMailRoute.ProjectSync)
                     },

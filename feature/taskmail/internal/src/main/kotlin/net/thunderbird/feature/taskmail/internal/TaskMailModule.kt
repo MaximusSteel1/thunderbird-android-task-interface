@@ -60,13 +60,13 @@ import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailFileSampleSt
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailProjectSyncDebugRecorder
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeEventStore
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
+import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailCreateSessionFacadeClient
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngressMessage
 import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
 import net.thunderbird.feature.taskmail.internal.data.parser.EmailMessageParser
 import net.thunderbird.feature.taskmail.internal.data.parser.IncomingMessageParser
 import net.thunderbird.feature.taskmail.internal.data.relay.DefaultRelayBootstrapManager
-import net.thunderbird.feature.taskmail.internal.data.relay.CompatibilityRelayTaskMailCreateSessionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayFileSurfaceClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayConnectionClient
 import net.thunderbird.feature.taskmail.internal.data.relay.OkHttpRelayHealthProbe
@@ -188,9 +188,9 @@ val taskMailModule: Module = module {
         )
     }
     single<TaskMailCreateSessionClient> {
-        CompatibilityRelayTaskMailCreateSessionClient(
-            relayBootstrapManager = get(),
-            directNewTaskSender = get(),
+        OkHttpTaskMailCreateSessionFacadeClient(
+            transportConfigRepository = get(),
+            logger = get(),
         )
     }
     single<TaskMailDirectProjectSyncSender> {

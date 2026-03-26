@@ -31,8 +31,9 @@ private const val TASK_REQUIRED_ERROR = "Task details are required."
 private const val TITLE_REQUIRED_ERROR = "Title is required."
 private const val TIMEOUT_INVALID_ERROR = "Timeout must be a positive integer."
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail task request."
-private const val SEND_SUCCESS_MESSAGE =
-    "[Relay] Task request submitted. Session binding will appear after the first TaskMail update arrives."
+private const val SEND_SUCCESS_WITH_BINDING_MESSAGE =
+    "[VPS] Session accepted. Opening session detail."
+private const val SEND_SUCCESS_SUBMITTED_MESSAGE = "[VPS] Task request submitted."
 
 @Suppress("TooManyFunctions")
 internal class TaskNewTaskViewModel(
@@ -357,8 +358,19 @@ internal class TaskNewTaskViewModel(
                         lastDirectSendEvidence = sendResult.evidence,
                     )
                 }
-                emitEffect(Effect.ShowMessage(SEND_SUCCESS_MESSAGE))
-                emitEffect(Effect.NavigateBack)
+                val sessionBinding = sendResult.sessionBinding
+                if (sessionBinding != null) {
+                    emitEffect(Effect.ShowMessage(SEND_SUCCESS_WITH_BINDING_MESSAGE))
+                    emitEffect(
+                        Effect.NavigateToSession(
+                            workspaceId = sessionBinding.workspaceId,
+                            sessionId = sessionBinding.sessionId,
+                        ),
+                    )
+                } else {
+                    emitEffect(Effect.ShowMessage(SEND_SUCCESS_SUBMITTED_MESSAGE))
+                    emitEffect(Effect.NavigateBack)
+                }
             }
 
             is TaskMailCreateSessionResult.Rejected -> {

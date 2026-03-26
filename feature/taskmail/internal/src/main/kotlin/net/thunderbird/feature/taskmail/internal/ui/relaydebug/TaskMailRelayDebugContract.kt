@@ -16,6 +16,7 @@ internal interface TaskMailRelayDebugContract {
         val port: String = "",
         val useTls: Boolean = false,
         val transportToken: String = "",
+        val androidAppToken: String = "",
         val probePayloadText: String = DEFAULT_PROBE_PAYLOAD_TEXT,
         val newTaskSendRecordsPath: String? = null,
         val sessionActionSendRecordsPath: String? = null,
@@ -42,6 +43,7 @@ internal interface TaskMailRelayDebugContract {
         data class PortChanged(val value: String) : Event
         data class UseTlsChanged(val value: Boolean) : Event
         data class TransportTokenChanged(val value: String) : Event
+        data class AndroidAppTokenChanged(val value: String) : Event
         data class ProbePayloadTextChanged(val value: String) : Event
         data object SaveClicked : Event
         data object ProbeHealthClicked : Event
