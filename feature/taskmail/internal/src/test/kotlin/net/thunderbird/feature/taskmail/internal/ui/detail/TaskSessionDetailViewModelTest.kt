@@ -760,8 +760,16 @@ class TaskSessionDetailViewModelTest {
     fun `send reply should clear draft and refresh on direct success`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val directSender = FakeTaskMailDirectSessionActionSender()
+        val syncRequester = FakeTaskMailSyncRequester()
 
-        with(TaskSessionDetailViewModelRobot(this, repository, directSessionActionSender = directSender)) {
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                syncRequester = syncRequester,
+                directSessionActionSender = directSender,
+            ),
+        ) {
             start()
             loadDetail()
             changeDraft("ship it")
@@ -777,6 +785,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().draftText).isEqualTo("")
             assertThat(viewModelState().sendError).isEqualTo(null)
             assertThat(repository.requestedKeys.size).isEqualTo(3)
+            assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf(null))
             assertShowMessageEffect(
                 "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives.",
             )

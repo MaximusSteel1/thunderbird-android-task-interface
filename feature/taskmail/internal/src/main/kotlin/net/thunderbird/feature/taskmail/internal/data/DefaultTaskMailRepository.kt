@@ -21,6 +21,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyCo
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionSummary
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
 import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
@@ -340,12 +343,20 @@ private fun buildTimeline(
             message = message,
             bodyExtractor = bodyExtractor,
         )
-        val richDocument = message.htmlBody?.let { htmlBody ->
+        val projectedRichDocument = message.htmlBody?.let { htmlBody ->
             richTextProjector.project(
                 html = htmlBody,
                 attachments = timelineAttachments,
             )
         }
+        val richDocument = projectedRichDocument
+            ?.takeUnless { candidate ->
+                shouldPreferPlainTextTimelineBody(
+                    message = message,
+                    plainText = plainText,
+                    richDocument = candidate,
+                )
+            }
         val displaySummary = sanitizeDisplaySummary(message.detection.stateCapsule?.lastSummary)
             ?: plainText.takeIf { it.isNotBlank() }
 
@@ -796,6 +807,80 @@ private const val DUPLICATE_MESSAGE_STATE_CAPSULE_SCORE = 1_000_000
 private const val DUPLICATE_MESSAGE_ATTACHMENT_WEIGHT = 10_000
 private const val DUPLICATE_MESSAGE_TIMESTAMP_WINDOW_MS = 60_000L
 
+private fun shouldPreferPlainTextTimelineBody(
+    message: TaskMailMessage,
+    plainText: String,
+    richDocument: TaskRichTextDocument,
+): Boolean {
+    if (!message.detection.isSystemMessage || plainText.isBlank()) return false
+
+    val richText = richDocument.toFlattenedText()
+    if (richText.isBlank()) return false
+
+    val structuredTokenMatches = TIMELINE_RICH_TEXT_STRUCTURED_TOKENS.count { token ->
+        richText.contains(token, ignoreCase = true)
+    }
+
+    return richText.contains("---TASK-STATE-BEGIN---", ignoreCase = true) ||
+        richText.contains("---TASK-QUESTION-BEGIN---", ignoreCase = true) ||
+        structuredTokenMatches >= TIMELINE_RICH_TEXT_STRUCTURED_TOKEN_THRESHOLD
+}
+
+private fun TaskRichTextDocument.toFlattenedText(): String {
+    return blocks.joinToString(separator = "\n") { block ->
+        block.toFlattenedText()
+    }
+}
+
+private fun TaskRichTextBlock.toFlattenedText(): String {
+    return when (this) {
+        is TaskRichTextBlock.Paragraph -> inlines.toFlattenedText()
+        is TaskRichTextBlock.Heading -> inlines.toFlattenedText()
+        is TaskRichTextBlock.Quote -> blocks.joinToString(separator = "\n") { block ->
+            block.toFlattenedText()
+        }
+        is TaskRichTextBlock.CodeBlock -> text
+        is TaskRichTextBlock.BulletList -> items.flatten().joinToString(separator = "\n") { block ->
+            block.toFlattenedText()
+        }
+        is TaskRichTextBlock.OrderedList -> items.flatten().joinToString(separator = "\n") { block ->
+            block.toFlattenedText()
+        }
+        is TaskRichTextBlock.Table -> buildString {
+            if (headers.isNotEmpty()) {
+                append(headers.joinToString(separator = " ") { header -> header.toFlattenedText() })
+            }
+            if (rows.isNotEmpty()) {
+                if (isNotEmpty()) append('\n')
+                append(
+                    rows.joinToString(separator = "\n") { row ->
+                        row.joinToString(separator = " ") { cell ->
+                            cell.toFlattenedText()
+                        }
+                    },
+                )
+            }
+        }
+        is TaskRichTextBlock.InlineImage -> listOfNotNull(altText, caption, contentId)
+            .firstOrNull()
+            .orEmpty()
+        TaskRichTextBlock.Divider -> ""
+        is TaskRichTextBlock.UnsupportedHtml -> fallbackText
+    }
+}
+
+private fun List<TaskRichTextInline>.toFlattenedText(): String {
+    return joinToString(separator = "") { inline ->
+        when (inline) {
+            is TaskRichTextInline.Text -> inline.text
+            is TaskRichTextInline.Strong -> inline.text
+            is TaskRichTextInline.Emphasis -> inline.text
+            is TaskRichTextInline.Code -> inline.text
+            is TaskRichTextInline.Link -> inline.text
+        }
+    }
+}
+
 private fun sanitizeDisplaySummary(summary: String?): String? {
     val normalizedSummary = summary
         ?.trim()
@@ -835,6 +920,11 @@ private val DISPLAY_SUMMARY_STRUCTURED_TOKENS = listOf(
 )
 
 private const val DISPLAY_SUMMARY_STRUCTURED_TOKEN_THRESHOLD = 3
+private const val TIMELINE_RICH_TEXT_STRUCTURED_TOKEN_THRESHOLD = 3
+private val TIMELINE_RICH_TEXT_STRUCTURED_TOKENS = DISPLAY_SUMMARY_STRUCTURED_TOKENS + listOf(
+    "task-state-capsule",
+    "task-question-capsule",
+)
 
 private data class DuplicateComparableAttachment(
     val displayName: String,

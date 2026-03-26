@@ -810,7 +810,7 @@ internal class TaskSessionDetailViewModel(
                     loadDetail(
                         key = key,
                         forceRefresh = true,
-                        refreshTransportBeforeLoad = false,
+                        refreshTransportBeforeLoad = true,
                         syncCacheBeforeLoad = true,
                     )
                 }

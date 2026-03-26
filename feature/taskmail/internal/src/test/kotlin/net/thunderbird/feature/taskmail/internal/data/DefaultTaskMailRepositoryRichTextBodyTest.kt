@@ -105,9 +105,46 @@ internal class DefaultTaskMailRepositoryRichTextBodyTest {
         )
     }
 
+    @Test
+    fun `getTaskSessionDetail falls back to plain text for structured system html bodies`() = runTest {
+        val result = repositoryWithHtmlBody(
+            systemHtmlBody = """
+                <article class="task-mail">
+                  <h2>Context</h2>
+                  <p>Status: waiting_user</p>
+                  <p>Session ID: session-1</p>
+                  <p>Thread ID: thread-100</p>
+                  <p>Task ID: task-100</p>
+                  <p>Backend: codex</p>
+                  <p>Repo: E:/projects/android_task_manager</p>
+                  <pre>task-state-capsule
+                ---TASK-STATE-BEGIN---
+                thread_id: thread-100
+                workspace_id: workspace-1
+                session_id: session-1
+                ---TASK-STATE-END---</pre>
+                </article>
+            """.trimIndent(),
+        ).getTaskSessionDetail(
+            TaskSessionKey(
+                sessionId = "session-1",
+                threadId = "thread-100",
+            ),
+        )
+
+        assertThat(result).isNotNull()
+        val detail = result!!
+        val systemBody = detail.timeline.last().body
+        assertThat(detail.timeline.last().summary).isEqualTo("Need confirmation from user.")
+        assertThat(systemBody.plainTextFallback).isEqualTo("Need confirmation from user.")
+        assertThat(systemBody.renderMode).isEqualTo(TaskBodyRenderMode.PlainTextOnly)
+        assertThat(systemBody.richDocument).isEqualTo(null)
+    }
+
     private fun repositoryWithHtmlBody(
         attachmentContentType: String = "image/svg+xml",
         htmlImageType: String = "image/svg+xml",
+        systemHtmlBody: String? = null,
     ): DefaultTaskMailRepository {
         return DefaultTaskMailRepository(
             messageSource = FakeTaskMailMessageSource(
@@ -116,7 +153,7 @@ internal class DefaultTaskMailRepositoryRichTextBodyTest {
                         attachmentContentType = attachmentContentType,
                         htmlImageType = htmlImageType,
                     ),
-                    questionSystemMessage(),
+                    questionSystemMessage(htmlBody = systemHtmlBody),
                 ),
             ),
         )
@@ -166,7 +203,7 @@ internal class DefaultTaskMailRepositoryRichTextBodyTest {
         )
     }
 
-    private fun questionSystemMessage(): TaskMailMessage {
+    private fun questionSystemMessage(htmlBody: String? = null): TaskMailMessage {
         return TaskMailMessage(
             accountUuid = "account-1",
             folderId = 1L,
@@ -195,6 +232,7 @@ internal class DefaultTaskMailRepositoryRichTextBodyTest {
                 last_summary: Need confirmation from user.
                 ---TASK-STATE-END---
             """.trimIndent(),
+            htmlBody = htmlBody,
             detection = TaskMailDetection(
                 isTaskMail = true,
                 isSystemMessage = true,
