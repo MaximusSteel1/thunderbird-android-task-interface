@@ -17,6 +17,7 @@ import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
+import net.thunderbird.feature.taskmail.internal.data.direct.toTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectAcceptedEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
@@ -27,6 +28,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.merge
+import net.thunderbird.feature.taskmail.internal.domain.model.prefersVpsProjection
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
@@ -50,11 +52,11 @@ import net.thunderbird.feature.taskmail.internal.ui.toDisplayWorkdir
 
 private const val SEND_FAILURE_MESSAGE = "Failed to send TaskMail reply."
 private const val REPLY_SENT_VIA_DIRECT_MESSAGE =
-    "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives."
+    "[Control] Reply accepted. Detail will keep following control and mail updates."
 private const val QUICK_ANSWER_SENT_VIA_DIRECT_MESSAGE =
-    "[Relay] Quick answer sent. Final state will refresh after the canonical TaskMail mail arrives."
+    "[Control] Quick answer accepted. Detail will keep following control and mail updates."
 private const val STATUS_QUERY_SENT_VIA_DIRECT_MESSAGE =
-    "[Relay] /status sent. Final state will refresh after the canonical [STATUS] mail arrives."
+    "[Control] /status accepted. Detail will keep following control and mail updates."
 private const val DIRECT_SESSION_ACTION_UNAVAILABLE_MESSAGE =
     "Direct session action is unavailable until this session has canonical workspace and session ids."
 private const val DIRECT_REPLY_WAITING_MESSAGE =
@@ -221,7 +223,9 @@ internal class TaskSessionDetailViewModel(
                     )
                 ) {
                     handleDetailLoadSuccess(cachedDetail, loadContext, syncError = null)
-                    launchBackgroundSyncAndReload(key)
+                    if (cachedDetail?.prefersVpsProjection() != true) {
+                        launchBackgroundSyncAndReload(key)
+                    }
                     return@withLock
                 }
 
@@ -466,21 +470,19 @@ internal class TaskSessionDetailViewModel(
                         "provisionalTimelineCount=${projection.provisionalTimeline.size} " +
                         "lastSequence=${projection.lastSequence}"
                 }
-                currentDirectProjectionStatus = projection.headerStatus
-                currentDirectProjectionSummary = projection.lastSummary
-                currentDirectProjectionQuestions = projection.pendingQuestions
-                currentDirectProjectionTimeline = projection.provisionalTimeline
-                val existingDetail = currentDetail
-                val mergedDetail = existingDetail?.mergeControlPlaneSnapshot(projection.controlPlaneSnapshot)
-                currentDetail = mergedDetail ?: existingDetail
-                currentDirectProjectionControlPlane = mergedDetail?.controlPlaneSnapshot
-                    ?: projection.controlPlaneSnapshot
-                if (
-                    mergedDetail != null &&
-                    mergedDetail.controlPlaneSnapshot != existingDetail.controlPlaneSnapshot
-                ) {
-                    persistDirectControlPlaneSnapshot(mergedDetail)
-                }
+                val persistedDetail = projection.toTaskSessionDetail(existingDetail = currentDetail)
+                currentKey = currentKey?.copy(
+                    workspaceId = persistedDetail.key.workspaceId ?: currentKey?.workspaceId,
+                    sessionId = persistedDetail.key.sessionId ?: currentKey?.sessionId,
+                    threadId = persistedDetail.key.threadId ?: currentKey?.threadId,
+                ) ?: persistedDetail.key
+                persistProjectedDetail(persistedDetail)
+                currentDetail = persistedDetail
+                currentDirectProjectionStatus = null
+                currentDirectProjectionSummary = null
+                currentDirectProjectionQuestions = null
+                currentDirectProjectionTimeline = null
+                currentDirectProjectionControlPlane = null
                 renderDirectProjection()
             }
         }
@@ -531,6 +533,16 @@ internal class TaskSessionDetailViewModel(
         syncCacheBeforeLoad: Boolean,
     ) {
         val key = currentKey ?: return
+        if (currentDetail?.prefersVpsProjection() == true) {
+            stopDirectObservation(clearProjection = false)
+            loadDetail(
+                key = key,
+                forceRefresh = true,
+                refreshTransportBeforeLoad = false,
+                syncCacheBeforeLoad = false,
+            )
+            return
+        }
         loadDetail(
             key = key,
             forceRefresh = true,
@@ -712,6 +724,7 @@ internal class TaskSessionDetailViewModel(
                 TaskSessionSendUiResult.Success(
                     message = directSuccessMessage,
                     latestDirectSessionActionRecord = latestRecord,
+                    directControlPlaneSnapshot = result.payload.controlPlaneSnapshot,
                 )
             is TaskMailDirectDispatchResult.DirectRejected ->
                 TaskSessionSendUiResult.Failure(
@@ -805,14 +818,10 @@ internal class TaskSessionDetailViewModel(
                             sendError = null,
                         )
                     }
+                    result.directControlPlaneSnapshot?.let(::applyDirectControlPlaneSnapshot)
                     emitEffect(Effect.ShowMessage(result.message))
                     val key = currentKey ?: return@launch
-                    loadDetail(
-                        key = key,
-                        forceRefresh = true,
-                        refreshTransportBeforeLoad = true,
-                        syncCacheBeforeLoad = true,
-                    )
+                    refreshAfterSuccessfulDirectSend(key)
                 }
 
                 is TaskSessionSendUiResult.Failure -> {
@@ -827,6 +836,17 @@ internal class TaskSessionDetailViewModel(
                 }
             }
         }
+    }
+
+    private fun applyDirectControlPlaneSnapshot(snapshot: TaskSessionControlPlaneSnapshot) {
+        currentDirectProjectionControlPlane = currentDirectProjectionControlPlane.merge(snapshot)
+        val existingDetail = currentDetail ?: return
+        val mergedDetail = existingDetail.mergeControlPlaneSnapshot(snapshot)
+        currentDetail = mergedDetail
+        if (mergedDetail.controlPlaneSnapshot != existingDetail.controlPlaneSnapshot) {
+            persistDirectControlPlaneSnapshot(mergedDetail)
+        }
+        renderDirectProjection()
     }
 
     private fun loadLatestDirectSessionActionRecord(key: TaskSessionKey) {
@@ -860,18 +880,38 @@ internal class TaskSessionDetailViewModel(
     @Suppress("ReturnCount")
     private fun currentDirectSessionActionTargetOrNull(): TaskMailDirectSessionActionTarget? {
         val key = currentKey ?: return null
-        return key.toDirectSessionActionTargetOrNull(
-            threadIdFallback = currentDetail?.key?.threadId,
-        )
+        return key.toDirectSessionActionTargetOrNull()
     }
 
     private fun persistDirectControlPlaneSnapshot(detail: TaskSessionDetail) {
+        persistProjectedDetail(detail)
+    }
+
+    private fun persistProjectedDetail(detail: TaskSessionDetail) {
         viewModelScope.launch {
             runCatching {
                 detailRepository.upsertSessionDetails(listOf(detail))
             }.onFailure { error ->
-                logger.warn(TAG, error) { "Failed to persist direct control-plane snapshot." }
+                logger.warn(TAG, error) { "Failed to persist TaskMail session projection." }
             }
+        }
+    }
+
+    private fun refreshAfterSuccessfulDirectSend(key: TaskSessionKey) {
+        if (currentDetail?.prefersVpsProjection() == true) {
+            loadDetail(
+                key = key,
+                forceRefresh = true,
+                refreshTransportBeforeLoad = false,
+                syncCacheBeforeLoad = false,
+            )
+        } else {
+            loadDetail(
+                key = key,
+                forceRefresh = true,
+                refreshTransportBeforeLoad = true,
+                syncCacheBeforeLoad = true,
+            )
         }
     }
 
@@ -892,6 +932,7 @@ private sealed interface TaskSessionSendUiResult {
     data class Success(
         val message: String,
         val latestDirectSessionActionRecord: TaskMailSessionActionSendRecord? = null,
+        val directControlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
     ) : TaskSessionSendUiResult
 
     data class Failure(
@@ -903,13 +944,10 @@ private sealed interface TaskSessionSendUiResult {
 private const val FOREGROUND_REFRESH_INTERVAL_MS = 10_000L
 private const val TAG = "TaskSessionDetailViewModel"
 
-private fun TaskSessionKey.toDirectSessionActionTargetOrNull(
-    threadIdFallback: String? = null,
-): TaskMailDirectSessionActionTarget? {
+private fun TaskSessionKey.toDirectSessionActionTargetOrNull(): TaskMailDirectSessionActionTarget? {
     val normalizedWorkspaceId = workspaceId?.trim()?.takeIf(String::isNotBlank)
     val normalizedSessionId = sessionId?.trim()?.takeIf(String::isNotBlank)
     val normalizedThreadId = threadId?.trim()?.takeIf(String::isNotBlank)
-        ?: threadIdFallback?.trim()?.takeIf(String::isNotBlank)
 
     return if (normalizedWorkspaceId != null && normalizedSessionId != null) {
         TaskMailDirectSessionActionTarget(
@@ -959,9 +997,7 @@ private fun TaskSessionDetail.toUiState(
         workspaceId = key.workspaceId ?: workspace.workspaceId,
         sessionId = key.sessionId,
         threadId = key.threadId,
-    ).toDirectSessionActionTargetOrNull(
-        threadIdFallback = key.threadId,
-    )
+    ).toDirectSessionActionTargetOrNull()
     val pendingQuestionItems = (directQuestions ?: pendingQuestions)
         .map(TaskQuestionCapsule::toUiState)
         .toImmutableList()

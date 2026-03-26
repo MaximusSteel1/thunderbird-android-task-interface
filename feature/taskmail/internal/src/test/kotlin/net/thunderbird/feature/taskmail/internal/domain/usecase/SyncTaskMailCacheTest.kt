@@ -17,6 +17,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionSta
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailDetection
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskMailParsedSubject
@@ -312,6 +315,86 @@ class SyncTaskMailCacheTest {
         assertThat(result.isSuccess).isEqualTo(true)
         assertThat(sessionDetailRepository.sessionDetails.single().controlPlaneSnapshot).isEqualTo(
             existingDetail.controlPlaneSnapshot,
+        )
+    }
+
+    @Test
+    fun `invoke should keep vps native summary while applying mail compatibility repair`() = runTest {
+        val messageCodec = TaskMailMessageJsonCodec()
+        val initialMessage = sampleTaskMailMessage(summary = "Mail compatibility summary.")
+        val updatedMessage = initialMessage.copy(
+            rawBodyText = """
+                Summary: Mail repair appended.
+
+                ---TASK-STATE-BEGIN---
+                thread_id: thread-100
+                workspace_id: workspace-1
+                session_id: session-1
+                session_name: Implement parser
+                repo_path: E:/projects/android_task_manager
+                workdir: feature/taskmail
+                backend: codex
+                status: done
+                last_summary: Mail repair appended.
+                ---TASK-STATE-END---
+            """.trimIndent(),
+            detection = initialMessage.detection.copy(
+                stateCapsule = initialMessage.detection.stateCapsule?.copy(
+                    status = TaskMailSessionStatus.Done,
+                    lastSummary = "Mail repair appended.",
+                ),
+            ),
+        )
+        val existingDetail = projectSessionDetails(initialMessage).single().copy(
+            status = TaskMailSessionStatus.Done,
+            lastSummary = "Direct terminal summary.",
+            projectionSyncState = TaskSessionProjectionSyncState(
+                dataSource = TaskSessionProjectionDataSource.VpsNative,
+                lastSequence = 8L,
+                lastProjectionUpdatedAt = 900L,
+                subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Active,
+            ),
+        )
+        val sessionDetailRepository = InMemoryTaskSessionDetailRepository(
+            sessionDetails = listOf(existingDetail),
+        )
+        val unifiedMessageRepository = InMemoryUnifiedMessageRepository(
+            initialMessages = listOf(
+                sampleUnifiedMessage(messageJson = messageCodec.encode(initialMessage)),
+            ),
+        )
+        val testSubject = SyncTaskMailCache(
+            unifiedMessageRepository = unifiedMessageRepository,
+            messageSyncStateRepository = InMemoryMessageSyncStateRepository(
+                MessageSyncState(
+                    source = DEFAULT_MESSAGE_SYNC_SOURCE,
+                    scopeKey = DEFAULT_MESSAGE_SYNC_SCOPE_KEY,
+                    lastCursor = "cursor-1",
+                    lastSyncAt = 123L,
+                ),
+            ),
+            syncCoordinator = RecordingMessageSyncCoordinator {
+                unifiedMessageRepository.upsertMessages(
+                    listOf(
+                        sampleUnifiedMessage(messageJson = messageCodec.encode(updatedMessage)),
+                    ),
+                )
+                Result.success(Unit)
+            },
+            taskMailMessageJsonCodec = messageCodec,
+            sessionProjector = TaskMailSessionProjector(),
+            taskSessionDetailRepository = sessionDetailRepository,
+            clock = { 2_000L },
+        )
+
+        val result = testSubject()
+        val mergedDetail = sessionDetailRepository.sessionDetails.single()
+
+        assertThat(result.isSuccess).isEqualTo(true)
+        assertThat(mergedDetail.status).isEqualTo(TaskMailSessionStatus.Done)
+        assertThat(mergedDetail.lastSummary).isEqualTo("Direct terminal summary.")
+        assertThat(mergedDetail.projectionSyncState.dataSource).isEqualTo(
+            TaskSessionProjectionDataSource.MixedRepair,
         )
     }
 }

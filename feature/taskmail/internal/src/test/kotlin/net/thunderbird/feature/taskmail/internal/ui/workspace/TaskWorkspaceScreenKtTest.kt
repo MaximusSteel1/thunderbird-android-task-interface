@@ -249,6 +249,7 @@ private fun sampleWorkspaceSummaries(): List<TaskWorkspaceItemUi> {
         TaskWorkspaceItemUi(
             title = "android_task_manager",
             subtitle = "feature/taskmail",
+            routeTargetLabel = "Workspace ID · workspace_001",
             sessionCountLabel = "1 session",
             sessions = listOf(
                 TaskSessionItemUi(

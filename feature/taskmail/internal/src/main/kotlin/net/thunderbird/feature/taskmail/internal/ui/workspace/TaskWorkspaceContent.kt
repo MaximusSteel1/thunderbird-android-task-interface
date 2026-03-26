@@ -16,12 +16,9 @@ import androidx.compose.ui.unit.dp
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilled
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilledTonal
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonIcon
-import app.k9mail.core.ui.compose.designsystem.atom.card.CardElevated
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyLarge
-import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodySmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
-import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
 import app.k9mail.core.ui.compose.designsystem.molecule.ErrorView
 import app.k9mail.core.ui.compose.designsystem.molecule.PullToRefreshBox
 import app.k9mail.core.ui.compose.designsystem.organism.TopAppBar
@@ -137,11 +134,11 @@ private fun WorkbenchHome(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-        TaskSectionHeader(
-            title = "Session workbench",
-            supportingText = "Sessions are the primary object. PC and workspace stay as route context until control-plane inventory is wired.",
-        )
-    }
+            TaskSectionHeader(
+                title = "Session workbench",
+                supportingText = "Sessions are the primary object. Routed workspace context stays attached so you can jump back into the active flow quickly.",
+            )
+        }
 
         state.refreshError?.let { refreshError ->
             item {
@@ -175,10 +172,6 @@ private fun WorkbenchHome(
             sessions = state.recentSessions,
             emptyText = "Recent history will appear here after sessions start syncing.",
             onEvent = onEvent,
-        )
-
-        pcSummarySection(
-            pcSummaries = state.pcSummaries,
         )
 
         workspaceSummarySection(
@@ -229,45 +222,21 @@ private fun LazyListScope.sessionSection(
     }
 }
 
-private fun LazyListScope.pcSummarySection(
-    pcSummaries: List<TaskPcSummaryItemUi>,
-) {
-    item {
-        TaskSectionHeader(
-            title = "PC summaries",
-            supportingText = "Control-plane PC inventory will land here once the VPS-side list API is wired.",
-        )
-    }
-
-    if (pcSummaries.isEmpty()) {
-        item {
-            SectionPlaceholder(
-                text = "PC inventory is not wired yet. The current home derives route context from cached session details.",
-            )
-        }
-        return
-    }
-
-    items(pcSummaries) { summary ->
-        PcSummaryCard(summary = summary)
-    }
-}
-
 private fun LazyListScope.workspaceSummarySection(
     state: TaskWorkspaceContract.State,
     onEvent: (TaskWorkspaceContract.Event) -> Unit,
 ) {
     item {
         TaskSectionHeader(
-            title = "Workspace summaries",
-            supportingText = "Current workspace route context derived from cached session details while control-plane inventory is still being wired.",
+            title = "Routed workspaces",
+            supportingText = "Workspace route anchors derived from the current cached session bindings.",
         )
     }
 
     if (state.workspaceSummaries.isEmpty()) {
         item {
             SectionPlaceholder(
-                text = "Workspace summaries will appear here once cached session details are available.",
+                text = "Routed workspaces will appear here once cached session details are available.",
             )
         }
         return
@@ -307,31 +276,6 @@ private fun SectionPlaceholder(
 }
 
 @Composable
-private fun PcSummaryCard(
-    summary: TaskPcSummaryItemUi,
-    modifier: Modifier = Modifier,
-) {
-    CardElevated(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TextHeadlineSmall(text = summary.title)
-            summary.supportingText?.let { supportingText ->
-                TextBodyMedium(
-                    text = supportingText,
-                    color = MainTheme.colors.onSurfaceVariant,
-                )
-            }
-            TextLabelMedium(
-                text = summary.workspaceCountLabel,
-                color = MainTheme.colors.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
 private fun WorkspaceEmptyState(
     refreshError: String?,
     onProjectList: () -> Unit,
@@ -352,7 +296,7 @@ private fun WorkspaceEmptyState(
         }
         TextHeadlineSmall(text = "No TaskMail sessions yet")
         TextBodyLarge(
-            text = "When TaskMail sessions arrive, the workbench will show session sections first, with workspace context kept below.",
+            text = "When TaskMail sessions arrive, the workbench will show active session sections first, with routed workspace context kept below.",
         )
         ButtonFilled(
             text = "New task",

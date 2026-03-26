@@ -16,7 +16,6 @@ import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConf
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskRequest
 import net.thunderbird.feature.taskmail.internal.domain.projectsync.TaskMailDirectProjectSyncResult
 import net.thunderbird.feature.taskmail.internal.domain.projectsync.TaskMailDirectProjectSyncSender
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectOrFallback
 
 class TransportBackedTaskMailProjectSyncRequesterTest {
 
@@ -33,11 +32,9 @@ class TransportBackedTaskMailProjectSyncRequesterTest {
         val testSubject = TransportBackedTaskMailProjectSyncRequester(
             transport = transport,
             directProjectSyncSender = directProjectSyncSender,
-            runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(
-                FakeRelayBootstrapManager(
-                    bootstrapResult = RelayBootstrapResult(
-                        status = RelayBootstrapStatus.HelloAck,
-                    ),
+            relayBootstrapManager = FakeRelayBootstrapManager(
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.HelloAck,
                 ),
             ),
         )
@@ -62,11 +59,9 @@ class TransportBackedTaskMailProjectSyncRequesterTest {
         val testSubject = TransportBackedTaskMailProjectSyncRequester(
             transport = transport,
             directProjectSyncSender = directProjectSyncSender,
-            runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(
-                FakeRelayBootstrapManager(
-                    bootstrapResult = RelayBootstrapResult(
-                        status = RelayBootstrapStatus.HelloAck,
-                    ),
+            relayBootstrapManager = FakeRelayBootstrapManager(
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.HelloAck,
                 ),
             ),
         )
@@ -97,11 +92,9 @@ class TransportBackedTaskMailProjectSyncRequesterTest {
         val testSubject = TransportBackedTaskMailProjectSyncRequester(
             transport = transport,
             directProjectSyncSender = directProjectSyncSender,
-            runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(
-                FakeRelayBootstrapManager(
-                    bootstrapResult = RelayBootstrapResult(
-                        status = RelayBootstrapStatus.NotConfigured,
-                    ),
+            relayBootstrapManager = FakeRelayBootstrapManager(
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.NotConfigured,
                 ),
             ),
         )
@@ -134,11 +127,9 @@ class TransportBackedTaskMailProjectSyncRequesterTest {
         val testSubject = TransportBackedTaskMailProjectSyncRequester(
             transport = transport,
             directProjectSyncSender = directProjectSyncSender,
-            runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(
-                FakeRelayBootstrapManager(
-                    bootstrapResult = RelayBootstrapResult(
-                        status = RelayBootstrapStatus.HelloAck,
-                    ),
+            relayBootstrapManager = FakeRelayBootstrapManager(
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.HelloAck,
                 ),
             ),
         )
@@ -162,11 +153,9 @@ class TransportBackedTaskMailProjectSyncRequesterTest {
         val testSubject = TransportBackedTaskMailProjectSyncRequester(
             transport = transport,
             directProjectSyncSender = directProjectSyncSender,
-            runTaskMailDirectOrFallback = RunTaskMailDirectOrFallback(
-                FakeRelayBootstrapManager(
-                    bootstrapResult = RelayBootstrapResult(
-                        status = RelayBootstrapStatus.HelloAck,
-                    ),
+            relayBootstrapManager = FakeRelayBootstrapManager(
+                bootstrapResult = RelayBootstrapResult(
+                    status = RelayBootstrapStatus.HelloAck,
                 ),
             ),
         )

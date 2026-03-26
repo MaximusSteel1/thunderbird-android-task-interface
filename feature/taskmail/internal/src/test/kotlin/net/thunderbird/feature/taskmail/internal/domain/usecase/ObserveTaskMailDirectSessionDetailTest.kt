@@ -48,6 +48,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStat
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -92,6 +93,39 @@ class ObserveTaskMailDirectSessionDetailTest {
         assertThat(projection.canonicalWorkspaceId).isEqualTo("workspace_canonical")
         assertThat(projection.lastSummary).isEqualTo("Direct running summary")
         assertThat(projection.headerStatus.name).isEqualTo("Running")
+    }
+
+    @Test
+    fun `invoke should subscribe without thread id when detail only has workspace and session ids`() = runTest(testDispatcher) {
+        val relayConnectionClient = DirectDetailFakeRelayConnectionClient()
+        val relayBootstrapManager = DirectDetailFakeRelayBootstrapManager(relayConnectionClient)
+        val testSubject = createTestSubject(
+            relayConnectionClient = relayConnectionClient,
+            relayBootstrapManager = relayBootstrapManager,
+            requestIdFactory = { "req_without_thread" },
+        )
+
+        val projectionDeferred = async {
+            testSubject(sampleDetailWithoutThreadId()).first()
+        }
+
+        advanceUntilIdle()
+        relayConnectionClient.emitSessionUpdate(
+            snapshotUpdate(
+                subscriptionId = "sub_without_thread",
+                sequence = 1,
+                workspaceId = "workspace_provisional",
+                status = "running",
+                lastSummary = "Direct running summary",
+            ),
+        )
+
+        projectionDeferred.await()
+        val subscription = relayConnectionClient.sentPackets.single().subscriptionObject()
+
+        assertThat(subscription["workspace_id"]?.jsonPrimitive?.content).isEqualTo("workspace_provisional")
+        assertThat(subscription["session_id"]?.jsonPrimitive?.content).isEqualTo("session_001")
+        assertThat(subscription["thread_id"]).isEqualTo(null)
     }
 
     @Test
@@ -446,6 +480,18 @@ private fun sampleDetail() = TaskMailPreviewData.sessionDetails.first().copy(
         workdir = "feature/taskmail/internal",
     ),
     workdir = "feature/taskmail/internal",
+)
+
+private fun sampleDetailWithoutThreadId() = sampleDetail().copy(
+    key = TaskSessionKey(
+        workspaceId = "workspace_provisional",
+        sessionId = "session_001",
+        threadId = null,
+    ),
+    workspace = sampleDetail().workspace.copy(
+        workspaceId = "workspace_provisional",
+        workdir = "feature/taskmail/internal",
+    ),
 )
 
 private fun snapshotUpdate(

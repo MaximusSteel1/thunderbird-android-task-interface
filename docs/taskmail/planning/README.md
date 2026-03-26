@@ -15,6 +15,7 @@
 - 核心页面低保真方案：`android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
 - 高保真视觉方向：`android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`
 - 高保真 HTML 预览：`android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
+- 历史复盘高保真补充预览：`android/mockups/taskmail-vps-first-multi-pc-history-review-high-fi-preview-v0.1.html`
 - 页面级 API 需求：`android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
 - Compose 页面结构与实现骨架：`android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
 - Android 骨架实施计划：`android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`

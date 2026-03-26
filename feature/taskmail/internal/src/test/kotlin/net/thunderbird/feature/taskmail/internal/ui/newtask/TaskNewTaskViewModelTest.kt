@@ -22,13 +22,18 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutc
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailNewTaskSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionAckStatus
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionBinding
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionClient
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionSubmitAck
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTaskSendRecordRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
@@ -240,6 +245,46 @@ class TaskNewTaskViewModelTest {
             )
             assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(null)
             assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(null)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send should persist provisional vps detail when create session returns binding`() = runMviTest {
+        val detailRepository = FakeTaskSessionDetailRepository()
+
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                detailRepository = detailRepository,
+            ),
+        ) {
+            start()
+            loadData()
+            selectRouteTarget()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow\nList only blockers.")
+            send()
+
+            val persistedDetail = detailRepository.getTaskSessionDetails().single()
+            assertThat(persistedDetail.key).isEqualTo(
+                TaskSessionKey(
+                    workspaceId = "workspace_android_app",
+                    sessionId = "sess_001",
+                ),
+            )
+            assertThat(persistedDetail.sessionName).isEqualTo("Audit the new flow")
+            assertThat(persistedDetail.status).isEqualTo(TaskMailSessionStatus.Queued)
+            assertThat(persistedDetail.lastSummary).isEqualTo(
+                "[VPS] Task request submitted. Waiting for the first session update.",
+            )
+            assertThat(persistedDetail.timeline.single().summary).isEqualTo("Task request submitted")
+            assertThat(persistedDetail.projectionSyncState.dataSource).isEqualTo(
+                TaskSessionProjectionDataSource.VpsNative,
+            )
+            collectedEffects()
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -568,6 +613,7 @@ private class TaskNewTaskViewModelRobot(
         ),
     ),
     latestSendRecord: TaskMailNewTaskSendRecord? = null,
+    private val detailRepository: FakeTaskSessionDetailRepository? = null,
     initialState: TaskNewTaskContract.State = TaskNewTaskContract.State(),
 ) {
     private val expectedInitialState = initialState
@@ -582,6 +628,7 @@ private class TaskNewTaskViewModelRobot(
             clock = { 456L },
         ),
         createTaskMailSession = CreateTaskMailSession(createSessionClient),
+        detailRepository = detailRepository,
         initialState = initialState,
     )
     private lateinit var turbines: MviTurbines<TaskNewTaskContract.State, TaskNewTaskContract.Effect>
@@ -696,6 +743,38 @@ private class FakeTaskMailNewTaskSendRecordRepository(
 
     override suspend fun saveRecord(record: TaskMailNewTaskSendRecord) {
         records.add(0, record)
+    }
+}
+
+private class FakeTaskSessionDetailRepository(
+    initialDetails: List<TaskSessionDetail> = emptyList(),
+) : TaskSessionDetailRepository {
+    private var details = initialDetails
+
+    override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
+        return details.firstOrNull { detail -> detail.key == key }
+    }
+
+    override suspend fun getTaskSessionDetails(): List<TaskSessionDetail> = details
+
+    override suspend fun replaceAllSessionDetails(details: List<TaskSessionDetail>) {
+        this.details = details
+    }
+
+    override suspend fun upsertSessionDetails(details: List<TaskSessionDetail>) {
+        if (details.isEmpty()) return
+
+        val merged = this.details.associateBy(TaskSessionDetail::key).toMutableMap()
+        details.forEach { detail ->
+            merged[detail.key] = detail
+        }
+        this.details = merged.values.toList()
+    }
+
+    override suspend fun removeSessionDetails(keys: List<TaskSessionKey>) {
+        if (keys.isEmpty()) return
+        val keysToRemove = keys.toSet()
+        details = details.filterNot { detail -> detail.key in keysToRemove }
     }
 }
 

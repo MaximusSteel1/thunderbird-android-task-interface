@@ -20,4 +20,5 @@ internal data class TaskSessionDetail(
     val replyContext: TaskSessionReplyContext? = null,
     val timeline: List<TaskTimelineItem>,
     val controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
+    val projectionSyncState: TaskSessionProjectionSyncState = TaskSessionProjectionSyncState(),
 )

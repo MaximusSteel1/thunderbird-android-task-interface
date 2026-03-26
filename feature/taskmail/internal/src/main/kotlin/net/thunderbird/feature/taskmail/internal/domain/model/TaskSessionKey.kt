@@ -8,9 +8,16 @@ internal data class TaskSessionKey(
 
 internal fun TaskSessionKey.isCompatibleWith(other: TaskSessionKey): Boolean {
     val sessionIdsMatch = sessionId != null && other.sessionId != null && sessionId == other.sessionId
-    val threadIdsMatch = threadId != null && other.threadId != null && threadId == other.threadId
-    if (!sessionIdsMatch && !threadIdsMatch) {
-        return false
+    val bothHaveSessionId = sessionId != null && other.sessionId != null
+    if (bothHaveSessionId) {
+        if (!sessionIdsMatch) {
+            return false
+        }
+    } else {
+        val threadIdsMatch = threadId != null && other.threadId != null && threadId == other.threadId
+        if (!threadIdsMatch) {
+            return false
+        }
     }
 
     return workspaceId == null || other.workspaceId == null || workspaceId == other.workspaceId

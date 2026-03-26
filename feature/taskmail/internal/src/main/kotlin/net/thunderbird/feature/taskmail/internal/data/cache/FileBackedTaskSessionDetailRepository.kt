@@ -1,6 +1,8 @@
 package net.thunderbird.feature.taskmail.internal.data.cache
 
 import java.io.File
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -14,6 +16,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.thunderbird.feature.taskmail.internal.data.TaskSessionDetailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
@@ -23,10 +26,13 @@ internal class FileBackedTaskSessionDetailRepository(
     storageDirectory: File,
     private val codec: TaskSessionDetailJsonCodec = TaskSessionDetailJsonCodec(),
     private val json: Json = Json { ignoreUnknownKeys = true },
-) : TaskSessionDetailRepository {
+) : TaskSessionDetailRepository, TaskSessionDetailStoreChangeObserver {
     private val storageFile = File(storageDirectory, STORAGE_FILE_NAME)
     private val writeMutex = Mutex()
+    private val mutableChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     private var sessionDetails: List<TaskSessionDetail> = loadSessionDetails()
+
+    override fun changes(): Flow<Unit> = mutableChanges
 
     override suspend fun getTaskSessionDetail(key: TaskSessionKey): TaskSessionDetail? {
         return sessionDetails.firstOrNull { detail -> detail.key == key }
@@ -136,6 +142,7 @@ internal class FileBackedTaskSessionDetailRepository(
         )
         writeSessionDetails(persistedDetails)
         sessionDetails = persistedDetails
+        mutableChanges.tryEmit(Unit)
     }
 
     private companion object {

@@ -6,10 +6,21 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionResult
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskDraft
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
@@ -41,6 +52,7 @@ internal class TaskNewTaskViewModel(
     private val getLatestTaskMailNewTaskSendRecord: GetLatestTaskMailNewTaskSendRecord,
     private val recordTaskMailNewTaskSendRecord: RecordTaskMailNewTaskSendRecord,
     private val createTaskMailSession: CreateTaskMailSession,
+    private val detailRepository: TaskSessionDetailRepository? = null,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskNewTaskContract.ViewModel {
@@ -340,12 +352,13 @@ internal class TaskNewTaskViewModel(
                     )
                 }
             }
-            handleSendResult(sendResult)
+            handleSendResult(sendResult, draft)
         }
     }
 
     private suspend fun handleSendResult(
         sendResult: TaskMailCreateSessionResult,
+        draft: TaskMailNewTaskDraft,
     ) {
         when (sendResult) {
             is TaskMailCreateSessionResult.Submitted -> {
@@ -360,6 +373,10 @@ internal class TaskNewTaskViewModel(
                 }
                 val sessionBinding = sendResult.sessionBinding
                 if (sessionBinding != null) {
+                    persistSubmittedSessionBinding(
+                        binding = sessionBinding,
+                        draft = draft,
+                    )
                     emitEffect(Effect.ShowMessage(SEND_SUCCESS_WITH_BINDING_MESSAGE))
                     emitEffect(
                         Effect.NavigateToSession(
@@ -397,6 +414,54 @@ internal class TaskNewTaskViewModel(
                 }
             }
         }
+    }
+
+    private suspend fun persistSubmittedSessionBinding(
+        binding: net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionBinding,
+        draft: TaskMailNewTaskDraft,
+        recordedAt: Long = System.currentTimeMillis(),
+    ) {
+        val repository = detailRepository ?: return
+        val sessionName = draft.subjectTitle.trim()
+            .ifBlank {
+                draft.taskText.lineSequence()
+                    .map(String::trim)
+                    .firstOrNull(String::isNotBlank)
+                    ?: "Task session"
+            }
+        val summary = "[VPS] Task request submitted. Waiting for the first session update."
+        val provisionalDetail = TaskSessionDetail(
+            key = TaskSessionKey(
+                workspaceId = binding.workspaceId,
+                sessionId = binding.sessionId,
+            ),
+            workspace = TaskWorkspaceKey(
+                workspaceId = binding.workspaceId,
+                repoPath = draft.repoPath,
+                workdir = draft.workdir,
+            ),
+            sessionName = sessionName,
+            backend = draft.backend,
+            status = TaskMailSessionStatus.Queued,
+            repoPath = draft.repoPath,
+            workdir = draft.workdir,
+            lastSummary = summary,
+            timeline = listOf(
+                TaskTimelineItem(
+                    id = "android-create-session:${binding.sessionId}",
+                    timestamp = recordedAt,
+                    direction = TaskTimelineDirection.System,
+                    summary = "Task request submitted",
+                    body = TaskMessageBody(summary, markdownCandidate = false),
+                ),
+            ),
+            projectionSyncState = TaskSessionProjectionSyncState(
+                dataSource = TaskSessionProjectionDataSource.VpsNative,
+                lastProjectionUpdatedAt = recordedAt,
+                subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Idle,
+            ),
+        )
+        repository.upsertSessionDetails(listOf(provisionalDetail))
     }
 
     private fun showValidationErrors(validation: ValidationResult) {

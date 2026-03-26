@@ -154,7 +154,7 @@ private fun LazyListScope.awaitingResultItem(
                 actions = {
                     if (state.canRetryWithMail) {
                         ButtonText(
-                            text = "Try mail retry",
+                            text = "Use compatibility mail retry",
                             onClick = { onEvent(TaskProjectSyncContract.Event.MailRetryRequested) },
                             modifier = Modifier.testTag("TaskProjectSyncMailRetryButton"),
                         )
@@ -418,7 +418,7 @@ private fun TaskProjectSyncContract.State.awaitingResultSupportingText(): String
     return when {
         latestResult == null && canRetryWithMail -> {
             "The sync request was accepted, but the first [SYNC] reply is still delayed. " +
-                "You can try a mail retry if it still looks stuck."
+                "You can fall back to a compatibility mail retry if it still looks stuck."
         }
 
         latestResult == null -> {
@@ -427,7 +427,7 @@ private fun TaskProjectSyncContract.State.awaitingResultSupportingText(): String
 
         canRetryWithMail -> {
             "The sync request was accepted, but a newer [SYNC] reply has not arrived yet. " +
-                "You can try a mail retry if it still looks stuck."
+                "You can fall back to a compatibility mail retry if it still looks stuck."
         }
 
         else -> {
@@ -443,5 +443,5 @@ private sealed interface ProjectSyncSenderAccountOption {
 }
 
 private const val PROJECT_SYNC_INTRO_TEXT =
-    "Fetch the latest allowlisted project folders, then choose a Repo path " +
-        "for the new TaskMail request."
+    "Fetch the latest allowlisted project folders, then choose repository context " +
+        "for the routed TaskMail submit flow."

@@ -35,6 +35,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
@@ -85,6 +88,7 @@ private fun TaskSessionDetail.toJsonObject(json: Json): JsonObject {
         controlPlaneSnapshot?.let { snapshot ->
             put("controlPlaneSnapshot", snapshot.toJsonObject(json))
         }
+        put("projectionSyncState", projectionSyncState.toJsonObject())
     }
 }
 
@@ -126,6 +130,17 @@ private fun TaskSessionKey.toJsonObject(): JsonObject {
         putNullable("workspaceId", workspaceId)
         putNullable("sessionId", sessionId)
         putNullable("threadId", threadId)
+    }
+}
+
+private fun TaskSessionProjectionSyncState.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("dataSource", dataSource.name)
+        putNullable("lastSequence", lastSequence)
+        putNullable("lastEventId", lastEventId)
+        putNullable("lastResultId", lastResultId)
+        putNullable("lastProjectionUpdatedAt", lastProjectionUpdatedAt)
+        put("subscriptionStatus", subscriptionStatus.name)
     }
 }
 
@@ -376,6 +391,8 @@ private fun JsonObject.toTaskSessionDetail(json: Json): TaskSessionDetail {
         replyContext = objectValue("replyContext")?.toTaskSessionReplyContext(),
         timeline = arrayObjects("timeline").map(JsonObject::toTaskTimelineItem),
         controlPlaneSnapshot = objectValue("controlPlaneSnapshot")?.toTaskSessionControlPlaneSnapshot(json),
+        projectionSyncState = objectValue("projectionSyncState")?.toTaskSessionProjectionSyncState()
+            ?: TaskSessionProjectionSyncState(),
     )
 }
 
@@ -437,6 +454,21 @@ private fun JsonObject.toTaskSessionReplyContext(): TaskSessionReplyContext {
         messageServerId = string("messageServerId"),
         threadRootId = optionalLong("threadRootId"),
         anchorTimestamp = optionalLong("anchorTimestamp"),
+    )
+}
+
+private fun JsonObject.toTaskSessionProjectionSyncState(): TaskSessionProjectionSyncState {
+    return TaskSessionProjectionSyncState(
+        dataSource = TaskSessionProjectionDataSource.entries.firstOrNull { source ->
+            source.name == optionalString("dataSource")
+        } ?: TaskSessionProjectionDataSource.MailCompatibilityImport,
+        lastSequence = optionalLong("lastSequence"),
+        lastEventId = optionalString("lastEventId"),
+        lastResultId = optionalString("lastResultId"),
+        lastProjectionUpdatedAt = optionalLong("lastProjectionUpdatedAt"),
+        subscriptionStatus = TaskSessionProjectionSubscriptionStatus.entries.firstOrNull { status ->
+            status.name == optionalString("subscriptionStatus")
+        } ?: TaskSessionProjectionSubscriptionStatus.Unknown,
     )
 }
 

@@ -27,6 +27,7 @@
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-authority-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-development-plan-v0.2.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
+- `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-vps-native-cache-and-projection-contract-v0.1.md`
 - `docs/taskmail/planning/android/taskmail-next-session-handoff-2026-03-26.md`
 - `docs/taskmail/planning/android/taskmail-vps-first-multi-pc-pc-handshake-readiness-checklist-v0.1.md`
 - `docs/taskmail/planning/platform/taskmail-vps-first-control-plane-freeze-v0.1.md`
@@ -56,6 +57,10 @@
 2. 让 `SessionDetail` 能直接承载 `command / event / result`
 
 只有这两件事先成立，后面的 route/key、reply/status、workbench 与删旧，才真正有 cutover 价值。
+
+如果后续目标进一步收紧成“先把 `workspace/detail` 的用户可见结果切成 `VPS-only`”，则缓存与投影口径以
+`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-vps-native-cache-and-projection-contract-v0.1.md`
+为准。
 
 ## Campaign 原则
 

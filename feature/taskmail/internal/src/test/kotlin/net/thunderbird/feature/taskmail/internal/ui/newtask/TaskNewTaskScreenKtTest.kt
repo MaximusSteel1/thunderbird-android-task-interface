@@ -21,10 +21,6 @@ import assertk.assertions.containsExactly
 import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import org.junit.Rule
 import org.junit.Test
@@ -169,90 +165,9 @@ class TaskNewTaskScreenKtTest {
         composeTestRule.onNodeWithText("TaskMail send failed").assertIsDisplayed()
         composeTestRule.onNodeWithText("TaskMail bot mailbox is not configured.").assertIsDisplayed()
         composeTestRule.onNodeWithText(
-            "PC/workspace is the route target now. Sender identity plus repository bridge remains only as a temporary compatibility bridge.",
+            "PC/workspace is the route target now. Sender identity plus repository context remain visible until routed workspace data is fully hydrated.",
         ).assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Compatibility bridge").assertCountEquals(0)
-    }
-
-    @Test
-    fun `content should show latest direct evidence summary for accepted result`() {
-        composeTestRule.setContent {
-            K9MailTheme2 {
-                TaskNewTaskContent(
-                    state = formState().copy(
-                        lastDirectSendEvidence = TaskMailDirectSendEvidence(
-                            bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                            outcome = TaskMailDirectOutcome.DirectAccepted,
-                            switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
-                            requestId = "req_001",
-                            receiptId = "receipt-restore",
-                            transportMessageId = "transport-1",
-                        ),
-                    ),
-                    onEvent = {},
-                )
-            }
-        }
-
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasTestTag("TaskNewTaskLatestDirectEvidence"))
-        composeTestRule.onNodeWithTag("TaskNewTaskLatestDirectEvidence").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Latest dispatch result").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Direct accepted").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Switch gate: Keep direct default").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Hello ack").assertIsDisplayed()
-        composeTestRule.onNodeWithText("req_001").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("receipt-restore"))
-        composeTestRule.onNodeWithText("receipt-restore").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("transport-1"))
-        composeTestRule.onNodeWithText("transport-1").assertIsDisplayed()
-    }
-
-    @Test
-    fun `content should show fallback and error details for latest direct evidence`() {
-        composeTestRule.setContent {
-            K9MailTheme2 {
-                TaskNewTaskContent(
-                    state = formState().copy(
-                        lastDirectSendEvidence = TaskMailDirectSendEvidence(
-                            bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                            outcome = TaskMailDirectOutcome.DirectRejected,
-                            switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
-                            fallbackReason = "unsupported_action",
-                            errorMessage = "invalid_payload: task_text is required",
-                        ),
-                    ),
-                    onEvent = {},
-                )
-            }
-        }
-
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Direct rejected"))
-        composeTestRule.onNodeWithText("Direct rejected").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Switch gate: Switch blocker").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Dispatch detail"))
-        composeTestRule.onNodeWithText("Dispatch detail").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("unsupported_action"))
-        composeTestRule.onNodeWithText("unsupported_action").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Error"))
-        composeTestRule.onNodeWithText("Error").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("invalid_payload: task_text is required"))
-        composeTestRule.onNodeWithText("invalid_payload: task_text is required").assertIsDisplayed()
     }
 
     @Test

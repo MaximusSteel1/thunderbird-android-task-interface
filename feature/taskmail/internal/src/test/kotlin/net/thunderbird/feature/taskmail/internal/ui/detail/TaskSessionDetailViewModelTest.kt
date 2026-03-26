@@ -19,6 +19,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.buildJsonObject
@@ -40,7 +41,15 @@ import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.Cont
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneStructuredPayload
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommand
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
@@ -60,6 +69,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachmen
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
@@ -142,6 +154,26 @@ class TaskSessionDetailViewModelTest {
 
             assertLoadedDetail()
             assertThat(viewModelState().isRefreshing).isEqualTo(false)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should prefer cached vps detail without background cache sync`() = runMviTest {
+        val cacheSyncGate = CompletableDeferred<Unit>()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                mviContext = this,
+                repository = FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                syncTaskMailCache = createBlockingDetailSyncTaskMailCache(cacheSyncGate),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertLoadedDetail()
+            assertThat(viewModelState().isRefreshing).isEqualTo(false)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("VPS cached summary")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -389,6 +421,36 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
             assertThat(viewModelState().detail?.lastSummary).isEqualTo("Direct terminal summary")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct projection should persist vps native detail into repository`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Done,
+                    lastSummary = "Direct terminal summary",
+                ),
+            )
+            assertThat(repository.detail?.status).isEqualTo(TaskMailSessionStatus.Done)
+            assertThat(repository.detail?.lastSummary).isEqualTo("Direct terminal summary")
+            assertThat(repository.detail?.projectionSyncState?.dataSource).isEqualTo(
+                TaskSessionProjectionDataSource.VpsNative,
+            )
+            assertThat(repository.detail?.projectionSyncState?.lastSequence).isEqualTo(1L)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -787,7 +849,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(repository.requestedKeys.size).isEqualTo(3)
             assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf(null))
             assertShowMessageEffect(
-                "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives.",
+                "[Control] Reply accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -831,7 +893,7 @@ class TaskSessionDetailViewModelTest {
                 "transport-1",
             )
             assertShowMessageEffect(
-                "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives.",
+                "[Control] Reply accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1039,7 +1101,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(directSender.requests.size).isEqualTo(1)
             assertThat(viewModelState().sendError).isNull()
             assertShowMessageEffect(
-                "[Relay] Reply sent. Final state will refresh after the canonical TaskMail mail arrives.",
+                "[Control] Reply accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1066,7 +1128,7 @@ class TaskSessionDetailViewModelTest {
                 ),
             )
             assertShowMessageEffect(
-                "[Relay] /status sent. Final state will refresh after the canonical [STATUS] mail arrives.",
+                "[Control] /status accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1108,7 +1170,7 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId).isEqualTo("req_002")
             assertShowMessageEffect(
-                "[Relay] /status sent. Final state will refresh after the canonical [STATUS] mail arrives.",
+                "[Control] /status accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1264,6 +1326,22 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `refresh clicked should reload vps detail without mail sync`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = vpsProjectedDetail())
+        val syncRequester = FakeTaskMailSyncRequester()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, syncRequester = syncRequester)) {
+            start()
+            loadDetail()
+            repository.detail = repository.detail?.copy(lastSummary = "Reloaded from VPS cache")
+            refresh()
+            assertThat(syncRequester.requestCount).isEqualTo(0)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Reloaded from VPS cache")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `refresh clicked should keep detail visible when sync fails`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository()
         val syncRequester = FakeTaskMailSyncRequester(
@@ -1365,6 +1443,7 @@ private class TaskSessionDetailViewModelRobot(
     logger: DetailViewModelFakeLogger = DetailViewModelFakeLogger(),
     directSessionActionSender: FakeTaskMailDirectSessionActionSender? = FakeTaskMailDirectSessionActionSender(),
     relayBootstrapManager: RelayBootstrapManager = FakeDetailRelayBootstrapManager(),
+    relayConnectionClient: RelayConnectionClient = FakeDetailRelayConnectionClient(),
 ) {
     private val getLatestTaskMailSessionActionSendRecord =
         GetLatestTaskMailSessionActionSendRecord(sessionActionSendRecordRepository)
@@ -1383,7 +1462,10 @@ private class TaskSessionDetailViewModelRobot(
         timelineAttachmentHandler = timelineAttachmentHandler,
         logger = logger,
         runTaskMailDirectDispatch = directSessionActionSender?.let {
-            RunTaskMailDirectDispatch(relayBootstrapManager)
+            RunTaskMailDirectDispatch(
+                relayBootstrapManager = relayBootstrapManager,
+                relayConnectionClient = relayConnectionClient,
+            )
         },
         syncTaskMailCache = syncTaskMailCache,
         observeTaskMailDirectSessionDetail = directObserver,
@@ -1740,14 +1822,17 @@ private class FakeTaskMailTimelineAttachmentHandler(
 }
 
 private class FakeDetailRelayBootstrapManager(
-    private val bootstrapResult: RelayBootstrapResult =
-        RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck),
+    private val config: RelayTransportConfig = RelayTransportConfig(
+        host = "relay.example.test",
+        port = 8787,
+        transportToken = "transport-token",
+    ),
 ) : RelayBootstrapManager {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
 
     override val connectionState = mutableConnectionState
 
-    override fun loadConfig(): RelayTransportConfig = RelayTransportConfig()
+    override fun loadConfig(): RelayTransportConfig = config
 
     override fun saveConfig(config: RelayTransportConfig): Boolean = true
 
@@ -1782,7 +1867,53 @@ private class FakeDetailRelayBootstrapManager(
     }
 
     override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
-        return bootstrapResult
+        return RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck)
+    }
+}
+
+private class FakeDetailRelayConnectionClient(
+    private val connectResult: Result<RelayHelloAck> = Result.success(
+        RelayHelloAck(
+            messageType = "hello_ack",
+            connectionId = "connection-1",
+            serverTime = "2026-03-21T12:00:00Z",
+            heartbeatSeconds = 30,
+            acceptedPayloadSchemas = listOf(
+                "taskmail-bootstrap-control-contract-v2",
+                "post-creation-session-action-contract-v1",
+            ),
+        ),
+    ),
+) : RelayConnectionClient {
+    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
+    private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
+
+    override val connectionState = mutableConnectionState
+    override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
+
+    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> = connectResult
+
+    override suspend fun connect(
+        config: RelayTransportConfig,
+        supportedPayloadSchemas: List<String>,
+    ): Result<RelayHelloAck> = connectResult
+
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> = error("Not used by this test")
+
+    override suspend fun sendCommand(
+        command: RelayCommand,
+        ackTimeoutMillis: Long,
+    ): Result<RelayCommandAck> = error("Not used by this test")
+
+    override suspend fun disconnect() {
+        mutableConnectionState.value = RelayConnectionState.Idle
     }
 }
 
@@ -1833,6 +1964,18 @@ private fun directReplyCapableDetail(): TaskSessionDetail {
         status = TaskMailSessionStatus.Done,
         question = null,
         pendingQuestions = emptyList(),
+    )
+}
+
+private fun vpsProjectedDetail(): TaskSessionDetail {
+    return directReplyCapableDetail().copy(
+        lastSummary = "VPS cached summary",
+        projectionSyncState = TaskSessionProjectionSyncState(
+            dataSource = TaskSessionProjectionDataSource.VpsNative,
+            lastSequence = 9L,
+            lastProjectionUpdatedAt = 789L,
+            subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Active,
+        ),
     )
 }
 
@@ -1907,7 +2050,6 @@ private fun sampleDirectTarget(): TaskMailDirectSessionActionTarget {
     return TaskMailDirectSessionActionTarget(
         workspaceId = "workspace_001",
         sessionId = "session_001",
-        threadId = "thread_001",
     )
 }
 

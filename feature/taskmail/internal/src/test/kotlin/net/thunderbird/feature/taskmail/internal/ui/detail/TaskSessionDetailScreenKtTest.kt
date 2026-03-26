@@ -24,17 +24,10 @@ import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.Cont
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneProtocolJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResultMessage
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskBodyRenderMode
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwitchGate
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
-import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
-import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionType
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -569,52 +562,6 @@ class TaskSessionDetailScreenKtTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
         composeTestRule.onAllNodesWithText("Parser layer is complete. Waiting for the next step.").assertCountEquals(1)
-    }
-
-    @Test
-    fun `content should render latest direct evidence card when session-action record exists`() {
-        composeTestRule.setContent {
-            K9MailTheme2 {
-                TaskSessionDetailContent(
-                    state = TaskSessionDetailContract.State(
-                        latestDirectSessionActionRecord = TaskMailSessionActionSendRecord(
-                            recordedAt = 200L,
-                            actionType = TaskMailDirectSessionActionType.Status,
-                            target = TaskMailDirectSessionActionTarget(
-                                workspaceId = "workspace_001",
-                                sessionId = "session_001",
-                                threadId = "thread_001",
-                            ),
-                            evidence = TaskMailDirectSendEvidence(
-                                bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                                outcome = TaskMailDirectOutcome.DirectAccepted,
-                                switchGate = TaskMailDirectSwitchGate.KeepDirectDefault,
-                                requestId = "req_002",
-                                receiptId = "receipt-2",
-                                transportMessageId = "transport-2",
-                            ),
-                        ),
-                        detail = replyCapableDetail(),
-                    ),
-                    onEvent = {},
-                    onPickAttachments = {},
-                )
-            }
-        }
-
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailLatestDirectEvidence"))
-
-        composeTestRule.onNodeWithTag("TaskSessionDetailLatestDirectEvidence").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("Request ID"))
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("req_002"))
-        composeTestRule.onNodeWithText("Request ID").assertIsDisplayed()
-        composeTestRule.onNodeWithText("req_002").assertIsDisplayed()
     }
 
     @Test

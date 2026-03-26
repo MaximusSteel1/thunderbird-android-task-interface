@@ -6,6 +6,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionSummary
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceSummary
+import net.thunderbird.feature.taskmail.internal.domain.model.lastUpdatedAt
 import net.thunderbird.feature.taskmail.internal.domain.model.withWorkspaceIdFallback
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
@@ -68,10 +69,6 @@ private fun TaskSessionDetail.toSessionSummary(): TaskSessionSummary {
         lastUpdatedAt = lastUpdatedAt(),
         pendingQuestion = pendingQuestions.isNotEmpty(),
     )
-}
-
-private fun TaskSessionDetail.lastUpdatedAt(): Long {
-    return timeline.lastOrNull()?.timestamp ?: 0L
 }
 
 private fun deriveWorkspaceTitle(repoPath: String): String {

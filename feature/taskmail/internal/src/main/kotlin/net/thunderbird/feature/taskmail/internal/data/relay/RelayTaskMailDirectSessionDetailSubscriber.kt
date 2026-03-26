@@ -58,7 +58,7 @@ internal class RelayTaskMailDirectSessionDetailSubscriber(
                 subscription.repoPath?.takeIf(String::isNotBlank)?.let { put("repo_path", it) }
                 subscription.workdir?.takeIf(String::isNotBlank)?.let { put("workdir", it) }
                 subscription.sessionId?.takeIf(String::isNotBlank)?.let { put("session_id", it) }
-                put("thread_id", subscription.threadId)
+                subscription.threadId?.takeIf(String::isNotBlank)?.let { put("thread_id", it) }
                 subscription.lastKnownSequence?.takeIf { it > 0 }?.let { put("last_known_sequence", it) }
                 put("reason", subscription.reason)
             },
@@ -91,7 +91,7 @@ internal data class RelaySessionDetailSubscription(
     val repoPath: String? = null,
     val workdir: String? = null,
     val sessionId: String? = null,
-    val threadId: String,
+    val threadId: String? = null,
     val lastKnownSequence: Long? = null,
     val reason: String,
 )

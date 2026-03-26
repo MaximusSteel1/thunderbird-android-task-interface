@@ -53,6 +53,8 @@
   这份文档当前冻结了主线视觉气质、层级重点与高保真方向
 - 高保真 HTML 预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
   这份文件当前提供首页、新任务页、Session 页的静态视觉预览
+- 历史复盘高保真补充预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-history-review-high-fi-preview-v0.1.html`
+  这份文件当前补充了“历史回合列表 / 回合详情”的静态视觉预览，并约束过程记录只在回合详情中展开
 - 页面级 API 需求：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
   这份文档当前冻结了三张核心页面对 VPS 的最小能力需求
 - Compose 页面结构与实现骨架：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`

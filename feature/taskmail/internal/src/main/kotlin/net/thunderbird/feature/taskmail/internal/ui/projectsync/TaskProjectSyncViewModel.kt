@@ -31,9 +31,10 @@ private const val RESULT_LOAD_ERROR = "Unable to load the latest TaskMail projec
 private const val SYNC_REQUEST_FAILURE = "Failed to send TaskMail project sync request."
 private const val SYNC_REQUEST_SUCCESS =
     "Project list sync requested. The repo list updates when the [SYNC] reply arrives."
-private const val MAIL_RETRY_REQUEST_FAILURE = "Failed to send TaskMail project sync mail retry."
+private const val MAIL_RETRY_REQUEST_FAILURE =
+    "Failed to send TaskMail project sync compatibility mail retry."
 private const val MAIL_RETRY_REQUEST_SUCCESS =
-    "Mail retry requested. The repo list updates when the next [SYNC] reply arrives."
+    "Compatibility mail retry requested. The repo list updates when the next [SYNC] reply arrives."
 private const val FIRST_POST_SYNC_FOLLOW_UP_DELAY_MILLIS = 30_000L
 private const val SECOND_POST_SYNC_FOLLOW_UP_DELAY_MILLIS = 60_000L
 private val POST_SYNC_FOLLOW_UP_DELAYS_MILLIS = listOf(

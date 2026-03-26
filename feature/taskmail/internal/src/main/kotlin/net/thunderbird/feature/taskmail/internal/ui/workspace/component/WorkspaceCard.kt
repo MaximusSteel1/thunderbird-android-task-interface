@@ -36,6 +36,12 @@ internal fun WorkspaceCard(
                         color = MainTheme.colors.onSurfaceVariant,
                     )
                 }
+                workspace.routeTargetLabel?.let { routeTargetLabel ->
+                    TextLabelMedium(
+                        text = routeTargetLabel,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
                 TextLabelMedium(
                     text = workspace.sessionCountLabel,
                     color = MainTheme.colors.onSurfaceVariant,

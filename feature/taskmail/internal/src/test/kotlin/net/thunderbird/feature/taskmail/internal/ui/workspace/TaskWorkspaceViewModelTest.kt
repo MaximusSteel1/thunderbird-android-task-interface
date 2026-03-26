@@ -22,6 +22,7 @@ import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSenderAccountSource
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
+import net.thunderbird.feature.taskmail.internal.data.TaskSessionDetailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
@@ -29,6 +30,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
@@ -37,6 +41,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessag
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskSessionDetailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
@@ -194,6 +199,27 @@ class TaskWorkspaceViewModelTest {
     }
 
     @Test
+    fun `load data should prefer cached vps sessions without background cache sync`() = runMviTest {
+        val cacheSyncGate = CompletableDeferred<Unit>()
+
+        with(
+            TaskWorkspaceViewModelRobot(
+                mviContext = this,
+                repository = FakeTaskSessionDetailRepository(
+                    sessionDetails = listOf(vpsProjectedSessionDetail()),
+                ),
+                syncTaskMailCache = createBlockingSyncTaskMailCache(cacheSyncGate),
+            ),
+        ) {
+            start()
+            loadData()
+            assertLoadedContent()
+            assertThat(viewModelState().isRefreshing).isEqualTo(false)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `local mail change should reload sessions after initial load`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository()
         val changeObserver = FakeTaskMailStoreChangeObserver()
@@ -204,6 +230,30 @@ class TaskWorkspaceViewModelTest {
             repository.sessionDetails = emptyList()
             emitLocalChange()
             assertThat(viewModelState().workspaceSummaries).hasSize(0)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `projection store change should reload sessions without triggering mail sync`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository()
+        val projectionChangeObserver = FakeTaskSessionDetailStoreChangeObserver()
+        val syncRequester = FakeTaskMailSyncRequester()
+
+        with(
+            TaskWorkspaceViewModelRobot(
+                this,
+                repository,
+                syncRequester = syncRequester,
+                projectionChangeObserver = projectionChangeObserver,
+            ),
+        ) {
+            start()
+            loadData()
+            repository.sessionDetails = emptyList()
+            emitProjectionChange()
+            assertThat(viewModelState().workspaceSummaries).hasSize(0)
+            assertThat(syncRequester.requestCount).isEqualTo(0)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -291,6 +341,8 @@ private class TaskWorkspaceViewModelRobot(
     syncRequester: FakeTaskMailSyncRequester = FakeTaskMailSyncRequester(),
     senderAccounts: List<TaskMailSenderAccount> = listOf(sampleSenderAccount()),
     private val changeObserver: FakeTaskMailStoreChangeObserver = FakeTaskMailStoreChangeObserver(),
+    private val projectionChangeObserver: FakeTaskSessionDetailStoreChangeObserver =
+        FakeTaskSessionDetailStoreChangeObserver(),
     private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
         FakeTaskMailForegroundRefreshTickerFactory(),
     syncTaskMailCache: SyncTaskMailCache? = null,
@@ -300,6 +352,7 @@ private class TaskWorkspaceViewModelRobot(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(FakeTaskMailSenderAccountSource(senderAccounts)),
         refreshTaskMail = RefreshTaskMail(syncRequester),
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
+        observeTaskSessionDetailStoreChanges = ObserveTaskSessionDetailStoreChanges(projectionChangeObserver),
         foregroundRefreshTickerFactory = foregroundRefreshTickerFactory,
         syncTaskMailCache = syncTaskMailCache,
     )
@@ -324,6 +377,11 @@ private class TaskWorkspaceViewModelRobot(
         mviContext.advanceUntilIdle()
     }
 
+    suspend fun emitProjectionChange() {
+        projectionChangeObserver.emitChange()
+        mviContext.advanceUntilIdle()
+    }
+
     suspend fun startForegroundRefresh() {
         viewModel.event(TaskWorkspaceContract.Event.ForegroundRefreshStarted)
         mviContext.advanceUntilIdle()
@@ -344,8 +402,8 @@ private class TaskWorkspaceViewModelRobot(
         assertThat(state.isLoading).isEqualTo(false)
         assertThat(state.error).isEqualTo(null)
         assertThat(state.attentionSessions).hasSize(1)
-        assertThat(state.pcSummaries).hasSize(1)
         assertThat(state.workspaceSummaries).hasSize(1)
+        assertThat(state.workspaceSummaries.first().routeTargetLabel).isEqualTo("Workspace ID · workspace_001")
         assertThat(state.workspaceSummaries.first().sessions).hasSize(1)
         assertThat(state.workspaceSummaries.first().sessions.first().workspaceId).isEqualTo("workspace_001")
     }
@@ -454,6 +512,16 @@ private class FakeTaskMailStoreChangeObserver : TaskMailStoreChangeObserver {
     }
 }
 
+private class FakeTaskSessionDetailStoreChangeObserver : TaskSessionDetailStoreChangeObserver {
+    private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    override fun changes(): Flow<Unit> = changes
+
+    suspend fun emitChange() {
+        changes.emit(Unit)
+    }
+}
+
 private class FakeTaskMailSenderAccountSource(
     private val accounts: List<TaskMailSenderAccount>,
 ) : TaskMailSenderAccountSource {
@@ -477,6 +545,17 @@ private fun sampleSenderAccount(accountUuid: String = "account_001"): TaskMailSe
         accountUuid = accountUuid,
         displayName = "TaskMail User",
         emailAddress = "taskmail@example.com",
+    )
+}
+
+private fun vpsProjectedSessionDetail(): TaskSessionDetail {
+    return TaskMailPreviewData.questionSessionDetail.copy(
+        projectionSyncState = TaskSessionProjectionSyncState(
+            dataSource = TaskSessionProjectionDataSource.VpsNative,
+            lastSequence = 7L,
+            lastProjectionUpdatedAt = 456L,
+            subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Active,
+        ),
     )
 }
 

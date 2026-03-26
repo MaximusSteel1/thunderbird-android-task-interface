@@ -47,7 +47,7 @@ private const val EXECUTION_POLICY_SUPPORTING_TEXT =
     "Backend is part of the new control-plane shape. Advanced values stay optional for now."
 private const val SUBMIT_REQUIREMENTS_SUPPORTING_TEXT =
     "PC/workspace is now the required route target. " +
-        "Sender identity plus repository bridge still stays visible as a temporary compatibility bridge."
+        "Sender identity plus repository context still stay visible while routed workspace inventory is being hydrated."
 private val backendLabel: (TaskMailBackend) -> String = { backend ->
     when (backend) {
         TaskMailBackend.OpenCode -> "OpenCode"
@@ -126,9 +126,9 @@ private fun TaskNewTaskForm(
     ) {
         item {
             TextBodyLarge(
-                text = "Create a new TaskMail request. " +
+                text = "Create a new TaskMail session on the selected route target. " +
                     "The page now starts from PC and workspace routing. " +
-                    "Sender account plus repository bridge stays visible only because the current compatibility bridge still needs it.",
+                    "Sender account plus repository context stays visible while the routed workspace bridge is still settling.",
             )
         }
 
@@ -151,8 +151,6 @@ private fun TaskNewTaskForm(
             state = state,
             onEvent = onEvent,
         )
-
-        latestDirectEvidenceItem(state)
 
         item {
             TaskNewTaskSendSection(
@@ -422,11 +420,11 @@ private fun LazyListScope.repoPathItem(
             RouteHint(
                 optionsCount = if (state.selectedWorkspaceOption?.repoPath != null) 1 else 0,
                 emptyText = if (state.hasControlPlaneRouteTarget) {
-                    "Keep repository context for now. This is still the active bridge from the new route target into the current relay submit path."
+                    "Keep repository context for now. The current routed workspace bridge still uses it during submit."
                 } else {
-                    "Current relay submit still needs repository context. Pick a workspace target first, or enter the bridge manually."
+                    "Pick a workspace target first, or enter repository context manually."
                 },
-                nonEmptyText = "Repository bridge is already available from the selected workspace option and can still be overridden here.",
+                nonEmptyText = "Repository context is already available from the selected workspace option and can still be overridden here.",
             )
             ButtonFilledTonal(
                 text = "Choose from project list",
@@ -541,7 +539,7 @@ private fun TaskNewTaskSendSection(
 
         TextBodySmall(
             text = "PC/workspace is the route target now. " +
-                "Sender identity plus repository bridge remains only as a temporary compatibility bridge.",
+                "Sender identity plus repository context remain visible until routed workspace data is fully hydrated.",
             color = MainTheme.colors.onSurfaceVariant,
         )
 

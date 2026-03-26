@@ -8,10 +8,13 @@ import kotlinx.coroutines.withContext
 import net.thunderbird.feature.taskmail.internal.data.TaskMailMessage
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
+import net.thunderbird.feature.taskmail.internal.data.direct.mergeMailCompatibilityProjection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
 import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
+import net.thunderbird.feature.taskmail.internal.domain.model.merge
+import net.thunderbird.feature.taskmail.internal.domain.model.prefersVpsProjection
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
@@ -116,7 +119,7 @@ internal class SyncTaskMailCache(
         val sessionDetails = sessionProjector.projectSessionDetails(
             messages = taskMailMessages,
             keys = affectedKeys,
-        ).preserveControlPlaneSnapshots(existingDetails)
+        ).mergeExistingProjectionData(existingDetails)
         val projectedKeys = sessionDetails.map { detail -> detail.key }.toSet()
 
         taskSessionDetailRepository.upsertSessionDetails(sessionDetails)
@@ -127,7 +130,7 @@ internal class SyncTaskMailCache(
         val taskMailMessages = decodeTaskMailMessages(cachedMessages)
         val existingDetails = taskSessionDetailRepository.getTaskSessionDetails()
         val sessionDetails = sessionProjector.projectSessionDetails(taskMailMessages)
-            .preserveControlPlaneSnapshots(existingDetails)
+            .mergeExistingProjectionData(existingDetails)
         taskSessionDetailRepository.replaceAllSessionDetails(sessionDetails)
     }
 
@@ -264,23 +267,24 @@ private enum class SnapshotRebuildMode {
     Incremental,
 }
 
-private fun List<TaskSessionDetail>.preserveControlPlaneSnapshots(
+private fun List<TaskSessionDetail>.mergeExistingProjectionData(
     existingDetails: List<TaskSessionDetail>,
 ): List<TaskSessionDetail> {
     if (isEmpty() || existingDetails.isEmpty()) return this
 
     return map { detail ->
-        val preservedSnapshot = existingDetails
+        val existingDetail = existingDetails
             .firstOrNull { existingDetail ->
                 existingDetail.key == detail.key ||
                     existingDetail.key.isCompatibleWith(detail.key)
             }
-            ?.controlPlaneSnapshot
 
-        if (preservedSnapshot == null) {
-            detail
-        } else {
-            detail.copy(controlPlaneSnapshot = preservedSnapshot)
+        when {
+            existingDetail == null -> detail
+            existingDetail.prefersVpsProjection() -> existingDetail.mergeMailCompatibilityProjection(detail)
+            else -> detail.copy(
+                controlPlaneSnapshot = existingDetail.controlPlaneSnapshot.merge(detail.controlPlaneSnapshot),
+            )
         }
     }
 }

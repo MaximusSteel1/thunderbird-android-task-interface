@@ -3,10 +3,20 @@ package net.thunderbird.feature.taskmail.internal.domain.usecase
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlin.test.Test
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.test.runTest
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommand
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
@@ -20,11 +30,12 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwit
 class RunTaskMailDirectDispatchTest {
 
     @Test
-    fun `execute should return direct accepted after successful bootstrap`() = runTest {
-        val relayBootstrapManager = DispatchFakeRelayBootstrapManager(
-            bootstrapResult = RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck),
+    fun `execute should return direct accepted after successful control bootstrap`() = runTest {
+        val relayConnectionClient = DispatchFakeRelayConnectionClient()
+        val testSubject = RunTaskMailDirectDispatch(
+            relayBootstrapManager = DispatchFakeRelayBootstrapManager(),
+            relayConnectionClient = relayConnectionClient,
         )
-        val testSubject = RunTaskMailDirectDispatch(relayBootstrapManager)
 
         val result = testSubject.execute(
             directSend = {
@@ -52,19 +63,19 @@ class RunTaskMailDirectDispatchTest {
                 ),
             ),
         )
-        assertThat(relayBootstrapManager.bootstrapCallCount).isEqualTo(1)
-        assertThat(relayBootstrapManager.disconnectCallCount).isEqualTo(1)
+        assertThat(relayConnectionClient.connectedConfig?.path).isEqualTo("/control")
+        assertThat(relayConnectionClient.disconnectCallCount).isEqualTo(1)
     }
 
     @Test
-    fun `execute should reject when bootstrap is unavailable`() = runTest {
-        val relayBootstrapManager = DispatchFakeRelayBootstrapManager(
-            bootstrapResult = RelayBootstrapResult(
-                status = RelayBootstrapStatus.NotConfigured,
-                detailMessage = "Relay host, port, and transport token are required.",
+    fun `execute should reject when relay transport config is missing`() = runTest {
+        val relayConnectionClient = DispatchFakeRelayConnectionClient()
+        val testSubject = RunTaskMailDirectDispatch(
+            relayBootstrapManager = DispatchFakeRelayBootstrapManager(
+                config = RelayTransportConfig(),
             ),
+            relayConnectionClient = relayConnectionClient,
         )
-        val testSubject = RunTaskMailDirectDispatch(relayBootstrapManager)
 
         val result = testSubject.execute(
             directSend = { TaskMailDirectAttemptResult.Accepted("receipt-1") },
@@ -81,15 +92,51 @@ class RunTaskMailDirectDispatchTest {
                 ),
             ),
         )
-        assertThat(relayBootstrapManager.disconnectCallCount).isEqualTo(0)
+        assertThat(relayConnectionClient.disconnectCallCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `execute should reject when control hello ack misses session action schema`() = runTest {
+        val relayConnectionClient = DispatchFakeRelayConnectionClient(
+            connectResult = Result.success(
+                RelayHelloAck(
+                    messageType = "hello_ack",
+                    connectionId = "connection-1",
+                    serverTime = "2026-03-26T10:00:00Z",
+                    heartbeatSeconds = 30,
+                    acceptedPayloadSchemas = listOf("taskmail-bootstrap-control-contract-v2"),
+                ),
+            ),
+        )
+        val testSubject = RunTaskMailDirectDispatch(
+            relayBootstrapManager = DispatchFakeRelayBootstrapManager(),
+            relayConnectionClient = relayConnectionClient,
+        )
+
+        val result = testSubject.execute(
+            directSend = { TaskMailDirectAttemptResult.Accepted("receipt-1") },
+        )
+
+        assertThat(result).isEqualTo(
+            TaskMailDirectDispatchResult.DirectRejected(
+                errorMessage = "Relay /control hello_ack did not advertise post-creation session actions.",
+                evidence = TaskMailDirectSendEvidence(
+                    bootstrapStatus = RelayBootstrapStatus.UnexpectedResponse,
+                    outcome = TaskMailDirectOutcome.DirectRejected,
+                    switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
+                    errorMessage = "Relay /control hello_ack did not advertise post-creation session actions.",
+                ),
+            ),
+        )
     }
 
     @Test
     fun `execute should keep fallback-classified direct result local`() = runTest {
-        val relayBootstrapManager = DispatchFakeRelayBootstrapManager(
-            bootstrapResult = RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck),
+        val relayConnectionClient = DispatchFakeRelayConnectionClient()
+        val testSubject = RunTaskMailDirectDispatch(
+            relayBootstrapManager = DispatchFakeRelayBootstrapManager(),
+            relayConnectionClient = relayConnectionClient,
         )
-        val testSubject = RunTaskMailDirectDispatch(relayBootstrapManager)
 
         val result = testSubject.execute(
             directSend = {
@@ -117,46 +164,22 @@ class RunTaskMailDirectDispatchTest {
                 ),
             ),
         )
-        assertThat(relayBootstrapManager.disconnectCallCount).isEqualTo(1)
-    }
-
-    @Test
-    fun `execute should use default message when fallback-classified direct result is blank`() = runTest {
-        val relayBootstrapManager = DispatchFakeRelayBootstrapManager(
-            bootstrapResult = RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck),
-        )
-        val testSubject = RunTaskMailDirectDispatch(relayBootstrapManager)
-
-        val result = testSubject.execute<String>(
-            directSend = { TaskMailDirectAttemptResult.FallbackToMail() },
-        )
-
-        assertThat(result).isEqualTo(
-            TaskMailDirectDispatchResult.DirectRejected(
-                errorMessage = "Relay dispatch failed.",
-                evidence = TaskMailDirectSendEvidence(
-                    bootstrapStatus = RelayBootstrapStatus.HelloAck,
-                    outcome = TaskMailDirectOutcome.DirectRejected,
-                    switchGate = TaskMailDirectSwitchGate.SwitchBlocker,
-                    errorMessage = "Relay dispatch failed.",
-                ),
-            ),
-        )
-        assertThat(relayBootstrapManager.disconnectCallCount).isEqualTo(1)
+        assertThat(relayConnectionClient.disconnectCallCount).isEqualTo(1)
     }
 }
 
 private class DispatchFakeRelayBootstrapManager(
-    private val bootstrapResult: RelayBootstrapResult,
+    private val config: RelayTransportConfig = RelayTransportConfig(
+        host = "relay.example.test",
+        port = 8787,
+        transportToken = "transport-token",
+    ),
 ) : RelayBootstrapManager {
     private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
 
-    var bootstrapCallCount: Int = 0
-    var disconnectCallCount: Int = 0
-
     override val connectionState = mutableConnectionState
 
-    override fun loadConfig(): RelayTransportConfig = RelayTransportConfig()
+    override fun loadConfig(): RelayTransportConfig = config
 
     override fun saveConfig(config: RelayTransportConfig): Boolean = true
 
@@ -179,20 +202,74 @@ private class DispatchFakeRelayBootstrapManager(
         return Result.success(
             RelayHelloAck(
                 messageType = "hello_ack",
-                connectionId = "connection-1",
-                serverTime = "2026-03-21T12:00:00Z",
+                connectionId = "connection-legacy",
+                serverTime = "2026-03-26T10:00:00Z",
                 heartbeatSeconds = 30,
             ),
         )
     }
 
     override suspend fun disconnect() {
-        disconnectCallCount += 1
         mutableConnectionState.value = RelayConnectionState.Idle
     }
 
     override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
-        bootstrapCallCount += 1
-        return bootstrapResult
+        return RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck)
+    }
+}
+
+private class DispatchFakeRelayConnectionClient(
+    private val connectResult: Result<RelayHelloAck> = Result.success(
+        RelayHelloAck(
+            messageType = "hello_ack",
+            connectionId = "connection-1",
+            serverTime = "2026-03-26T10:00:00Z",
+            heartbeatSeconds = 30,
+            acceptedPayloadSchemas = listOf(
+                "taskmail-bootstrap-control-contract-v2",
+                "post-creation-session-action-contract-v1",
+            ),
+        ),
+    ),
+) : RelayConnectionClient {
+    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
+    private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
+    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
+    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
+
+    var connectedConfig: RelayTransportConfig? = null
+    var disconnectCallCount: Int = 0
+
+    override val connectionState = mutableConnectionState
+    override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
+    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
+    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
+
+    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
+        connectedConfig = config
+        return connectResult
+    }
+
+    override suspend fun connect(
+        config: RelayTransportConfig,
+        supportedPayloadSchemas: List<String>,
+    ): Result<RelayHelloAck> {
+        connectedConfig = config
+        return connectResult
+    }
+
+    override suspend fun sendPacket(
+        packet: RelayPacket,
+        ackTimeoutMillis: Long,
+    ): Result<RelayPacketAck> = error("Not used by this test")
+
+    override suspend fun sendCommand(
+        command: RelayCommand,
+        ackTimeoutMillis: Long,
+    ): Result<RelayCommandAck> = error("Not used by this test")
+
+    override suspend fun disconnect() {
+        disconnectCallCount += 1
+        mutableConnectionState.value = RelayConnectionState.Idle
     }
 }

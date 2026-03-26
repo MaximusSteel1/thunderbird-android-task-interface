@@ -3,14 +3,9 @@ package net.thunderbird.feature.taskmail.internal.ui.workspace
 internal data class TaskWorkspaceItemUi(
     val title: String,
     val subtitle: String? = null,
+    val routeTargetLabel: String? = null,
     val sessionCountLabel: String,
     val sessions: List<TaskSessionItemUi>,
-)
-
-internal data class TaskPcSummaryItemUi(
-    val title: String,
-    val supportingText: String? = null,
-    val workspaceCountLabel: String,
 )
 
 internal data class TaskSessionItemUi(

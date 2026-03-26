@@ -297,7 +297,7 @@ private data class DirectObservationTarget(
     val repoPath: String? = null,
     val workdir: String? = null,
     val sessionId: String? = null,
-    val threadId: String,
+    val threadId: String? = null,
 )
 
 private class DirectObservationState(
@@ -342,17 +342,18 @@ private fun TaskSessionDetail.toDirectObservationTarget(): DirectObservationTarg
     val workspaceId = workspace.workspaceId?.takeIf(String::isNotBlank)
     val repoPath = repoPath.takeIf(String::isNotBlank)
     val workdir = workdir?.takeIf(String::isNotBlank) ?: workspace.workdir?.takeIf(String::isNotBlank)
-    val threadId = key.threadId?.takeIf(String::isNotBlank) ?: return null
+    val sessionId = key.sessionId?.takeIf(String::isNotBlank) ?: return null
+    val threadId = key.threadId?.takeIf(String::isNotBlank)
 
     val hasWorkspaceLocator = workspaceId != null || (repoPath != null && workdir != null)
-    val hasSessionLocator = key.sessionId?.takeIf(String::isNotBlank) != null || threadId.isNotBlank()
+    val hasSessionLocator = sessionId.isNotBlank()
     if (!hasWorkspaceLocator || !hasSessionLocator) return null
 
     return DirectObservationTarget(
         workspaceId = workspaceId,
         repoPath = repoPath,
         workdir = workdir,
-        sessionId = key.sessionId?.takeIf(String::isNotBlank),
+        sessionId = sessionId,
         threadId = threadId,
     )
 }
@@ -366,7 +367,7 @@ private fun RelaySessionUpdate.matchesTarget(
     }
 
     return if (target.sessionId != null) {
-        sessionId == target.sessionId || threadId == target.threadId
+        sessionId == target.sessionId
     } else {
         threadId == target.threadId
     }

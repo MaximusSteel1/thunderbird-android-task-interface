@@ -1,6 +1,8 @@
 package net.thunderbird.feature.taskmail.internal.domain.usecase
 
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
+import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
+import net.thunderbird.feature.taskmail.internal.data.relay.classifyRelayConnectionFailure
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
@@ -9,9 +11,17 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwit
 
 private const val DIRECT_DISPATCH_FAILURE_MESSAGE = "Relay dispatch failed."
 private const val DIRECT_BOOTSTRAP_FAILURE_MESSAGE = "Unable to connect to the relay."
+private const val CONTROL_PATH = "/control"
+private const val CONTROL_BOOTSTRAP_SCHEMA_VERSION = "taskmail-bootstrap-control-contract-v2"
+private const val SESSION_ACTION_SCHEMA_VERSION = "post-creation-session-action-contract-v1"
+private val CONTROL_SUPPORTED_PAYLOAD_SCHEMAS = listOf(
+    CONTROL_BOOTSTRAP_SCHEMA_VERSION,
+    SESSION_ACTION_SCHEMA_VERSION,
+)
 
 internal class RunTaskMailDirectDispatch(
     private val relayBootstrapManager: RelayBootstrapManager,
+    private val relayConnectionClient: RelayConnectionClient,
 ) {
     suspend fun <T> execute(
         directSend: suspend () -> TaskMailDirectAttemptResult<T>,
@@ -39,7 +49,7 @@ internal class RunTaskMailDirectDispatch(
                     )
                 }
         } finally {
-            runCatching { relayBootstrapManager.disconnect() }
+            runCatching { relayConnectionClient.disconnect() }
         }
 
         return when (directResult) {
@@ -93,14 +103,40 @@ internal class RunTaskMailDirectDispatch(
     }
 
     private suspend fun runDirectBootstrapAttempt(): RelayBootstrapResult {
-        return runCatching {
-            relayBootstrapManager.bootstrapSavedConfig()
-        }.getOrElse { error ->
-            RelayBootstrapResult(
-                status = RelayBootstrapStatus.ConnectFailure,
-                detailMessage = error.message,
+        val normalizedConfig = relayBootstrapManager.loadConfig().normalized()
+        if (!normalizedConfig.isConfigured()) {
+            return RelayBootstrapResult(
+                status = RelayBootstrapStatus.NotConfigured,
+                detailMessage = "Relay host, port, and transport token are required.",
             )
         }
+
+        val controlConfig = normalizedConfig.copy(path = CONTROL_PATH)
+        return relayConnectionClient.connect(
+            config = controlConfig,
+            supportedPayloadSchemas = CONTROL_SUPPORTED_PAYLOAD_SCHEMAS,
+        ).fold(
+            onSuccess = { helloAck ->
+                if (!helloAck.acceptedPayloadSchemas.contains(SESSION_ACTION_SCHEMA_VERSION)) {
+                    RelayBootstrapResult(
+                        status = RelayBootstrapStatus.UnexpectedResponse,
+                        helloAck = helloAck,
+                        detailMessage = "Relay /control hello_ack did not advertise post-creation session actions.",
+                    )
+                } else {
+                    RelayBootstrapResult(
+                        status = RelayBootstrapStatus.HelloAck,
+                        helloAck = helloAck,
+                    )
+                }
+            },
+            onFailure = { error ->
+                RelayBootstrapResult(
+                    status = error.classifyRelayConnectionFailure(controlConfig),
+                    detailMessage = error.message,
+                )
+            },
+        )
     }
 }
 

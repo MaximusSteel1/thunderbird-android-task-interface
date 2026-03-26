@@ -223,7 +223,7 @@ class TaskProjectSyncViewModelTest {
             assertThat(viewModelState().canRetryWithMail).isEqualTo(false)
             assertThat(awaitEffect()).isEqualTo(
                 TaskProjectSyncContract.Effect.ShowMessage(
-                    "Mail retry requested. The repo list updates when the next [SYNC] reply arrives.",
+                    "Compatibility mail retry requested. The repo list updates when the next [SYNC] reply arrives.",
                 ),
             )
             ensureThatAllEventsAreConsumed()
