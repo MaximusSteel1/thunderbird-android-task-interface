@@ -36,19 +36,33 @@ import net.thunderbird.feature.taskmail.internal.ui.component.TaskStatusBadge
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineItemUi
 
+internal enum class TimelineMessageCardStyle {
+    Default,
+    ProcessRecord,
+}
+
 @Composable
 internal fun TimelineMessageCard(
     item: TaskTimelineItemUi,
+    style: TimelineMessageCardStyle = TimelineMessageCardStyle.Default,
     modifier: Modifier = Modifier,
     onOpenAttachment: (String) -> Unit = {},
     onSaveAttachment: (String) -> Unit = {},
 ) {
+    val headerTitle = item.headerTitle(style = style)
+    val headerSubtitle = item.headerSubtitle(style = style)
+    val displayItem = item.withCollapsedDuplicateBody(
+        style = style,
+        headerTitle = headerTitle,
+    )
     val displaySummary = item.summary
         ?.takeIf(String::isNotBlank)
-        ?.takeUnless { summary -> shouldHideSummary(summary = summary, plainText = item.plainText) }
-    val richDocument = item.richDocument.takeIf { item.renderMode == TaskBodyRenderMode.RichText }
+        ?.takeUnless { summary ->
+            shouldHideSummary(summary = summary, plainText = item.plainText) || summary == headerTitle
+        }
+    val richDocument = displayItem.richDocument.takeIf { displayItem.renderMode == TaskBodyRenderMode.RichText }
     val hasRichBody = richDocument != null
-    val hasVisibleBody = hasRichBody || item.plainText.isNotBlank()
+    val hasVisibleBody = hasRichBody || displayItem.plainText.isNotBlank()
 
     CardOutlined(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -64,9 +78,9 @@ internal fun TimelineMessageCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    TextTitleMedium(text = item.direction)
+                    TextTitleMedium(text = headerTitle)
                     TextLabelMedium(
-                        text = formatTimestamp(item.timestamp),
+                        text = headerSubtitle,
                         color = MainTheme.colors.onSurfaceVariant,
                     )
                 }
@@ -83,7 +97,7 @@ internal fun TimelineMessageCard(
                 DividerHorizontal()
             }
             TimelineMessageContent(
-                item = item,
+                item = displayItem,
                 richDocument = richDocument,
                 hasVisibleBody = hasVisibleBody,
                 onOpenAttachment = onOpenAttachment,
@@ -258,6 +272,42 @@ private fun formatTimestamp(timestamp: Long): String {
     if (timestamp <= 0L) return "Unknown time"
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return formatter.format(Date(timestamp))
+}
+
+private fun TaskTimelineItemUi.headerTitle(style: TimelineMessageCardStyle): String {
+    return when (style) {
+        TimelineMessageCardStyle.Default -> direction
+        TimelineMessageCardStyle.ProcessRecord -> {
+            summary
+                ?.takeIf(String::isNotBlank)
+                ?: statusLabel
+                ?: direction
+        }
+    }
+}
+
+private fun TaskTimelineItemUi.headerSubtitle(style: TimelineMessageCardStyle): String {
+    return when (style) {
+        TimelineMessageCardStyle.Default -> formatTimestamp(timestamp)
+        TimelineMessageCardStyle.ProcessRecord -> {
+            listOf(direction.takeIf(String::isNotBlank), formatTimestamp(timestamp))
+                .filterNotNull()
+                .joinToString(separator = " · ")
+        }
+    }
+}
+
+private fun TaskTimelineItemUi.withCollapsedDuplicateBody(
+    style: TimelineMessageCardStyle,
+    headerTitle: String,
+): TaskTimelineItemUi {
+    if (style != TimelineMessageCardStyle.ProcessRecord) return this
+
+    return if (plainText.normalizeForComparison() == headerTitle.normalizeForComparison()) {
+        copy(plainText = "")
+    } else {
+        this
+    }
 }
 
 private fun shouldHideSummary(summary: String, plainText: String): Boolean {

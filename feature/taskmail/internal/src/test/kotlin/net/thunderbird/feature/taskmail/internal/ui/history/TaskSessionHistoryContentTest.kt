@@ -54,7 +54,6 @@ class TaskSessionHistoryContentTest {
             .onNodeWithTag("TaskSessionHistoryList")
             .performScrollToNode(hasTestTag("TaskSessionHistoryRoundCard:round_2_incoming_result_2"))
 
-        composeTestRule.onNodeWithTag("TaskSessionHistoryRoundCard:round_2_incoming_result_2").performClick()
         composeTestRule.onNodeWithText("Review the latest homepage sketch and keep the task tree.").assertIsDisplayed()
         composeTestRule.onNodeWithText("Added the tree-based homepage draft and updated the history card layout.").assertIsDisplayed()
 

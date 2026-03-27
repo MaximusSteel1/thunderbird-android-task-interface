@@ -457,6 +457,49 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `direct projection should continue after enriching provisional key with canonical thread id`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(
+            detail = directReplyCapableDetail().copy(
+                key = TaskSessionKey(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                    threadId = null,
+                ),
+            ),
+        )
+        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                directObserver = directObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Running,
+                    lastSummary = "Direct running summary",
+                ),
+            )
+            emitDirectProjection(
+                sampleDirectProjection(
+                    headerStatus = TaskMailSessionStatus.Done,
+                    lastSummary = "Direct terminal summary",
+                ).copy(lastSequence = 2L),
+            )
+
+            assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Direct terminal summary")
+            assertThat(repository.detail?.key?.threadId).isEqualTo("thread_001")
+            assertThat(repository.detail?.projectionSyncState?.lastSequence).isEqualTo(2L)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `direct projection should update quick answers while preserving reply context`() = runMviTest {
         val directObserver = FakeObserveTaskMailDirectSessionDetail()
 

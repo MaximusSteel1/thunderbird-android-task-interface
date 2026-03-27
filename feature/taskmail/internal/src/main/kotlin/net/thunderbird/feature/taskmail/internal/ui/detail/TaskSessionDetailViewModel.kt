@@ -28,6 +28,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
+import net.thunderbird.feature.taskmail.internal.domain.model.isCompatibleWith
 import net.thunderbird.feature.taskmail.internal.domain.model.merge
 import net.thunderbird.feature.taskmail.internal.domain.model.prefersVpsProjection
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
@@ -580,7 +581,8 @@ internal class TaskSessionDetailViewModel(
         logger.debug(TAG) { "Starting direct detail observation from detail view model." }
         directObservationJob = viewModelScope.launch {
             observer(detail).collect { projection ->
-                if (currentDetail?.key != detail.key) return@collect
+                val activeProjectionKey = directProjectionKey ?: detail.key
+                if (!activeProjectionKey.matchesObservationKey(detail.key)) return@collect
 
                 logger.debug(TAG) {
                     "Applying direct detail projection " +
@@ -595,6 +597,7 @@ internal class TaskSessionDetailViewModel(
                     sessionId = persistedDetail.key.sessionId ?: currentKey?.sessionId,
                     threadId = persistedDetail.key.threadId ?: currentKey?.threadId,
                 ) ?: persistedDetail.key
+                directProjectionKey = persistedDetail.key
                 persistProjectedDetail(persistedDetail)
                 currentDetail = persistedDetail
                 currentDirectProjectionStatus = null
@@ -1392,6 +1395,10 @@ private fun TaskTimelineAttachmentUi.toArtifactUi(): TaskSessionArtifactUi {
         title = displayName,
         supportingText = supportingText,
     )
+}
+
+private fun TaskSessionKey.matchesObservationKey(other: TaskSessionKey): Boolean {
+    return this == other || isCompatibleWith(other) || other.isCompatibleWith(this)
 }
 
 private fun TaskTimelineItemUi.toHistoryRoundUi(): TaskHistoryRoundUi {

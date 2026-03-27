@@ -92,8 +92,15 @@ class TaskSessionDetailScreenKtTest {
             .performScrollToNode(hasText("Should I proceed?"))
 
         composeTestRule.onNodeWithText("Should I proceed?").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("yes"))
         composeTestRule.onNodeWithText("yes").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("no"))
         composeTestRule.onNodeWithText("no").assertIsDisplayed()
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
@@ -332,7 +339,7 @@ class TaskSessionDetailScreenKtTest {
 
         assertThat(historyClicked).isEqualTo(true)
         composeTestRule.onNodeWithTag("TaskSessionDetailHistorySheet").assertIsDisplayed()
-        composeTestRule.onAllNodesWithText("Need confirmation").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("Need confirmation").assertCountEquals(1)
     }
 
     @Test
@@ -376,6 +383,7 @@ class TaskSessionDetailScreenKtTest {
             }
         }
 
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TaskRichTextBody"))
@@ -568,6 +576,7 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onAllNodesWithText("TaskMail reply failed").assertCountEquals(1)
         composeTestRule.onAllNodesWithText("Failed to send TaskMail reply.").assertCountEquals(1)
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
@@ -595,6 +604,7 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onAllNodesWithText("TaskMail update failed").assertCountEquals(1)
         composeTestRule.onAllNodesWithText("Failed to refresh TaskMail session detail.").assertCountEquals(1)
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
@@ -636,6 +646,7 @@ class TaskSessionDetailScreenKtTest {
             }
         }
 
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TimelineAttachmentOpen:content://taskmail/result-chart"))
@@ -672,6 +683,7 @@ class TaskSessionDetailScreenKtTest {
             }
         }
 
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Repeated summary line"))
@@ -878,6 +890,7 @@ class TaskSessionDetailScreenKtTest {
             }
         }
 
+        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TimelineAttachmentOpen:content://taskmail/result-chart"))
@@ -948,6 +961,13 @@ class TaskSessionDetailScreenKtTest {
             replyUnavailableReason = replyUnavailableReason,
             timeline = timeline,
         )
+    }
+
+    private fun expandProcessRecords(sectionTitle: String = "Run records") {
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText(sectionTitle))
+        composeTestRule.onNodeWithText("Expand").performClick()
     }
 }
 

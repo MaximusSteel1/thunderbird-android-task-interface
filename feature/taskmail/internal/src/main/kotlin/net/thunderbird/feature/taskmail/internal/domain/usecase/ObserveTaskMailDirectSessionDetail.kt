@@ -2,6 +2,7 @@ package net.thunderbird.feature.taskmail.internal.domain.usecase
 
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -26,6 +27,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.merge
 private const val TAG = "ObserveTaskMailDirectSessionDetail"
 private const val SUBSCRIPTION_REASON_DETAIL_OPEN = "detail_open"
 private const val SUBSCRIPTION_REASON_DETAIL_REFRESH = "detail_refresh"
+private const val SESSION_NOT_FOUND_ERROR_CODE = "session_not_found"
+private const val SESSION_NOT_FOUND_RETRY_DELAY_MS = 1_000L
+private const val SESSION_NOT_FOUND_MAX_RETRY_ATTEMPTS = 20
 
 internal fun interface ObserveTaskMailDirectSessionDetail {
     operator fun invoke(detail: TaskSessionDetail): Flow<TaskMailDirectSessionProjection>
@@ -37,6 +41,8 @@ internal class DefaultObserveTaskMailDirectSessionDetail(
     private val directSessionDetailSubscriber: RelayTaskMailDirectSessionDetailSubscriber,
     private val projector: TaskMailDirectSessionProjector,
     private val logger: Logger,
+    private val sessionNotFoundRetryDelayMillis: Long = SESSION_NOT_FOUND_RETRY_DELAY_MS,
+    private val sessionNotFoundMaxRetryAttempts: Int = SESSION_NOT_FOUND_MAX_RETRY_ATTEMPTS,
 ) : ObserveTaskMailDirectSessionDetail {
 
     override fun invoke(detail: TaskSessionDetail): Flow<TaskMailDirectSessionProjection> {
@@ -116,39 +122,57 @@ internal class DefaultObserveTaskMailDirectSessionDetail(
         state: DirectObservationState,
         reason: String,
     ): Boolean {
-        val result = directSessionDetailSubscriber.subscribe(
-            RelaySessionDetailSubscription(
-                workspaceId = state.canonicalWorkspaceId,
-                repoPath = target.repoPath,
-                workdir = target.workdir,
-                sessionId = target.sessionId,
-                threadId = target.threadId,
-                lastKnownSequence = state.lastKnownSequence,
-                reason = reason,
-            ),
-        )
+        var sessionNotFoundAttempt = 0
+        while (true) {
+            val result = directSessionDetailSubscriber.subscribe(
+                RelaySessionDetailSubscription(
+                    workspaceId = state.canonicalWorkspaceId,
+                    repoPath = target.repoPath,
+                    workdir = target.workdir,
+                    sessionId = target.sessionId,
+                    threadId = target.threadId,
+                    lastKnownSequence = state.lastKnownSequence,
+                    reason = reason,
+                ),
+            )
 
-        return result.fold(
-            onSuccess = { packetAck ->
-                if (packetAck.accepted) {
-                    logger.debug(TAG) {
-                        "Direct detail subscribe accepted reason=$reason " +
-                            "lastKnownSequence=${state.lastKnownSequence ?: 0L}"
+            val shouldRetry = result.fold(
+                onSuccess = { packetAck ->
+                    if (packetAck.accepted) {
+                        logger.debug(TAG) {
+                            "Direct detail subscribe accepted reason=$reason " +
+                                "lastKnownSequence=${state.lastKnownSequence ?: 0L}"
+                        }
+                        state.activeSubscriptionId = null
+                        return true
                     }
-                    state.activeSubscriptionId = null
-                    true
-                } else {
-                    logger.warn(TAG) {
-                        "Direct detail subscribe rejected code=${packetAck.errorCode.orEmpty()}"
+
+                    val retryableSessionNotFound =
+                        packetAck.errorCode.equals(SESSION_NOT_FOUND_ERROR_CODE, ignoreCase = true) &&
+                            sessionNotFoundAttempt < sessionNotFoundMaxRetryAttempts
+                    if (retryableSessionNotFound) {
+                        sessionNotFoundAttempt += 1
+                        logger.debug(TAG) {
+                            "Direct detail subscribe waiting for session materialization " +
+                                "reason=$reason attempt=$sessionNotFoundAttempt/$sessionNotFoundMaxRetryAttempts"
+                        }
+                        true
+                    } else {
+                        logger.warn(TAG) {
+                            "Direct detail subscribe rejected code=${packetAck.errorCode.orEmpty()}"
+                        }
+                        false
                     }
+                },
+                onFailure = { error ->
+                    logger.warn(TAG, error) { "Direct detail subscribe failed." }
                     false
-                }
-            },
-            onFailure = { error ->
-                logger.warn(TAG, error) { "Direct detail subscribe failed." }
-                false
-            },
-        )
+                },
+            )
+
+            if (!shouldRetry) return false
+            delay(sessionNotFoundRetryDelayMillis)
+        }
     }
 
     private suspend fun ProducerScope<TaskMailDirectSessionProjection>.processUpdate(

@@ -200,6 +200,57 @@ class ObserveTaskMailDirectSessionDetailTest {
     }
 
     @Test
+    fun `invoke should retry when direct detail subscribe is rejected because session is not materialized yet`() =
+        runTest(testDispatcher) {
+            val relayConnectionClient = DirectDetailFakeRelayConnectionClient().apply {
+                queuePacketAck(
+                    rejectedPacketAck(
+                        packetId = "packet_initial",
+                        errorCode = "session_not_found",
+                    ),
+                )
+                queuePacketAck(packetAck("packet_retry"))
+            }
+            val relayBootstrapManager = DirectDetailFakeRelayBootstrapManager(relayConnectionClient)
+            val logger = DirectDetailFakeLogger()
+            val testSubject = createTestSubject(
+                relayConnectionClient = relayConnectionClient,
+                relayBootstrapManager = relayBootstrapManager,
+                requestIdFactory = RequestIdFactory("req_initial", "req_retry"),
+                logger = logger,
+                sessionNotFoundRetryDelayMillis = 0L,
+                sessionNotFoundMaxRetryAttempts = 2,
+            )
+
+            val projectionDeferred = async {
+                testSubject(sampleDetail()).first()
+            }
+
+            advanceUntilIdle()
+            relayConnectionClient.emitSessionUpdate(
+                snapshotUpdate(
+                    subscriptionId = "sub_retry",
+                    sequence = 1,
+                    workspaceId = "workspace_canonical",
+                    status = "done",
+                    lastSummary = "xxaa",
+                ),
+            )
+
+            val projection = projectionDeferred.await()
+            val debugLog = logger.debugMessages.joinToString("\n")
+
+            assertThat(relayConnectionClient.sentPackets.map { packet ->
+                packet.subscriptionObject()["reason"]?.jsonPrimitive?.content
+            }).containsExactly("detail_open", "detail_open")
+            assertThat(projection.headerStatus.name).isEqualTo("Done")
+            assertThat(projection.lastSummary).isEqualTo("xxaa")
+            assertThat(debugLog).contains(
+                "Direct detail subscribe waiting for session materialization reason=detail_open attempt=1/2",
+            )
+        }
+
+    @Test
     fun `invoke should merge relay event and result into emitted projection control-plane snapshot`() = runTest(testDispatcher) {
         val relayConnectionClient = DirectDetailFakeRelayConnectionClient()
         val relayBootstrapManager = DirectDetailFakeRelayBootstrapManager(relayConnectionClient)
@@ -280,6 +331,8 @@ private fun createTestSubject(
     relayBootstrapManager: DirectDetailFakeRelayBootstrapManager,
     requestIdFactory: () -> String,
     logger: DirectDetailFakeLogger = DirectDetailFakeLogger(),
+    sessionNotFoundRetryDelayMillis: Long = 1_000L,
+    sessionNotFoundMaxRetryAttempts: Int = 20,
 ): DefaultObserveTaskMailDirectSessionDetail {
     return DefaultObserveTaskMailDirectSessionDetail(
         relayBootstrapManager = relayBootstrapManager,
@@ -291,6 +344,8 @@ private fun createTestSubject(
         ),
         projector = TaskMailDirectSessionProjector(),
         logger = logger,
+        sessionNotFoundRetryDelayMillis = sessionNotFoundRetryDelayMillis,
+        sessionNotFoundMaxRetryAttempts = sessionNotFoundMaxRetryAttempts,
     )
 }
 
@@ -562,6 +617,20 @@ private fun packetAck(packetId: String): RelayPacketAck {
         accepted = true,
         receiptId = "receipt_$packetId",
         receivedAt = "2026-03-21T18:00:00Z",
+    )
+}
+
+private fun rejectedPacketAck(
+    packetId: String,
+    errorCode: String,
+): RelayPacketAck {
+    return RelayPacketAck(
+        packetId = packetId,
+        accepted = false,
+        receiptId = "receipt_$packetId",
+        receivedAt = "2026-03-21T18:00:00Z",
+        errorCode = errorCode,
+        errorMessage = "rejected: $errorCode",
     )
 }
 

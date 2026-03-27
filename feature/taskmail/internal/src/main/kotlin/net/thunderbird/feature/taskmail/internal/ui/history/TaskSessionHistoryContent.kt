@@ -47,6 +47,7 @@ import net.thunderbird.feature.taskmail.internal.ui.detail.component.ProcessFold
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionEnvironmentCard
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineAttachments
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCardStyle
 
 @Composable
 internal fun TaskSessionHistoryContent(
@@ -149,7 +150,7 @@ private fun TaskSessionHistoryLoadedContent(
         )
     }
     var expandedRoundIds by rememberSaveable(detail.sessionId) {
-        mutableStateOf(emptyList<String>())
+        mutableStateOf(listOfNotNull(rounds.firstOrNull()?.id))
     }
     var expandedProcessRoundIds by rememberSaveable(detail.sessionId) {
         mutableStateOf(emptyList<String>())
@@ -197,7 +198,7 @@ private fun TaskSessionHistoryLoadedContent(
             item {
                 TaskSectionHeader(
                     title = "Rounds",
-                    supportingText = "Tap a round to expand it. Multiple rounds can stay open for comparison.",
+                    supportingText = "Tap a round to inspect its input, records, result, and attachments. Multiple rounds can stay open for comparison.",
                 )
             }
 
@@ -297,12 +298,17 @@ private fun HistoryReviewRoundCard(
                     timelineCount = round.processItems.size,
                     isExpanded = isProcessExpanded,
                     onToggle = onToggleProcess,
+                    title = "Round records",
+                    supportingText = "Open the preserved records for this round when you need detail.",
+                    emptyText = "No preserved round records are available yet.",
+                    countText = { count -> "$count preserved record(s) captured for this round." },
                 )
                 if (isProcessExpanded) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         round.processItems.forEach { item ->
                             TimelineMessageCard(
                                 item = item,
+                                style = TimelineMessageCardStyle.ProcessRecord,
                                 onOpenAttachment = onOpenAttachment,
                                 onSaveAttachment = onSaveAttachment,
                             )

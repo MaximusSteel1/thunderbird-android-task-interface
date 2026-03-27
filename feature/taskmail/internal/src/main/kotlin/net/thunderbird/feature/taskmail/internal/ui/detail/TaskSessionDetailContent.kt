@@ -51,6 +51,7 @@ import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionMeta
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposer
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposerState
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCardStyle
 
 private val replyPermissionOptions = TaskMailNewTaskPermission.entries.toImmutableList()
 private val replyPermissionLabel: (TaskMailNewTaskPermission) -> String = { permission ->
@@ -168,7 +169,7 @@ private fun TaskSessionDetailLoadedContent(
     val replyComposerState = state.toReplyComposerState(detail)
     val isCurrentInputLedMode = detail.isCurrentInputLedMode()
     var isProcessExpanded by rememberSaveable(detail.sessionId, detail.status) {
-        mutableStateOf(true)
+        mutableStateOf(false)
     }
 
     PullToRefreshBox(
@@ -214,6 +215,10 @@ private fun TaskSessionDetailLoadedContent(
                 onToggle = { isProcessExpanded = !isProcessExpanded },
                 onOpenTimelineAttachment = onOpenTimelineAttachment,
                 onSaveTimelineAttachment = onSaveTimelineAttachment,
+                processSectionTitle = processSectionTitle(isCurrentInputLedMode = isCurrentInputLedMode),
+                processSectionSupportingText = processSectionSupportingText(
+                    isCurrentInputLedMode = isCurrentInputLedMode,
+                ),
             )
 
             if (isCurrentInputLedMode) {
@@ -432,12 +437,16 @@ private fun LazyListScope.processItems(
     onToggle: () -> Unit,
     onOpenTimelineAttachment: (String) -> Unit,
     onSaveTimelineAttachment: (String) -> Unit,
+    processSectionTitle: String,
+    processSectionSupportingText: String,
 ) {
     item {
         ProcessFoldCard(
             timelineCount = timeline.size,
             isExpanded = isExpanded,
             onToggle = onToggle,
+            title = processSectionTitle,
+            supportingText = processSectionSupportingText,
         )
     }
 
@@ -446,6 +455,7 @@ private fun LazyListScope.processItems(
     items(timeline, key = TaskTimelineItemUi::id) { item ->
         TimelineMessageCard(
             item = item,
+            style = TimelineMessageCardStyle.ProcessRecord,
             onOpenAttachment = onOpenTimelineAttachment,
             onSaveAttachment = onSaveTimelineAttachment,
         )
@@ -580,6 +590,22 @@ private fun TaskSessionDetailUiState.workspaceLabel(): String {
         ?.takeIf(String::isNotBlank)
         ?.let { "Workspace · $it" }
         ?: "Workspace · missing binding"
+}
+
+private fun processSectionTitle(isCurrentInputLedMode: Boolean): String {
+    return if (isCurrentInputLedMode) {
+        "Run activity"
+    } else {
+        "Run records"
+    }
+}
+
+private fun processSectionSupportingText(isCurrentInputLedMode: Boolean): String {
+    return if (isCurrentInputLedMode) {
+        "Preserved activity records explain what the current run has emitted so far."
+    } else {
+        "Open the preserved records behind the latest stable result when you need detail."
+    }
 }
 
 private fun TaskSessionDetailUiState.currentInputBodyText(
