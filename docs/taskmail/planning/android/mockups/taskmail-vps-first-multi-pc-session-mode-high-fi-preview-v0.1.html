@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskMail VPS-First Session 模式高保真预览 v0.1</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --surface: #fcf8f8;
+      --surface-2: #f6f3f2;
+      --surface-3: #ebe7e7;
+      --line: #c5c6ca;
+      --text: #1c1b1b;
+      --muted: #45474a;
+      --accent: #004f9b;
+      --accent-soft: #d6e3ff;
+      --accent-strong: #1373d9;
+      --warn: #713f12;
+      --warn-soft: #fefae8;
+      --danger: #7f1d1d;
+      --danger-soft: #fef2f2;
+      --success: #194e2c;
+      --success-soft: #f4f9f4;
+      --shadow: 0 16px 36px rgba(0, 51, 82, 0.08);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --phone-w: 390px;
+      --sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at top left, rgba(214, 227, 255, 0.92) 0, rgba(214, 227, 255, 0) 28%),
+        radial-gradient(circle at top right, rgba(240, 248, 255, 0.95) 0, rgba(240, 248, 255, 0) 24%),
+        linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .hero {
+      margin-bottom: 30px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 18px 0 10px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      max-width: 900px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    .screens {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(300px, 1fr));
+      gap: 28px;
+      align-items: start;
+    }
+
+    .screen-wrap {
+      display: grid;
+      gap: 16px;
+    }
+
+    .screen-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .screen-label h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .screen-label .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .phone {
+      width: 100%;
+      max-width: var(--phone-w);
+      margin: 0 auto;
+      background: linear-gradient(180deg, #ffffff 0%, #f2f4f8 100%);
+      border: 1px solid rgba(117, 119, 122, 0.16);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .phone-inner {
+      border-radius: 26px;
+      overflow: hidden;
+      background: var(--surface);
+      min-height: 910px;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      background: rgba(252, 248, 248, 0.94);
+      border-bottom: 1px solid rgba(117, 119, 122, 0.10);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar h3 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+
+    .topbar-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .body {
+      padding: 16px 16px 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .session-head {
+      display: grid;
+      gap: 8px;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .session-title {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .env-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .env-copy {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .stack-card {
+      display: grid;
+      gap: 0;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      background: var(--surface-2);
+    }
+
+    .card-top,
+    .card-mid,
+    .card-bottom {
+      padding: 15px 16px;
+      background: var(--surface-2);
+    }
+
+    .card-top + .card-mid,
+    .card-mid + .card-bottom,
+    .card-top + .card-bottom {
+      border-top: 1px solid rgba(197, 198, 202, 0.92);
+    }
+
+    .card-top.result {
+      background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+    }
+
+    .card-top.input {
+      background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .speaker {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .body-copy {
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .muted-copy,
+    .small-copy,
+    .artifact-meta,
+    .caption {
+      color: var(--muted);
+    }
+
+    .small-copy {
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .badge.ok {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .badge.live {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .process-fold {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .process-fold .title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .fold-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .artifact-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .artifact-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .thumb {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      background: linear-gradient(135deg, #d6e3ff 0%, #f0f8ff 100%);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .thumb.file {
+      background: linear-gradient(135deg, #f1edec 0%, #e5e2e1 100%);
+    }
+
+    .thumb::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 7px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.66) 0%, rgba(255,255,255,0.18) 100%);
+    }
+
+    .artifact-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .artifact-name {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .artifact-meta {
+      font-size: 11px;
+    }
+
+    .open-btn,
+    .control-btn,
+    .control-btn.primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .open-btn,
+    .control-btn.primary {
+      background: var(--accent-strong);
+      color: white;
+      border-color: rgba(0, 79, 155, 0.20);
+    }
+
+    .control-btn {
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--text);
+    }
+
+    .reply-card,
+    .control-rail,
+    .guide-tray,
+    .meta-panel {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .reply-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .textarea {
+      min-height: 108px;
+      padding: 14px 14px 16px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(117, 119, 122, 0.14);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .choice-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .choice-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(117, 119, 122, 0.12);
+      font-size: 14px;
+    }
+
+    .choice-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 2px solid rgba(117, 119, 122, 0.34);
+      background: transparent;
+      flex: 0 0 auto;
+      position: relative;
+    }
+
+    .choice-item.selected .choice-dot {
+      border-color: var(--accent-strong);
+    }
+
+    .choice-item.selected .choice-dot::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border-radius: 999px;
+      background: var(--accent-strong);
+    }
+
+    .permission-row,
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .meta-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .meta-item {
+      display: grid;
+      gap: 4px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(197, 198, 202, 0.72);
+    }
+
+    .meta-item:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .meta-key {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .meta-value {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text);
+    }
+
+    .perm-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-right: 4px;
+    }
+
+    .perm-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(117, 119, 122, 0.12);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .perm-chip.active {
+      background: var(--accent-soft);
+      border-color: rgba(0, 79, 155, 0.18);
+      color: var(--accent);
+    }
+
+    .caption {
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 0 2px;
+    }
+
+    @media (max-width: 980px) {
+      .page {
+        padding: 36px 18px 64px;
+      }
+
+      .screens {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="eyebrow">TaskMail Session Modes</div>
+      <h1>Session 页状态轮替高保真稿</h1>
+      <p>
+        这份补充预览只回答 Session 页最核心的问题：当用户在不同阶段停留在同一条 session 里时，
+        页面不应固定堆叠卡片，而应在“结果主导”和“当前轮输入主导”两种主读法之间轮替。
+        标题栏固定承载历史对话入口，`PC + 工作目录` 固定作为环境锚点，`Codex / OpenCode` 以结果输出人进入结果卡首行。
+      </p>
+    </section>
+
+    <section class="screens">
+      <div class="screen-wrap">
+        <div class="screen-label">
+          <h2>结果主导模式</h2>
+          <div class="hint">等待回复 · 先看结果，再回复</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="icon-btn">返回</div>
+              <h3>Session</h3>
+              <div class="topbar-actions">
+                <div class="icon-btn">历史对话</div>
+                <div class="icon-btn">更多</div>
+              </div>
+            </div>
+
+            <div class="body">
+              <div class="session-head">
+                <div class="session-title">起草 VPS-first 页面 API 需求</div>
+                <div class="env-line">
+                  <div class="env-copy">Home PC · feature/taskmail</div>
+                  <div class="session-id">session_023</div>
+                </div>
+              </div>
+
+              <div class="stack-card">
+                <div class="card-top result">
+                  <div class="card-head">
+                    <div class="speaker">Codex:</div>
+                    <div class="badge warn">待继续</div>
+                  </div>
+                  <div class="body-copy">
+                    已完成页面级 API 需求草案收口，当前建议直接进入 Compose skeleton。
+                    首页、新任务页、Session 页的主读法已经稳定，不建议继续扩抽象文档。
+                  </div>
+                </div>
+                <div class="card-mid">
+                  <div class="process-fold">
+                    <div class="title">过程记录</div>
+                    <div class="fold-btn">展开</div>
+                  </div>
+                </div>
+                <div class="card-bottom">
+                  <div class="artifact-list">
+                    <div class="artifact-row">
+                      <div class="thumb"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">page-api-sketch.png</div>
+                        <div class="artifact-meta">图片产物 · 可直接预览</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                    <div class="artifact-row">
+                      <div class="thumb file"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">page-api-requirements.md</div>
+                        <div class="artifact-meta">Markdown 结果稿</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="reply-card">
+                <div class="reply-title">回复这条任务</div>
+                <div class="textarea">
+                  可以开始起 Compose skeleton，首页、新任务页、Session 页都先做静态 ViewState；
+                  保持 history review 和 session mode 预览为独立补充稿。
+                </div>
+                <div class="permission-row">
+                  <div class="perm-label">权限</div>
+                  <div class="perm-chip active">默认</div>
+                  <div class="perm-chip">最高</div>
+                </div>
+              </div>
+
+              <div class="control-rail">
+                <div class="control-row">
+                  <div class="control-btn">添加附件</div>
+                  <div class="control-btn primary">发送</div>
+                  <div class="control-btn">结束活跃</div>
+                </div>
+              </div>
+
+              <div class="caption">
+                在等待回复时，Session 页先展示上一轮稳定结果和附件，再自然过渡到回复区。用户不需要先穿过长直播或历史预览，才能开始下一轮。
+              </div>
+
+              <div class="meta-panel">
+                <div class="reply-title">Session 详细信息</div>
+                <div class="meta-grid">
+                  <div class="meta-item">
+                    <div class="meta-key">Session ID</div>
+                    <div class="meta-value">session_023</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">路由</div>
+                    <div class="meta-value">Home PC · feature/taskmail</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">当前模式</div>
+                    <div class="meta-value">结果主导模式 · 等待回复</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">当前执行</div>
+                    <div class="meta-value">Codex · 默认权限</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">最近更新时间</div>
+                    <div class="meta-value">03-27 00:18 · 最新稳定结果已落地</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-wrap">
+        <div class="screen-label">
+          <h2>当前轮输入主导模式</h2>
+          <div class="hint">queued / running · 当前轮先于上一轮结果</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="icon-btn">返回</div>
+              <h3>Session</h3>
+              <div class="topbar-actions">
+                <div class="icon-btn">历史对话</div>
+                <div class="icon-btn">更多</div>
+              </div>
+            </div>
+
+            <div class="body">
+              <div class="session-head">
+                <div class="session-title">起草 VPS-first 页面 API 需求</div>
+                <div class="env-line">
+                  <div class="env-copy">Home PC · feature/taskmail</div>
+                  <div class="session-id">session_023</div>
+                </div>
+              </div>
+
+              <div class="stack-card">
+                <div class="card-top input">
+                  <div class="card-head">
+                    <div class="speaker">你：</div>
+                    <div class="badge live">运行中</div>
+                  </div>
+                  <div class="body-copy">
+                    可以开始起 Compose skeleton，首页、新任务页、Session 页都先做静态 ViewState。
+                    保留 Session 补充稿为独立预览，后续再并回总稿。
+                  </div>
+                  <div class="small-copy" style="margin-top: 10px;">权限：最高</div>
+                </div>
+                <div class="card-mid">
+                  <div class="artifact-list">
+                    <div class="artifact-row">
+                      <div class="thumb"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">session-mode-wireframe.png</div>
+                        <div class="artifact-meta">当前轮附件 · 图片</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                    <div class="artifact-row">
+                      <div class="thumb file"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">session-mode-notes.md</div>
+                        <div class="artifact-meta">当前轮附件 · 说明稿</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-mid">
+                  <div class="process-fold">
+                    <div class="title">过程记录</div>
+                    <div class="fold-btn">展开</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-rail">
+                <div class="control-row">
+                  <div class="control-btn">查看状态</div>
+                  <div class="control-btn">引导</div>
+                  <div class="control-btn">停止运行</div>
+                </div>
+              </div>
+
+              <div class="guide-tray">
+                <div class="reply-title">引导</div>
+                <div class="small-copy">点击引导后可展开一条轻输入框，用于补充方向，不替代正式回复。</div>
+              </div>
+
+              <div class="stack-card">
+                <div class="card-top result">
+                  <div class="card-head">
+                    <div class="speaker">Codex:</div>
+                    <div class="badge ok">上一轮结果</div>
+                  </div>
+                  <div class="body-copy">
+                    已完成页面级 API 需求草案收口，当前建议直接进入 Compose skeleton。
+                    如果继续推进，优先把 Session 页结构从“多块平铺”收口到两种主模式。
+                  </div>
+                </div>
+                <div class="card-bottom">
+                  <div class="artifact-list">
+                    <div class="artifact-row">
+                      <div class="thumb"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">page-api-sketch.png</div>
+                        <div class="artifact-meta">图片产物 · 上一轮结果</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                    <div class="artifact-row">
+                      <div class="thumb file"></div>
+                      <div class="artifact-copy">
+                        <div class="artifact-name">page-api-requirements.md</div>
+                        <div class="artifact-meta">Markdown 结果稿</div>
+                      </div>
+                      <div class="open-btn">打开</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="caption">
+                当用户已经发出当前轮输入后，Session 页的主角切换为“我刚刚说了什么、现在跑到哪一步”。当前轮附件直接并入输入卡，过程记录位于其下；上一轮结果下沉为背景上下文，明确它已经成为过去。
+              </div>
+
+              <div class="meta-panel">
+                <div class="reply-title">Session 详细信息</div>
+                <div class="meta-grid">
+                  <div class="meta-item">
+                    <div class="meta-key">Session ID</div>
+                    <div class="meta-value">session_023</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">路由</div>
+                    <div class="meta-value">Home PC · feature/taskmail</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">当前模式</div>
+                    <div class="meta-value">当前轮输入主导模式 · 运行中</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">当前执行</div>
+                    <div class="meta-value">当前轮输入权限：最高 · 输出人：Codex</div>
+                  </div>
+                  <div class="meta-item">
+                    <div class="meta-key">最近更新时间</div>
+                    <div class="meta-value">03-27 00:21 · 当前轮仍在运行</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

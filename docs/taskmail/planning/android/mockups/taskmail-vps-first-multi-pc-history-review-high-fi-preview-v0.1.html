@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskMail VPS-First 历史复盘高保真预览 v0.1</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --surface: #fcf8f8;
+      --surface-2: #f6f3f2;
+      --surface-3: #ebe7e7;
+      --line: #c5c6ca;
+      --text: #1c1b1b;
+      --muted: #45474a;
+      --accent: #004f9b;
+      --accent-soft: #d6e3ff;
+      --accent-strong: #1373d9;
+      --warn: #713f12;
+      --warn-soft: #fefae8;
+      --danger: #7f1d1d;
+      --danger-soft: #fef2f2;
+      --success: #194e2c;
+      --success-soft: #f4f9f4;
+      --shadow: 0 16px 36px rgba(0, 51, 82, 0.08);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --phone-w: 390px;
+      --sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at top left, rgba(214, 227, 255, 0.92) 0, rgba(214, 227, 255, 0) 28%),
+        radial-gradient(circle at top right, rgba(240, 248, 255, 0.95) 0, rgba(240, 248, 255, 0) 24%),
+        linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .hero {
+      margin-bottom: 30px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 18px 0 10px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      max-width: 860px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    .screens {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(300px, 1fr));
+      gap: 28px;
+      align-items: start;
+    }
+
+    .screen-wrap {
+      display: grid;
+      gap: 16px;
+    }
+
+    .screen-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .screen-label h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .screen-label .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .phone {
+      width: 100%;
+      max-width: var(--phone-w);
+      margin: 0 auto;
+      background: linear-gradient(180deg, #ffffff 0%, #f2f4f8 100%);
+      border: 1px solid rgba(117, 119, 122, 0.16);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .phone-inner {
+      border-radius: 26px;
+      overflow: hidden;
+      background: var(--surface);
+      min-height: 860px;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      background: rgba(252, 248, 248, 0.94);
+      border-bottom: 1px solid rgba(117, 119, 122, 0.10);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar h3 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .body {
+      padding: 16px 16px 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .sheet {
+      display: grid;
+      gap: 8px;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .sheet .title {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .sheet .sub,
+    .caption,
+    .micro,
+    .supporting,
+    .artifact-meta,
+    .detail-note {
+      color: var(--muted);
+    }
+
+    .sub,
+    .supporting,
+    .detail-note {
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .micro {
+      font-size: 12px;
+    }
+
+    .round-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .round-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .round-card.active {
+      background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+      border-color: rgba(0, 79, 155, 0.22);
+      box-shadow: inset 0 0 0 1px rgba(19, 115, 217, 0.06);
+    }
+
+    .round-card.failed {
+      background: var(--danger-soft);
+      border-color: rgba(127, 29, 29, 0.16);
+    }
+
+    .round-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .round-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .round-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+
+    .time {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .badge.ok {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .badge.danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .snippet {
+      font-size: 14px;
+      line-height: 1.65;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(197, 198, 202, 0) 0%, rgba(197, 198, 202, 1) 14%, rgba(197, 198, 202, 1) 86%, rgba(197, 198, 202, 0) 100%);
+    }
+
+    .artifact-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .artifact-group {
+      display: grid;
+      gap: 8px;
+    }
+
+    .artifact-group + .artifact-group {
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .artifact-group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .artifact-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .artifact-tile {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid rgba(117, 119, 122, 0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(242, 244, 248, 0.96) 100%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+      flex: 0 0 auto;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.65);
+    }
+
+    .artifact-tile .thumb {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 10px;
+    }
+
+    .artifact-tile .thumb::after {
+      inset: 7px;
+    }
+
+    .artifact-tile.file {
+      background: linear-gradient(135deg, #f1edec 0%, #e5e2e1 100%);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .artifact-more {
+      min-width: 34px;
+      height: 34px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(214, 227, 255, 0.55);
+      color: var(--accent);
+      border: 1px solid rgba(0, 79, 155, 0.12);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .artifact-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .thumb {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      background: linear-gradient(135deg, #d6e3ff 0%, #f0f8ff 100%);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .thumb::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 7px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.15) 100%);
+    }
+
+    .thumb.file {
+      background: linear-gradient(135deg, #f1edec 0%, #e5e2e1 100%);
+    }
+
+    .artifact-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .artifact-name {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .artifact-meta {
+      font-size: 11px;
+    }
+
+    .open-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--accent-strong);
+      border: 1px solid rgba(0, 79, 155, 0.20);
+      color: white;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .chevron-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .chevron {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      background: rgba(255,255,255,0.76);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .detail-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .detail-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .detail-body {
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .process-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(241, 237, 236, 0.45);
+      border: 1px dashed rgba(117, 119, 122, 0.16);
+    }
+
+    .process-toggle .row {
+      justify-content: flex-start;
+      gap: 8px;
+    }
+
+    .process-toggle .detail-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0;
+    }
+
+    .process-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(117, 119, 122, 0.10);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .mini-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .caption {
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 0 2px;
+    }
+
+    @media (max-width: 980px) {
+      .page {
+        padding: 36px 18px 64px;
+      }
+
+      .screens {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="eyebrow">TaskMail History Review</div>
+      <h1>历史复盘页补充高保真稿</h1>
+      <p>
+        这份补充预览只回答一件事：TaskMail 作为工作台时，历史记录应该如何围绕“回合复盘”而不是“聊天流水”来呈现。
+        默认读法固定为：列表倒序、同页多展开；列表先展示回合摘要，点击后在原位展开成详情卡片。过程记录仍然在展开态内部按需折叠，避免历史页退化成长日志墙。
+      </p>
+    </section>
+
+    <section class="screens">
+      <div class="screen-wrap">
+        <div class="screen-label">
+          <h2>历史回合列表</h2>
+          <div class="hint">折叠摘要 · 快速定位</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="icon-btn">返回</div>
+              <h3>历史回合</h3>
+              <div class="icon-btn">筛选</div>
+            </div>
+            <div class="body">
+              <div class="sheet">
+                <div class="title">首页 UI 设计讨论</div>
+                <div class="sub">12 轮 · 默认倒序展示，支持同时展开多个回合对照查看。</div>
+              </div>
+
+              <div class="round-list">
+                <div class="round-card active">
+                  <div class="round-head">
+                    <div class="round-meta">
+                      <div class="round-index">#12</div>
+                      <div class="time">03-27 00:18</div>
+                    </div>
+                    <div class="badge warn">待继续</div>
+                  </div>
+                  <div class="snippet">
+                    评估首页历史复盘卡片的高保真结构，并确认“过程记录只在回合展开态按需查看”的设计边界。
+                  </div>
+                  <div class="divider"></div>
+                  <div class="snippet">
+                    建议历史列表固定展示输入、结果摘要和产物；卡片保留轮次序号，去掉“本轮输入 / 本轮结果”文案标签。
+                  </div>
+                  <div class="artifact-strip">
+                    <div class="artifact-tile" title="打开 PNG 图片">
+                      <div class="thumb"></div>
+                    </div>
+                    <div class="artifact-tile file" title="打开 Markdown 文档">MD</div>
+                  </div>
+                  <div class="chevron-row">
+                    <div class="chevron">&gt;</div>
+                  </div>
+                </div>
+
+                <div class="round-card">
+                  <div class="round-head">
+                    <div class="round-meta">
+                      <div class="round-index">#11</div>
+                      <div class="time">03-26 22:41</div>
+                    </div>
+                    <div class="badge ok">已完成</div>
+                  </div>
+                  <div class="snippet">
+                    讨论首页高保真稿是否符合工作台定位，以及 session、PC、workspace 三者在首页的视觉主次。
+                  </div>
+                  <div class="divider"></div>
+                  <div class="snippet">
+                    首页应继续坚持 session-first；PC 与 workspace 只保留环境上下文，不应抢走“需要我处理”的主视觉层级。
+                  </div>
+                  <div class="artifact-strip">
+                    <div class="artifact-tile file" title="打开 Markdown 文档">MD</div>
+                  </div>
+                  <div class="chevron-row">
+                    <div class="chevron">&gt;</div>
+                  </div>
+                </div>
+
+                <div class="round-card failed">
+                  <div class="round-head">
+                    <div class="round-meta">
+                      <div class="round-index">#10</div>
+                      <div class="time">03-26 20:05</div>
+                    </div>
+                    <div class="badge danger">失败</div>
+                  </div>
+                  <div class="snippet">
+                    生成首版历史卡片草稿，尝试把状态、摘要、过程记录和附件都塞进一张列表卡里。
+                  </div>
+                  <div class="divider"></div>
+                  <div class="snippet">
+                    首版信息过密，列表读法退化成日志面板；后续已收口为“卡片轻、详情深”的复盘结构。
+                  </div>
+                  <div class="chevron-row">
+                    <div class="chevron">&gt;</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="caption">
+                折叠态卡片只负责帮用户快速定位值得复盘的回合。附件在这里压成一条横向缩略入口，点图即开；点开回合后才展开完整输入、结果与附件列表。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-wrap">
+        <div class="screen-label">
+          <h2>多回合展开态</h2>
+          <div class="hint">同页对照 · 过程记录继续折叠</div>
+        </div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="topbar">
+              <div class="icon-btn">返回</div>
+              <h3>历史回合</h3>
+              <div class="icon-btn">全部收起</div>
+            </div>
+            <div class="body">
+              <div class="sheet">
+                <div class="title">首页 UI 设计讨论</div>
+                <div class="sub">已展开 2 轮 · 过程记录继续保持折叠，方便对照输入、结果与附件。</div>
+              </div>
+
+              <div class="round-card active">
+                <div class="round-head">
+                  <div class="round-meta">
+                    <div class="round-index">#12</div>
+                    <div class="time">03-27 00:18</div>
+                  </div>
+                  <div class="badge warn">待继续</div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">输入</div>
+                    <div class="mini-chip">展开中</div>
+                  </div>
+                  <div class="detail-body">
+                    希望先把历史复盘页做成真正可对照的工作台，而不是列表跳详情页。默认保持倒序，但点开任意回合后要在原位展开，并且允许同时展开多个回合；过程记录只作为二级内容，通过点击再看。
+                  </div>
+                </div>
+                <div class="process-toggle">
+                  <div class="detail-title">过程记录</div>
+                  <div class="process-btn">展开</div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">结果</div>
+                    <div class="badge warn">待继续</div>
+                  </div>
+                  <div class="detail-body">
+                    历史页改为单页多展开结构。每张回合卡在原位展开后固定显示输入、结果和附件，过程记录继续折叠；这样用户可以在 #12、#11 等多个回合之间来回对照，不需要进出独立页面。
+                  </div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">附件</div>
+                    <div class="micro">3 个文件</div>
+                  </div>
+                  <div class="artifact-list">
+                    <div class="artifact-group">
+                      <div class="artifact-group-head">
+                        <div>输入附件</div>
+                        <div class="micro">1 个文件</div>
+                      </div>
+                      <div class="artifact-row">
+                        <div class="thumb"></div>
+                        <div class="artifact-copy">
+                          <div class="artifact-name">homepage-reference.png</div>
+                          <div class="artifact-meta">用户上传 · 图片参考</div>
+                        </div>
+                        <div class="open-btn">打开</div>
+                      </div>
+                    </div>
+                    <div class="artifact-group">
+                      <div class="artifact-group-head">
+                        <div>结果附件</div>
+                        <div class="micro">2 个文件</div>
+                      </div>
+                      <div class="artifact-row">
+                        <div class="thumb"></div>
+                        <div class="artifact-copy">
+                          <div class="artifact-name">history-round-card.png</div>
+                          <div class="artifact-meta">图片产物 · 预览图</div>
+                        </div>
+                        <div class="open-btn">打开</div>
+                      </div>
+                      <div class="artifact-row">
+                        <div class="thumb file"></div>
+                        <div class="artifact-copy">
+                          <div class="artifact-name">round-card-notes.md</div>
+                          <div class="artifact-meta">设计说明</div>
+                        </div>
+                        <div class="open-btn">打开</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="round-card">
+                <div class="round-head">
+                  <div class="round-meta">
+                    <div class="round-index">#11</div>
+                    <div class="time">03-26 22:41</div>
+                  </div>
+                  <div class="badge ok">已完成</div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">输入</div>
+                    <div class="mini-chip">展开中</div>
+                  </div>
+                  <div class="detail-body">
+                    讨论首页高保真稿是否符合工作台定位，并确认首页应围绕 session 还是 PC、workspace 组织视觉层级。目标是把真正需要用户处理的 session 放到最前面。
+                  </div>
+                </div>
+                <div class="process-toggle">
+                  <div class="detail-title">过程记录</div>
+                  <div class="process-btn">展开</div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">结果</div>
+                    <div class="badge ok">已完成</div>
+                  </div>
+                  <div class="detail-body">
+                    首页继续坚持 session-first。PC 与 workspace 只作为环境锚点存在，不应抢走主视觉；需要用户处理的 session、最近结果和继续入口，才是首页真正应该被优先扫到的信息。
+                  </div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head">
+                    <div class="detail-title">附件</div>
+                    <div class="micro">1 个文件</div>
+                  </div>
+                  <div class="artifact-list">
+                    <div class="artifact-group">
+                      <div class="artifact-group-head">
+                        <div>结果附件</div>
+                        <div class="micro">1 个文件</div>
+                      </div>
+                      <div class="artifact-row">
+                        <div class="thumb file"></div>
+                        <div class="artifact-copy">
+                          <div class="artifact-name">home-direction-v0.1.md</div>
+                          <div class="artifact-meta">视觉方向说明</div>
+                        </div>
+                        <div class="open-btn">打开</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="round-card failed">
+                <div class="round-head">
+                  <div class="round-meta">
+                    <div class="round-index">#10</div>
+                    <div class="time">03-26 20:05</div>
+                  </div>
+                  <div class="badge danger">失败</div>
+                </div>
+                <div class="snippet">
+                  生成首版历史卡片草稿，尝试把状态、摘要、过程记录和附件都塞进一张列表卡里。
+                </div>
+                <div class="divider"></div>
+                <div class="snippet">
+                  首版信息过密，列表读法退化成日志面板；后续已收口为“多展开对照 + 内部过程折叠”。
+                </div>
+                <div class="chevron-row">
+                  <div class="chevron">&gt;</div>
+                </div>
+              </div>
+
+              <div class="caption">
+                历史页本身就是复盘工作台：允许同时展开多轮进行上下对照，但过程记录仍然在每轮内部继续折叠，避免页面失控。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

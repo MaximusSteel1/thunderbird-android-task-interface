@@ -12,6 +12,8 @@ import app.k9mail.core.ui.compose.designsystem.atom.card.CardOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextTitleMedium
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskBackendBadge
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskBadgeRow
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskStatusBadge
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskResultSummaryUi
@@ -19,6 +21,9 @@ import net.thunderbird.feature.taskmail.internal.ui.detail.TaskResultSummaryUi
 @Composable
 internal fun ResultSummaryCard(
     result: TaskResultSummaryUi,
+    title: String = "Latest result",
+    supportingText: String = "Current result projection for this session.",
+    speakerLabel: String? = null,
     modifier: Modifier = Modifier,
 ) {
     CardOutlined(
@@ -31,10 +36,18 @@ internal fun ResultSummaryCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TaskSectionHeader(
-                title = "Latest result",
-                supportingText = "Current result projection for this session.",
+                title = title,
+                supportingText = supportingText,
             )
-            TaskStatusBadge(text = result.statusLabel)
+            TaskBadgeRow {
+                TaskStatusBadge(text = result.statusLabel)
+                speakerLabel?.let {
+                    TaskBackendBadge(text = it)
+                }
+            }
+            speakerLabel?.let {
+                TextTitleMedium(text = "$it:")
+            }
             TextTitleMedium(text = result.headline)
             result.supportingText?.let { text ->
                 TextBodyMedium(

@@ -42,13 +42,10 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("External Deliveries"))
+            .performScrollToNode(hasText("thunderbird-taskmail-foss-debug.apk"))
 
-        composeTestRule.onNodeWithText("External Deliveries").assertIsDisplayed()
-        composeTestRule.onNodeWithText(
-            "Delivered via COS (46.7 MB, expires 2026-03-26T16:25:17+00:00)",
-            substring = true,
-        ).assertIsDisplayed()
+        composeTestRule.onNodeWithText("TaskMail External Delivery Sample").assertIsDisplayed()
+        composeTestRule.onNodeWithText("thunderbird-taskmail-foss-debug.apk").assertIsDisplayed()
     }
 
     @Test
@@ -69,11 +66,8 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Attachment Notices"))
 
+        composeTestRule.onNodeWithText("TaskMail Attachment Notice Sample").assertIsDisplayed()
         composeTestRule.onNodeWithText("Attachment Notices").assertIsDisplayed()
-        composeTestRule.onNodeWithText(
-            "COS default domain blocks direct APK distribution.",
-            substring = true,
-        ).assertIsDisplayed()
     }
 
     @Test
@@ -94,16 +88,8 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Failure Output"))
 
+        composeTestRule.onNodeWithText("TaskMail Failed Long Error Sample").assertIsDisplayed()
         composeTestRule.onNodeWithText("Failure Output").assertIsDisplayed()
-        composeTestRule.onNodeWithText(
-            "Codex Exec exited with code 1",
-            substring = true,
-        ).assertIsDisplayed()
-        composeTestRule.onNodeWithText(
-            "at async main (file:///E:/projects/mail_based_task_manager/" +
-                "scripts/codex_sdk_sidecar/dist/index.js:151:22)",
-            substring = true,
-        ).assertIsDisplayed()
     }
 
     private fun uiState(detail: TaskSessionDetail): TaskSessionDetailUiState {

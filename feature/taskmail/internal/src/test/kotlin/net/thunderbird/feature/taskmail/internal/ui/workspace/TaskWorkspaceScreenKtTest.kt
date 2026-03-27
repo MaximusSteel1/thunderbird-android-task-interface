@@ -7,11 +7,14 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
+import net.thunderbird.feature.taskmail.internal.ui.workspace.component.SessionRow
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -130,10 +133,7 @@ class TaskWorkspaceScreenKtTest {
     }
 
     @Test
-    fun `content should dispatch session clicked when session row is pressed`() {
-        var clickedSessionId: String? = null
-        var clickedWorkspaceId: String? = null
-
+    fun `content should render session rows inside the workspace tree`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskWorkspaceContent(
@@ -154,20 +154,50 @@ class TaskWorkspaceScreenKtTest {
                         ),
                         workspaceSummaries = sampleWorkspaceSummaries(),
                     ),
-                    onEvent = { event ->
-                        if (event is TaskWorkspaceContract.Event.SessionClicked) {
-                            clickedWorkspaceId = event.workspaceId
-                            clickedSessionId = event.sessionId
-                        }
-                    },
+                    onEvent = {},
                 )
             }
         }
 
-        composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).performClick()
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceHomeList")
+            .performScrollToNode(hasText("Build TaskMail Phase 1", substring = true))
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceSessionRow:workspace_001::session_001")
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).assertIsDisplayed()
+    }
 
-        assertThat(clickedSessionId).isEqualTo("session_001")
-        assertThat(clickedWorkspaceId).isEqualTo("workspace_001")
+    @Test
+    fun `session row should invoke callback when pressed`() {
+        var clicked = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                SessionRow(
+                    session = TaskSessionItemUi(
+                        workspaceId = "workspace_001",
+                        sessionId = "session_001",
+                        stableId = "workspace_001::session_001",
+                        sessionName = "Build TaskMail Phase 1",
+                        status = "WaitingUser",
+                        backend = "Codex",
+                        lastSummary = "Parser layer is complete.",
+                        pendingQuestion = true,
+                        routeLabel = "android_task_manager · feature/taskmail",
+                        lastUpdatedAt = 1_742_000_000_000,
+                    ),
+                    onClick = { clicked = true },
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceSessionRow:workspace_001::session_001")
+            .performTouchInput { click() }
+        composeTestRule.waitForIdle()
+
+        assertThat(clicked).isEqualTo(true)
     }
 
     @Test
@@ -206,7 +236,10 @@ class TaskWorkspaceScreenKtTest {
         composeTestRule
             .onNodeWithTag("TaskWorkspaceHomeList")
             .performScrollToNode(hasText("Fallback thread session", substring = true))
-        composeTestRule.onNodeWithText("Fallback thread session", substring = true).performClick()
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceSessionRow:compat::workspace_001::thread_321")
+            .performTouchInput { click() }
+        composeTestRule.waitForIdle()
 
         assertThat(clickedSessionId).isEqualTo("initial")
     }
@@ -240,7 +273,10 @@ class TaskWorkspaceScreenKtTest {
         }
 
         composeTestRule.onNodeWithText("TaskMail refresh failed").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).assertExists()
+        composeTestRule
+            .onNodeWithTag("TaskWorkspaceHomeList")
+            .performScrollToNode(hasText("Build TaskMail Phase 1", substring = true))
+        composeTestRule.onNodeWithText("Build TaskMail Phase 1", substring = true).assertIsDisplayed()
     }
 }
 

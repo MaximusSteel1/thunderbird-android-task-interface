@@ -1,11 +1,18 @@
 package net.thunderbird.feature.taskmail.internal.ui.newtask
 
 import androidx.lifecycle.viewModelScope
+import java.io.File
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
+import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentInventorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentPc
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentWorkspace
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
@@ -23,6 +30,7 @@ import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskP
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskEnvironmentInventory
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Effect
@@ -49,13 +57,17 @@ private const val SEND_SUCCESS_SUBMITTED_MESSAGE = "[VPS] Task request submitted
 @Suppress("TooManyFunctions")
 internal class TaskNewTaskViewModel(
     private val getTaskMailSenderAccounts: GetTaskMailSenderAccounts,
+    private val getTaskEnvironmentInventory: GetTaskEnvironmentInventory,
     private val getLatestTaskMailNewTaskSendRecord: GetLatestTaskMailNewTaskSendRecord,
     private val recordTaskMailNewTaskSendRecord: RecordTaskMailNewTaskSendRecord,
     private val createTaskMailSession: CreateTaskMailSession,
+    private val replyAttachmentResolver: TaskMailReplyAttachmentResolver,
     private val detailRepository: TaskSessionDetailRepository? = null,
     initialState: State = State(),
 ) : BaseViewModel<State, Event, Effect>(initialState),
     TaskNewTaskContract.ViewModel {
+
+    private var environmentInventorySnapshot: TaskEnvironmentInventorySnapshot? = null
 
     override fun event(event: Event) {
         when (event) {
@@ -76,6 +88,8 @@ internal class TaskNewTaskViewModel(
             is Event.RepoChanged,
             is Event.TaskChanged,
             is Event.SubjectTitleChanged,
+            is Event.AttachmentsSelected,
+            is Event.RemoveAttachmentClicked,
             Event.AdvancedToggleClicked,
             is Event.WorkdirChanged,
             is Event.ModeChanged,
@@ -96,6 +110,8 @@ internal class TaskNewTaskViewModel(
             is Event.RepoChanged,
             is Event.TaskChanged,
             is Event.SubjectTitleChanged,
+            is Event.AttachmentsSelected,
+            is Event.RemoveAttachmentClicked,
             -> handleRequiredFieldEvent(event)
 
             Event.AdvancedToggleClicked,
@@ -118,9 +134,10 @@ internal class TaskNewTaskViewModel(
             is Event.PcChanged -> updateState {
                 it.copy(
                     pcSelection = it.pcSelection.copy(selectedPcId = event.value),
+                    workspaceSelection = it.workspaceSelection.copy(selectedWorkspaceId = ""),
                     validationErrors = it.validationErrors.copy(pcError = null),
                     submitState = it.submitState.copy(sendError = null),
-                )
+                ).withEnvironmentInventory(environmentInventorySnapshot)
             }
 
             is Event.WorkspaceChanged -> updateState {
@@ -145,7 +162,7 @@ internal class TaskNewTaskViewModel(
                         repoError = null,
                     ),
                     submitState = it.submitState.copy(sendError = null),
-                )
+                ).withEnvironmentInventory(environmentInventorySnapshot)
             }
 
             is Event.BackendSelected -> updateState {
@@ -197,6 +214,10 @@ internal class TaskNewTaskViewModel(
                     submitState = it.submitState.copy(sendError = null),
                 )
             }
+
+            is Event.AttachmentsSelected -> addInputAttachments(event.uriStrings)
+
+            is Event.RemoveAttachmentClicked -> removeInputAttachment(event.attachmentId)
 
             else -> Unit
         }
@@ -280,6 +301,10 @@ internal class TaskNewTaskViewModel(
             runCatching {
                 getTaskMailSenderAccounts()
             }.onSuccess { accounts ->
+                val inventorySnapshot = getTaskEnvironmentInventory()
+                    .getOrNull()
+                    ?.takeIf { snapshot -> snapshot.pcs.isNotEmpty() }
+                environmentInventorySnapshot = inventorySnapshot
                 val selectedSenderAccountId = resolveSelectedSenderAccountId(
                     existingSelection = state.value.selectedSenderAccountId,
                     accounts = accounts,
@@ -291,7 +316,7 @@ internal class TaskNewTaskViewModel(
                         senderAccounts = accounts.toImmutableList(),
                         selectedSenderAccountId = selectedSenderAccountId,
                         validationErrors = current.validationErrors.copy(senderAccountError = null),
-                    )
+                    ).withEnvironmentInventory(inventorySnapshot)
                 }
                 if (selectedSenderAccountId != null) {
                     loadLatestSendEvidence(selectedSenderAccountId)
@@ -536,6 +561,39 @@ internal class TaskNewTaskViewModel(
         }
     }
 
+    private fun addInputAttachments(uriStrings: List<String>) {
+        if (uriStrings.isEmpty()) return
+
+        viewModelScope.launch {
+            val attachments = replyAttachmentResolver.resolveSelectedAttachments(uriStrings)
+            updateState { currentState ->
+                val mergedAttachments = (currentState.taskInput.attachments + attachments)
+                    .distinctBy(TaskReplyAttachment::id)
+                    .toImmutableList()
+
+                currentState.copy(
+                    taskInput = currentState.taskInput.copy(
+                        attachments = mergedAttachments,
+                    ),
+                    submitState = currentState.submitState.copy(sendError = null),
+                )
+            }
+        }
+    }
+
+    private fun removeInputAttachment(attachmentId: String) {
+        updateState { currentState ->
+            currentState.copy(
+                taskInput = currentState.taskInput.copy(
+                    attachments = currentState.taskInput.attachments
+                        .filterNot { attachment -> attachment.id == attachmentId }
+                        .toImmutableList(),
+                ),
+                submitState = currentState.submitState.copy(sendError = null),
+            )
+        }
+    }
+
     private fun loadLatestSendEvidence(senderAccountId: String) {
         viewModelScope.launch {
             val latestEvidence = runCatching {
@@ -592,6 +650,120 @@ private fun resolveSelectedSenderAccountId(
     }
 }
 
+private fun TaskNewTaskContract.State.withEnvironmentInventory(
+    snapshot: TaskEnvironmentInventorySnapshot?,
+): TaskNewTaskContract.State {
+    if (snapshot == null) return this
+
+    val pcOptions = snapshot.pcs
+        .map(TaskEnvironmentPc::toPcOption)
+        .toImmutableList()
+    val selectedPcId = pcSelection.selectedPcId
+        .trim()
+        .takeIf { selectedId -> pcOptions.any { option -> option.id == selectedId } }
+        .orEmpty()
+    val workspaceOptions = snapshot.pcs
+        .firstOrNull { pc -> pc.pcId == selectedPcId }
+        ?.workspaces
+        .orEmpty()
+        .filter { workspace ->
+            workspace.presence != "missing" && workspace.routeAdmission.allowed
+        }
+        .map(TaskEnvironmentWorkspace::toWorkspaceOption)
+        .toImmutableList()
+    val selectedWorkspaceId = workspaceSelection.selectedWorkspaceId
+        .trim()
+        .takeIf { selectedId -> workspaceOptions.any { option -> option.id == selectedId } }
+        .orEmpty()
+    val selectedWorkspaceOption = workspaceOptions.firstOrNull { option -> option.id == selectedWorkspaceId }
+    val availableBackends = selectedWorkspaceOption?.supportedBackends ?: persistentListOf()
+    val availablePermissions = selectedWorkspaceOption?.supportedPermissions
+        ?: TaskMailNewTaskPermission.entries.toImmutableList()
+    val normalizedBackend = executionPolicyEditor.backend
+        ?.takeIf { backend -> availableBackends.isEmpty() || backend in availableBackends }
+        ?: availableBackends.singleOrNull()
+    val normalizedPermission = executionPolicyEditor.permission
+        .takeIf { permission -> permission in availablePermissions }
+        ?: availablePermissions.first()
+
+    return copy(
+        pcSelection = pcSelection.copy(
+            selectedPcId = selectedPcId,
+            pcOptions = pcOptions,
+        ),
+        workspaceSelection = workspaceSelection.copy(
+            selectedWorkspaceId = selectedWorkspaceId,
+            workspaceOptions = workspaceOptions,
+            repoPath = if (workspaceSelection.repoPath.isBlank()) {
+                selectedWorkspaceOption?.repoPath ?: workspaceSelection.repoPath
+            } else {
+                workspaceSelection.repoPath
+            },
+            workdir = if (workspaceSelection.workdir.isBlank()) {
+                selectedWorkspaceOption?.workdir ?: workspaceSelection.workdir
+            } else {
+                workspaceSelection.workdir
+            },
+        ),
+        executionPolicyEditor = executionPolicyEditor.copy(
+            backend = normalizedBackend,
+            availableBackends = availableBackends,
+            permission = normalizedPermission,
+            availablePermissions = availablePermissions,
+        ),
+    )
+}
+
+private fun TaskEnvironmentPc.toPcOption(): TaskNewTaskPcOptionUi {
+    val statusLabel = when (status.lowercase()) {
+        "online" -> "Online"
+        "offline" -> "Offline"
+        else -> "Unknown"
+    }
+    val routeSummary = when {
+        routeAdmission.allowed -> "$workspaceCount available workspace(s)"
+        routeAdmission.reason != null -> routeAdmission.reason
+        else -> "$workspaceCount workspace(s)"
+    }
+    return TaskNewTaskPcOptionUi(
+        id = pcId,
+        title = displayName,
+        supportingText = "$statusLabel · $routeSummary",
+    )
+}
+
+private fun TaskEnvironmentWorkspace.toWorkspaceOption(): TaskNewTaskWorkspaceOptionUi {
+    val repoName = File(repoPath).name
+        .takeIf(String::isNotBlank)
+        ?: repoPath
+    val supportingSegments = buildList {
+        add(repoName)
+        workdir?.takeIf(String::isNotBlank)?.let(::add)
+    }
+    return TaskNewTaskWorkspaceOptionUi(
+        id = workspaceId,
+        title = displayName,
+        supportingText = supportingSegments.joinToString(" · ").takeIf(String::isNotBlank),
+        repoPath = repoPath,
+        workdir = workdir,
+        supportedBackends = effectiveExecutionCapabilities.supportedBackends
+            .mapNotNull(TaskMailBackend::fromWireValue)
+            .toImmutableList(),
+        supportedPermissions = effectiveExecutionCapabilities.permissionModes
+            .mapNotNull(::toTaskMailPermission)
+            .toImmutableList()
+            .ifEmpty { TaskMailNewTaskPermission.entries.toImmutableList() },
+    )
+}
+
+private fun toTaskMailPermission(value: String): TaskMailNewTaskPermission? {
+    return when (value.trim().lowercase()) {
+        "default" -> TaskMailNewTaskPermission.Default
+        "highest" -> TaskMailNewTaskPermission.Highest
+        else -> null
+    }
+}
+
 private data class ValidationResult(
     val senderAccountError: String?,
     val pcError: String?,
@@ -644,6 +816,7 @@ private data class ValidationResult(
                     .map(String::trim)
                     .filter(String::isNotEmpty)
                     .toList(),
+                attachments = state.taskInput.attachments.toList(),
                 pcId = pcId,
                 workspaceId = workspaceId,
                 executionPolicy = state.executionPolicyEditor.toControlPlaneExecutionPolicy(),

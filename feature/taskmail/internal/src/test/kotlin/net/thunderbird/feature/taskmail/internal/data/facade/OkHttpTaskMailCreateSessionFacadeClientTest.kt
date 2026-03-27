@@ -1,7 +1,9 @@
 package net.thunderbird.feature.taskmail.internal.data.facade
 
+import com.fsck.k9.message.Attachment
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
@@ -9,10 +11,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayFakeLogger
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionAckStatus
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionBinding
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailCreateSessionResult
@@ -64,6 +68,7 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
             val testSubject = OkHttpTaskMailCreateSessionFacadeClient(
                 transportConfigRepository = FakeTaskTransportConfigRepository(config),
                 logger = RelayFakeLogger(),
+                replyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
             )
 
             val result = testSubject.createSession(
@@ -134,6 +139,7 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
         val testSubject = OkHttpTaskMailCreateSessionFacadeClient(
             transportConfigRepository = FakeTaskTransportConfigRepository(config),
             logger = RelayFakeLogger(),
+            replyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
         )
 
         val result = testSubject.createSession(testDraft())
@@ -162,6 +168,7 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
                 ),
             ),
             logger = RelayFakeLogger(),
+            replyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
         )
 
         val result = testSubject.createSession(testDraft())
@@ -172,9 +179,94 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
             ),
         )
     }
+
+    @Test
+    fun `createSession should include input attachments when draft provides them`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                    {
+                      "schema_version": "taskmail-android-create-session-facade-v1",
+                      "status": "accepted",
+                      "command_id": "cmd_attachments",
+                      "submit_ack": {
+                        "ack_status": "accepted"
+                      },
+                      "session_binding": {
+                        "session_id": "sess_attachments",
+                        "pc_id": "pc_home",
+                        "workspace_id": "workspace_android_app"
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+        server.start()
+        val config = RelayTransportConfig(
+            host = server.hostName,
+            port = server.port,
+            useTls = false,
+            androidAppToken = "android-app-token",
+        )
+        val preparedFile = kotlin.io.path.createTempFile(
+            prefix = "taskmail_create_session_",
+            suffix = ".png",
+        ).toFile()
+        preparedFile.writeText("image-binary", Charsets.UTF_8)
+        val testSubject = OkHttpTaskMailCreateSessionFacadeClient(
+            transportConfigRepository = FakeTaskTransportConfigRepository(config),
+            logger = RelayFakeLogger(),
+            replyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(
+                outgoingAttachments = listOf(
+                    FakePreparedAttachment(
+                        fileName = preparedFile.absolutePath,
+                        contentType = "image/png",
+                        name = "wireframe.png",
+                        size = preparedFile.length(),
+                    ),
+                ),
+            ),
+        )
+
+        testSubject.createSession(
+            draft = testDraft(
+                attachments = listOf(
+                    TaskReplyAttachment(
+                        id = "content://taskmail/wireframe",
+                        uriString = "content://taskmail/wireframe",
+                        displayName = "wireframe.png",
+                        contentType = "image/png",
+                        sizeBytes = preparedFile.length(),
+                        isImage = true,
+                    ),
+                ),
+            ),
+        )
+
+        val request = server.takeRequest()
+        val requestBody = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+        val attachments = requestBody["attachments"]?.jsonArray
+        val attachment = attachments?.single()?.jsonObject
+
+        assertThat(attachments?.size).isEqualTo(1)
+        assertThat(attachment?.get("name")?.jsonPrimitive?.content)
+            .isEqualTo("wireframe.png")
+        assertThat(attachment?.get("content_type")?.jsonPrimitive?.content)
+            .isEqualTo("image/png")
+        assertThat(attachment?.get("size_bytes")?.jsonPrimitive?.content?.toLong())
+            .isEqualTo(preparedFile.length())
+        assertThat(
+            attachment?.get("content_bytes_b64")?.jsonPrimitive?.content
+                .isNullOrBlank(),
+        ).isEqualTo(false)
+
+        preparedFile.delete()
+    }
 }
 
-private fun testDraft(): TaskMailNewTaskDraft {
+private fun testDraft(
+    attachments: List<TaskReplyAttachment> = emptyList(),
+): TaskMailNewTaskDraft {
     return TaskMailNewTaskDraft(
         senderAccountId = "account_primary",
         backend = TaskMailBackend.Codex,
@@ -190,6 +282,7 @@ private fun testDraft(): TaskMailNewTaskDraft {
             "List only blockers.",
             "Do not touch unrelated files.",
         ),
+        attachments = attachments,
         pcId = "pc_home",
         workspaceId = "workspace_android_app",
         executionPolicy = ControlPlaneExecutionPolicy(
@@ -200,6 +293,27 @@ private fun testDraft(): TaskMailNewTaskDraft {
         ),
     )
 }
+
+private class FakeTaskMailReplyAttachmentResolver(
+    private val outgoingAttachments: List<Attachment> = emptyList(),
+) : TaskMailReplyAttachmentResolver {
+    override suspend fun resolveSelectedAttachments(uriStrings: List<String>): List<TaskReplyAttachment> = emptyList()
+
+    override suspend fun buildOutgoingAttachments(
+        attachments: List<TaskReplyAttachment>,
+    ): Result<List<Attachment>> {
+        return Result.success(outgoingAttachments)
+    }
+}
+
+private data class FakePreparedAttachment(
+    override val fileName: String?,
+    override val contentType: String?,
+    override val name: String?,
+    override val size: Long?,
+    override val state: Attachment.LoadingState = Attachment.LoadingState.COMPLETE,
+    override val isInternalAttachment: Boolean = false,
+) : Attachment
 
 private class FakeTaskTransportConfigRepository(
     private var config: RelayTransportConfig,

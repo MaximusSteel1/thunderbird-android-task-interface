@@ -9,6 +9,8 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyCo
 
 @Immutable
 internal data class TaskSessionDetailUiState(
+    val sessionId: String? = null,
+    val workspaceId: String? = null,
     val sessionName: String,
     val backend: String,
     val status: String,

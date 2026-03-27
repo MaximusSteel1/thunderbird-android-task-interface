@@ -135,12 +135,6 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailRecentContext"))
-
-        composeTestRule.onNodeWithTag("TaskSessionDetailRecentContext").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Please continue with the cleanup.").assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
         composeTestRule.onNodeWithTag("TaskSessionDetailResultSummary").assertIsDisplayed()
         composeTestRule.onNodeWithText("Waiting for your reply").assertIsDisplayed()
@@ -282,8 +276,11 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailRecentContext"))
-        composeTestRule.onNodeWithText("Completed the Android VPS-first readiness slice.").assertIsDisplayed()
+            .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
+        composeTestRule.onNodeWithText(
+            "Completed the Android VPS-first readiness slice.",
+            substring = true,
+        ).assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
@@ -331,14 +328,11 @@ class TaskSessionDetailScreenKtTest {
             }
         }
 
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailHistoryButton"))
         composeTestRule.onNodeWithTag("TaskSessionDetailHistoryButton").performClick()
 
         assertThat(historyClicked).isEqualTo(true)
         composeTestRule.onNodeWithTag("TaskSessionDetailHistorySheet").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Need confirmation").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Need confirmation").assertCountEquals(2)
     }
 
     @Test
@@ -508,6 +502,49 @@ class TaskSessionDetailScreenKtTest {
             .performScrollToNode(hasTestTag("TaskReplyComposerStatusButton"))
         composeTestRule.onNodeWithTag("TaskReplyComposerStatusButton").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Send reply").assertCountEquals(0)
+    }
+
+    @Test
+    fun `content should render guide composer in current input led mode and dispatch dismiss`() {
+        var guideDismissed = false
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        isGuideComposerVisible = true,
+                        draftText = "Keep the current plan, but skip the cleanup.",
+                        detail = replyCapableDetail(
+                            status = "Running",
+                            pendingQuestions = persistentListOf(),
+                            quickAnswerChoices = persistentListOf(),
+                        ),
+                    ),
+                    onEvent = { event ->
+                        if (event == TaskSessionDetailContract.Event.GuideDismissed) {
+                            guideDismissed = true
+                        }
+                    },
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskGuideComposerInput"))
+
+        composeTestRule.onNodeWithTag("TaskGuideComposerInput").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskGuideComposerSendButton"))
+        composeTestRule.onNodeWithTag("TaskGuideComposerSendButton").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Cancel"))
+        composeTestRule.onNodeWithText("Cancel").performClick()
+
+        assertThat(guideDismissed).isEqualTo(true)
     }
 
     @Test
@@ -852,6 +889,7 @@ class TaskSessionDetailScreenKtTest {
     }
 
     private fun replyCapableDetail(
+        status: String = "WaitingUser",
         canReply: Boolean = true,
         canQueryStatus: Boolean = true,
         replyUnavailableReason: String? = null,
@@ -894,7 +932,7 @@ class TaskSessionDetailScreenKtTest {
         return TaskSessionDetailUiState(
             sessionName = "Build TaskMail Phase 1",
             backend = "Codex",
-            status = "WaitingUser",
+            status = status,
             repoPath = "E:/projects/android_task_manager",
             workdir = "feature/taskmail",
             lastSummary = "Parser layer is complete.",

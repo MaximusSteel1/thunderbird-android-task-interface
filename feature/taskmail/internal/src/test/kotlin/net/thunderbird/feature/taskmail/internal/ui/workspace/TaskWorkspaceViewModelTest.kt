@@ -27,6 +27,11 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserve
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentCapabilities
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentInventorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentPc
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentRouteAdmission
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentWorkspace
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
@@ -39,6 +44,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncSt
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskEnvironmentInventory
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskSessionDetailStoreChanges
@@ -94,6 +100,24 @@ class TaskWorkspaceViewModelTest {
             start()
             loadData()
             assertThat(viewModelState().workspaceSummaries.single().subtitle).isEqualTo("taskmail")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load data should build real pc tree when environment inventory is available`() = runMviTest {
+        with(
+            TaskWorkspaceViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(),
+                environmentInventoryResult = Result.success(sampleEnvironmentInventorySnapshot()),
+            ),
+        ) {
+            start()
+            loadData()
+            assertThat(viewModelState().pcTreeNodes).hasSize(1)
+            assertThat(viewModelState().pcTreeNodes.single().title).isEqualTo("Workstation")
+            assertThat(viewModelState().pcTreeNodes.single().workspaces.single().title).isEqualTo("Android app")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -345,10 +369,14 @@ private class TaskWorkspaceViewModelRobot(
         FakeTaskSessionDetailStoreChangeObserver(),
     private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
         FakeTaskMailForegroundRefreshTickerFactory(),
+    environmentInventoryResult: Result<TaskEnvironmentInventorySnapshot> =
+        Result.failure(IllegalStateException("inventory unavailable")),
     syncTaskMailCache: SyncTaskMailCache? = null,
 ) {
+    private val environmentInventoryRepository = FakeTaskEnvironmentInventoryRepository(environmentInventoryResult)
     private val viewModel = TaskWorkspaceViewModel(
         getTaskSessionDetails = GetTaskSessionDetails(repository),
+        getTaskEnvironmentInventory = GetTaskEnvironmentInventory(environmentInventoryRepository),
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(FakeTaskMailSenderAccountSource(senderAccounts)),
         refreshTaskMail = RefreshTaskMail(syncRequester),
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
@@ -545,6 +573,55 @@ private fun sampleSenderAccount(accountUuid: String = "account_001"): TaskMailSe
         accountUuid = accountUuid,
         displayName = "TaskMail User",
         emailAddress = "taskmail@example.com",
+    )
+}
+
+private class FakeTaskEnvironmentInventoryRepository(
+    private val result: Result<TaskEnvironmentInventorySnapshot>,
+) : net.thunderbird.feature.taskmail.internal.domain.repository.TaskEnvironmentInventoryRepository {
+    override suspend fun getEnvironmentInventory(): Result<TaskEnvironmentInventorySnapshot> = result
+}
+
+private fun sampleEnvironmentInventorySnapshot(): TaskEnvironmentInventorySnapshot {
+    return TaskEnvironmentInventorySnapshot(
+        snapshotId = "env_snap_001",
+        generatedAt = "2026-03-27T09:40:00",
+        inventoryState = "fresh",
+        refreshAfterSeconds = 15,
+        pcs = listOf(
+            TaskEnvironmentPc(
+                pcId = "pc_workstation_01",
+                displayName = "Workstation",
+                status = "online",
+                lastSeenAt = "2026-03-27T09:39:58",
+                workspaceInventoryState = "fresh",
+                workspaceCount = 1,
+                pcCapabilities = TaskEnvironmentCapabilities(
+                    supportedBackends = listOf("codex"),
+                    permissionModes = listOf("default"),
+                ),
+                routeAdmission = TaskEnvironmentRouteAdmission(
+                    allowed = true,
+                ),
+                workspaces = listOf(
+                    TaskEnvironmentWorkspace(
+                        workspaceId = "workspace_001",
+                        pcId = "pc_workstation_01",
+                        displayName = "Android app",
+                        repoPath = "E:/projects/android_task_manager",
+                        workdir = "feature/taskmail",
+                        presence = "present",
+                        effectiveExecutionCapabilities = TaskEnvironmentCapabilities(
+                            supportedBackends = listOf("codex"),
+                            permissionModes = listOf("default"),
+                        ),
+                        routeAdmission = TaskEnvironmentRouteAdmission(
+                            allowed = true,
+                        ),
+                    ),
+                ),
+            ),
+        ),
     )
 }
 

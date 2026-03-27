@@ -95,6 +95,7 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailS
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
@@ -998,7 +999,7 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should be blocked while the session is awaiting user input`() = runMviTest {
+    fun `send reply should allow structured answers while the session is awaiting user input`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = multiQuestionDetail())
         val directSender = FakeTaskMailDirectSessionActionSender()
         val structuredDraft = """
@@ -1012,16 +1013,22 @@ class TaskSessionDetailViewModelTest {
             loadDetail()
             changeDraft(structuredDraft)
             sendReply()
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is awaiting user input.",
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = structuredDraft,
+                ),
+            )
+            assertThat(viewModelState().sendError).isNull()
+            assertShowMessageEffect(
+                "[Control] Reply accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `send reply should block empty structured answer template`() = runMviTest {
+    fun `send reply should block incomplete structured answer template`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = multiQuestionDetail())
         val directSender = FakeTaskMailDirectSessionActionSender()
 
@@ -1031,7 +1038,7 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(directSender.requests.size).isEqualTo(0)
             assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is awaiting user input.",
+                "Complete every required answer before sending this structured reply.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1060,7 +1067,7 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(directSender.requests.size).isEqualTo(0)
             assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is awaiting user input.",
+                "Direct plain reply does not support attachments yet.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1102,6 +1109,104 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().sendError).isNull()
             assertShowMessageEffect(
                 "[Control] Reply accepted. Detail will keep following control and mail updates.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `guide clicked should expose inline composer when current round can accept direct reply`() = runMviTest {
+        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(detail = currentInputLedDetail()))) {
+            start()
+            loadDetail()
+            openGuideComposer()
+            assertThat(viewModelState().isGuideComposerVisible).isEqualTo(true)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `guide dismissed should hide inline composer`() = runMviTest {
+        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(detail = currentInputLedDetail()))) {
+            start()
+            loadDetail()
+            openGuideComposer()
+            dismissGuideComposer()
+            assertThat(viewModelState().isGuideComposerVisible).isEqualTo(false)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `guide send should use direct lane and hide inline composer on success`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = currentInputLedDetail())
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            openGuideComposer()
+            changeDraft("Keep the current branch, but skip the cleanup for now.")
+            sendReply()
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = "Keep the current branch, but skip the cleanup for now.",
+                ),
+            )
+            assertThat(viewModelState().isGuideComposerVisible).isEqualTo(false)
+            assertShowMessageEffect(
+                "[Control] Guide accepted. Detail will keep following control and mail updates.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `stop running should send canonical kill through mail reply sender`() = runMviTest {
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository = FakeTaskSessionDetailRepository(detail = currentInputLedDetail()),
+                replySender = mailSender,
+                directSessionActionSender = directSender,
+            ),
+        ) {
+            start()
+            loadDetail()
+            stopRunning()
+            assertThat(directSender.requests.size).isEqualTo(0)
+            assertThat(mailSender.requests.single().body).isEqualTo("/kill")
+            assertShowMessageEffect(
+                "[Mail] /kill sent. Detail will refresh when the next TaskMail update arrives.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `deactivate should send canonical end through mail reply sender`() = runMviTest {
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail()),
+                replySender = mailSender,
+                directSessionActionSender = directSender,
+            ),
+        ) {
+            start()
+            loadDetail()
+            deactivateSession()
+            assertThat(directSender.requests.size).isEqualTo(0)
+            assertThat(mailSender.requests.single().body).isEqualTo("/end")
+            assertShowMessageEffect(
+                "[Mail] /end sent. Detail will refresh when the next TaskMail update arrives.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1196,16 +1301,22 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `question choice should be blocked while direct answer flow is unavailable`() = runMviTest {
+    fun `question choice should use direct answer flow while the session is awaiting user input`() = runMviTest {
         val directSender = FakeTaskMailDirectSessionActionSender()
 
         with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(), directSessionActionSender = directSender)) {
             start()
             loadDetail()
             sendChoice("yes")
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is awaiting user input.",
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = sampleDirectTarget(),
+                    replyText = "yes",
+                ),
+            )
+            assertThat(viewModelState().sendError).isNull()
+            assertShowMessageEffect(
+                "[Control] Quick answer accepted. Detail will keep following control and mail updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1455,6 +1566,7 @@ private class TaskSessionDetailViewModelRobot(
         refreshTaskMail = RefreshTaskMail(syncRequester),
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
         foregroundRefreshTickerFactory = foregroundRefreshTickerFactory,
+        sendTaskMailReply = SendTaskMailReply(replySender),
         sendTaskMailDirectSessionAction = directSessionActionSender?.let(::SendTaskMailDirectSessionAction),
         getLatestTaskMailSessionActionSendRecord = getLatestTaskMailSessionActionSendRecord,
         recordTaskMailSessionActionSendRecord = recordTaskMailSessionActionSendRecord,
@@ -1510,6 +1622,25 @@ private class TaskSessionDetailViewModelRobot(
 
     suspend fun sendStatusQuery() {
         viewModel.event(TaskSessionDetailContract.Event.StatusQueryClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun openGuideComposer() {
+        viewModel.event(TaskSessionDetailContract.Event.GuideClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    fun dismissGuideComposer() {
+        viewModel.event(TaskSessionDetailContract.Event.GuideDismissed)
+    }
+
+    suspend fun stopRunning() {
+        viewModel.event(TaskSessionDetailContract.Event.StopRunningClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun deactivateSession() {
+        viewModel.event(TaskSessionDetailContract.Event.DeactivateClicked)
         mviContext.advanceUntilIdle()
     }
 
@@ -1964,6 +2095,12 @@ private fun directReplyCapableDetail(): TaskSessionDetail {
         status = TaskMailSessionStatus.Done,
         question = null,
         pendingQuestions = emptyList(),
+    )
+}
+
+private fun currentInputLedDetail(): TaskSessionDetail {
+    return directReplyCapableDetail().copy(
+        status = TaskMailSessionStatus.Running,
     )
 }
 

@@ -13,10 +13,16 @@ import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.collections.immutable.persistentListOf
+import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.core.android.account.LegacyAccountDto
 import net.thunderbird.core.testing.coroutines.MainDispatcherHelper
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSenderAccountSource
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentCapabilities
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentInventorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentPc
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentRouteAdmission
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentWorkspace
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
@@ -24,6 +30,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSwit
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
@@ -36,6 +43,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTa
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskEnvironmentInventory
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
 
@@ -245,6 +253,55 @@ class TaskNewTaskViewModelTest {
             )
             assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(null)
             assertThat(latestSendRecord(primarySenderAccount.accountUuid)).isEqualTo(null)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load data should populate route options from environment inventory`() = runMviTest {
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                environmentInventoryResult = Result.success(sampleEnvironmentInventorySnapshot()),
+            ),
+        ) {
+            start()
+            loadData()
+
+            assertThat(viewModelState().pcSelection.pcOptions.single().id).isEqualTo("pc_workstation_01")
+            changePcId("pc_workstation_01")
+            assertThat(viewModelState().workspaceSelection.workspaceOptions.single().id)
+                .isEqualTo("workspace_android_app")
+            changeWorkspaceId("workspace_android_app")
+            assertThat(viewModelState().executionPolicyEditor.availableBackends).isEqualTo(
+                persistentListOf(TaskMailBackend.Codex),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `attachments selected should populate input attachments and allow removal`() = runMviTest {
+        val attachment = sampleReplyAttachment()
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                attachmentResolver = FakeTaskMailReplyAttachmentResolver(
+                    attachmentsToReturn = listOf(attachment),
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            selectAttachments("content://taskmail/final-report")
+
+            assertThat(viewModelState().taskInput.attachments).isEqualTo(persistentListOf(attachment))
+
+            removeAttachment(attachment.id)
+
+            assertThat(viewModelState().taskInput.attachments).isEqualTo(persistentListOf())
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -596,6 +653,33 @@ class TaskNewTaskViewModelTest {
             ensureThatAllEventsAreConsumed()
         }
     }
+
+    @Test
+    fun `send should include selected input attachments in create session draft`() = runMviTest {
+        val attachment = sampleReplyAttachment()
+        with(
+            TaskNewTaskViewModelRobot(
+                this,
+                senderAccounts = listOf(primarySenderAccount),
+                attachmentResolver = FakeTaskMailReplyAttachmentResolver(
+                    attachmentsToReturn = listOf(attachment),
+                ),
+            ),
+        ) {
+            start()
+            loadData()
+            selectRouteTarget()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
+            selectAttachments(attachment.uriString)
+            send()
+
+            assertThat(latestSentDraft()?.attachments).isEqualTo(listOf(attachment))
+            collectedEffects()
+            ensureThatAllEventsAreConsumed()
+        }
+    }
 }
 
 private class TaskNewTaskViewModelRobot(
@@ -614,20 +698,26 @@ private class TaskNewTaskViewModelRobot(
     ),
     latestSendRecord: TaskMailNewTaskSendRecord? = null,
     private val detailRepository: FakeTaskSessionDetailRepository? = null,
+    attachmentResolver: TaskMailReplyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
+    environmentInventoryResult: Result<TaskEnvironmentInventorySnapshot> =
+        Result.failure(IllegalStateException("inventory unavailable")),
     initialState: TaskNewTaskContract.State = TaskNewTaskContract.State(),
 ) {
     private val expectedInitialState = initialState
     private val senderAccountSource = FakeTaskMailSenderAccountSource(senderAccounts)
     private val createSessionClient = FakeTaskMailCreateSessionClient(createSessionResult)
     private val sendRecordRepository = FakeTaskMailNewTaskSendRecordRepository(latestSendRecord)
+    private val environmentInventoryRepository = FakeTaskEnvironmentInventoryRepository(environmentInventoryResult)
     private val viewModel = TaskNewTaskViewModel(
         getTaskMailSenderAccounts = GetTaskMailSenderAccounts(senderAccountSource),
+        getTaskEnvironmentInventory = GetTaskEnvironmentInventory(environmentInventoryRepository),
         getLatestTaskMailNewTaskSendRecord = GetLatestTaskMailNewTaskSendRecord(sendRecordRepository),
         recordTaskMailNewTaskSendRecord = RecordTaskMailNewTaskSendRecord(
             repository = sendRecordRepository,
             clock = { 456L },
         ),
         createTaskMailSession = CreateTaskMailSession(createSessionClient),
+        replyAttachmentResolver = attachmentResolver,
         detailRepository = detailRepository,
         initialState = initialState,
     )
@@ -686,6 +776,15 @@ private class TaskNewTaskViewModelRobot(
         viewModel.event(TaskNewTaskContract.Event.ChooseRepoClicked)
     }
 
+    suspend fun selectAttachments(vararg uriStrings: String) {
+        viewModel.event(TaskNewTaskContract.Event.AttachmentsSelected(uriStrings.toList()))
+        mviContext.advanceUntilIdle()
+    }
+
+    fun removeAttachment(attachmentId: String) {
+        viewModel.event(TaskNewTaskContract.Event.RemoveAttachmentClicked(attachmentId))
+    }
+
     suspend fun send() {
         viewModel.event(TaskNewTaskContract.Event.SendClicked)
         mviContext.advanceUntilIdle()
@@ -719,6 +818,12 @@ private class TaskNewTaskViewModelRobot(
         turbines.stateTurbine.cancelAndIgnoreRemainingEvents()
         turbines.effectTurbine.ensureAllEventsConsumed()
     }
+}
+
+private class FakeTaskEnvironmentInventoryRepository(
+    private val result: Result<TaskEnvironmentInventorySnapshot>,
+) : net.thunderbird.feature.taskmail.internal.domain.repository.TaskEnvironmentInventoryRepository {
+    override suspend fun getEnvironmentInventory(): Result<TaskEnvironmentInventorySnapshot> = result
 }
 
 private class FakeTaskMailSenderAccountSource(
@@ -793,6 +898,28 @@ private class FakeTaskMailCreateSessionClient(
     }
 }
 
+private class FakeTaskMailReplyAttachmentResolver(
+    private val attachmentsToReturn: List<TaskReplyAttachment> = emptyList(),
+) : TaskMailReplyAttachmentResolver {
+    override suspend fun resolveSelectedAttachments(uriStrings: List<String>): List<TaskReplyAttachment> {
+        return if (attachmentsToReturn.isNotEmpty()) {
+            attachmentsToReturn
+        } else {
+            uriStrings.map { uriString ->
+                sampleReplyAttachment(
+                    id = uriString,
+                    uriString = uriString,
+                    displayName = uriString.substringAfterLast('/').ifBlank { "attachment" },
+                )
+            }
+        }
+    }
+
+    override suspend fun buildOutgoingAttachments(
+        attachments: List<TaskReplyAttachment>,
+    ): Result<List<com.fsck.k9.message.Attachment>> = error("Not used by this test")
+}
+
 private val primarySenderAccount = TaskMailSenderAccount(
     accountUuid = "account_primary",
     displayName = "Primary",
@@ -804,3 +931,62 @@ private val secondarySenderAccount = TaskMailSenderAccount(
     displayName = "Secondary",
     emailAddress = "secondary@example.com",
 )
+
+private fun sampleReplyAttachment(
+    id: String = "content://taskmail/final-report",
+    uriString: String = id,
+    displayName: String = "final_report.md",
+    contentType: String? = "text/markdown",
+): TaskReplyAttachment {
+    return TaskReplyAttachment(
+        id = id,
+        uriString = uriString,
+        displayName = displayName,
+        contentType = contentType,
+        sizeBytes = 4_096L,
+        isImage = contentType?.startsWith("image/") == true,
+    )
+}
+
+private fun sampleEnvironmentInventorySnapshot(): TaskEnvironmentInventorySnapshot {
+    return TaskEnvironmentInventorySnapshot(
+        snapshotId = "env_snap_001",
+        generatedAt = "2026-03-27T09:40:00",
+        inventoryState = "fresh",
+        refreshAfterSeconds = 15,
+        pcs = listOf(
+            TaskEnvironmentPc(
+                pcId = "pc_workstation_01",
+                displayName = "Workstation",
+                status = "online",
+                lastSeenAt = "2026-03-27T09:39:58",
+                workspaceInventoryState = "fresh",
+                workspaceCount = 1,
+                pcCapabilities = TaskEnvironmentCapabilities(
+                    supportedBackends = listOf("codex", "opencode"),
+                    permissionModes = listOf("default", "highest"),
+                ),
+                routeAdmission = TaskEnvironmentRouteAdmission(
+                    allowed = true,
+                ),
+                workspaces = listOf(
+                    TaskEnvironmentWorkspace(
+                        workspaceId = "workspace_android_app",
+                        pcId = "pc_workstation_01",
+                        displayName = "Android app",
+                        repoPath = "E:/projects/android_task_manager",
+                        workdir = "feature/taskmail",
+                        presence = "present",
+                        effectiveExecutionCapabilities = TaskEnvironmentCapabilities(
+                            supportedBackends = listOf("codex"),
+                            permissionModes = listOf("default"),
+                        ),
+                        routeAdmission = TaskEnvironmentRouteAdmission(
+                            allowed = true,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+}

@@ -15,12 +15,14 @@ internal interface TaskWorkspaceContract {
         val activeSessions: List<TaskSessionItemUi> = emptyList(),
         val recentSessions: List<TaskSessionItemUi> = emptyList(),
         val workspaceSummaries: List<TaskWorkspaceItemUi> = emptyList(),
+        val pcTreeNodes: List<TaskWorkspacePcNodeUi> = emptyList(),
     ) {
         val hasContent: Boolean
             get() = attentionSessions.isNotEmpty() ||
                 activeSessions.isNotEmpty() ||
                 recentSessions.isNotEmpty() ||
-                workspaceSummaries.isNotEmpty()
+                workspaceSummaries.isNotEmpty() ||
+                pcTreeNodes.isNotEmpty()
 
         val isEmpty: Boolean
             get() = !isLoading &&

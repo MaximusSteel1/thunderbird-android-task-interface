@@ -32,6 +32,23 @@ sealed interface TaskMailRoute : Route {
     }
 
     @Serializable
+    data class SessionHistory(
+        val workspaceId: String? = null,
+        val sessionId: String,
+    ) : TaskMailRoute {
+        override val basePath: String = BASE_PATH
+
+        override fun route(): String {
+            val historyPath = "$basePath/$sessionId"
+            return workspaceId?.let { "$historyPath?workspaceId=$it" } ?: historyPath
+        }
+
+        companion object {
+            const val BASE_PATH = "$TASKMAIL_BASE_PATH/session-history"
+        }
+    }
+
+    @Serializable
     data object NewTask : TaskMailRoute {
         override val basePath: String = BASE_PATH
 

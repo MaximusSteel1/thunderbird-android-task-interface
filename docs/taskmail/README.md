@@ -53,10 +53,22 @@
   这份文档当前冻结了主线视觉气质、层级重点与高保真方向
 - 高保真 HTML 预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
   这份文件当前提供首页、新任务页、Session 页的静态视觉预览
+- 新任务页高保真补充预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-new-task-high-fi-preview-v0.1.html`
+  这份文件当前补充了“目标环境 / 任务输入 / 输入附件 / 执行策略”的新任务页静态视觉预览
+- 首页树形工作台高保真补充预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-home-tree-high-fi-preview-v0.1.html`
+  这份文件当前补充了按 `PC -> workspace -> session` 树形组织的首页静态视觉预览
 - 历史复盘高保真补充预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-history-review-high-fi-preview-v0.1.html`
-  这份文件当前补充了“历史回合列表 / 回合详情”的静态视觉预览，并约束过程记录只在回合详情中展开
+  这份文件当前补充了“历史回合列表 / 同页多展开复盘”的静态视觉预览，并约束过程记录只在回合展开态中按需查看
+- Session 状态轮替高保真补充预览：`docs/taskmail/planning/android/mockups/taskmail-vps-first-multi-pc-session-mode-high-fi-preview-v0.1.html`
+  这份文件当前补充了 Session 页在“结果主导 / 当前轮输入主导”两种模式下的静态视觉预览
+- UI 到代码接口实现清单：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-ui-interface-implementation-checklist-v0.1.md`
+  这份文档当前收口了首页 / 新任务 / Session / 历史复盘四块设计在代码中的已有接口、缺口与推荐实施顺序
+- UI Skeleton 本次执行边界：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-ui-skeleton-boundary-v0.1.md`
+  这份文档当前冻结了本次编码只做什么、明确不做什么，以及允许占位的能力边界
 - 页面级 API 需求：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
   这份文档当前冻结了三张核心页面对 VPS 的最小能力需求
+- 环境库存 contract：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-environment-inventory-contract-v0.1.md`
+  这份文档当前冻结了 Android-facing `pc -> workspace -> effective capability` 环境库存的最小读法，以及 `online / offline / missing / stale` 的稳定页面语义
 - Compose 页面结构与实现骨架：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
   这份文档当前冻结了现有 `Workspace / NewTask / SessionDetail` 页面如何演进到 VPS-first 主线的 Compose 骨架
 - Android 骨架实施计划：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
@@ -88,6 +100,7 @@
 - PC 计划索引：`E:\projects\mail_based_task_manager\docs\plans\README.md`
 - PC 主线 note：`E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_control_plane_mainline_v0.1.md`
 - PC Phase 1 实施计划：`E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_phase1_execution_plan_v0.1.md`
+- PC Android-facing 环境库存 facade 要求：`E:\projects\mail_based_task_manager\docs\plans\android_facing_environment_inventory_facade_requirements_v0.1.md`
 
 ## 当前兼容 / closeout 参考线
 

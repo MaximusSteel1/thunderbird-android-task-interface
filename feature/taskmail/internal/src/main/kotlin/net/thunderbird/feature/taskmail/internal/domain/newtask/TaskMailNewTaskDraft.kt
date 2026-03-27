@@ -2,6 +2,7 @@ package net.thunderbird.feature.taskmail.internal.domain.newtask
 
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 
 internal data class TaskMailNewTaskDraft(
     val senderAccountId: String,
@@ -15,6 +16,7 @@ internal data class TaskMailNewTaskDraft(
     val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
     val profile: String? = null,
     val acceptanceCriteria: List<String> = emptyList(),
+    val attachments: List<TaskReplyAttachment> = emptyList(),
     val pcId: String? = null,
     val workspaceId: String? = null,
     val executionPolicy: ControlPlaneExecutionPolicy? = null,

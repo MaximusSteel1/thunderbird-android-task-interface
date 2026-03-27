@@ -1,6 +1,9 @@
 package net.thunderbird.feature.taskmail.internal.data.facade
 
+import java.io.File
+import java.util.Base64
 import java.util.concurrent.TimeUnit
+import com.fsck.k9.message.Attachment
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,6 +13,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import net.thunderbird.core.logging.Logger
+import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentResolver
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.toCanonicalAcceptanceCriteria
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.toCanonicalExecutionPolicy
@@ -33,6 +37,7 @@ private const val DEFAULT_REJECTED_MESSAGE = "Create-session request was rejecte
 internal class OkHttpTaskMailCreateSessionFacadeClient(
     private val transportConfigRepository: TaskTransportConfigRepository,
     private val logger: Logger,
+    private val replyAttachmentResolver: TaskMailReplyAttachmentResolver,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     okHttpClient: OkHttpClient? = null,
     private val json: Json = Json {
@@ -72,7 +77,7 @@ internal class OkHttpTaskMailCreateSessionFacadeClient(
         }
     }
 
-    private fun executeCreateSessionRequest(
+    private suspend fun executeCreateSessionRequest(
         config: RelayTransportConfig,
         draft: TaskMailNewTaskDraft,
     ): TaskMailCreateSessionResult {
@@ -129,7 +134,22 @@ internal class OkHttpTaskMailCreateSessionFacadeClient(
         }
     }
 
-    private fun TaskMailNewTaskDraft.toFacadeRequest(): AndroidCreateSessionRequestPayload {
+    private suspend fun TaskMailNewTaskDraft.toFacadeRequest(): AndroidCreateSessionRequestPayload {
+        val attachmentPayloads = if (attachments.isEmpty()) {
+            emptyList()
+        } else {
+            replyAttachmentResolver.buildOutgoingAttachments(attachments)
+                .mapCatching { preparedAttachments ->
+                    preparedAttachments.map(::toFacadeAttachment)
+                }
+                .getOrElse { error ->
+                    throw IllegalStateException(
+                        error.message?.trim().takeUnless(String?::isNullOrEmpty)
+                            ?: "Failed to prepare input attachments.",
+                        error,
+                    )
+                }
+        }
         return AndroidCreateSessionRequestPayload(
             pcId = requireNormalizedText(pcId, "pcId"),
             workspaceId = requireNormalizedText(workspaceId, "workspaceId"),
@@ -140,7 +160,25 @@ internal class OkHttpTaskMailCreateSessionFacadeClient(
             acceptance = acceptanceCriteria.toCanonicalAcceptanceCriteria().takeIf { it.isNotEmpty() },
             repoPath = repoPath.trim().takeIf(String::isNotEmpty),
             workdir = workdir?.trim()?.takeIf(String::isNotEmpty),
+            attachments = attachmentPayloads.takeIf { it.isNotEmpty() },
             source = DEFAULT_SOURCE,
+        )
+    }
+
+    private fun toFacadeAttachment(attachment: Attachment): AndroidCreateSessionAttachmentPayload {
+        val filePath = attachment.fileName?.trim().takeUnless(String?::isNullOrEmpty)
+            ?: error("Prepared attachment is missing fileName.")
+        val file = File(filePath)
+        if (!file.exists() || !file.isFile) {
+            error("Prepared attachment file is unavailable: $filePath")
+        }
+        val contentBytes = file.readBytes()
+        return AndroidCreateSessionAttachmentPayload(
+            name = attachment.name?.trim().takeUnless(String?::isNullOrEmpty) ?: file.name,
+            contentType = attachment.contentType?.trim().takeUnless(String?::isNullOrEmpty)
+                ?: "application/octet-stream",
+            sizeBytes = attachment.size ?: contentBytes.size.toLong(),
+            contentBytesBase64 = Base64.getEncoder().encodeToString(contentBytes),
         )
     }
 
@@ -209,7 +247,19 @@ private data class AndroidCreateSessionRequestPayload(
     @SerialName("repo_path")
     val repoPath: String? = null,
     val workdir: String? = null,
+    val attachments: List<AndroidCreateSessionAttachmentPayload>? = null,
     val source: String? = null,
+)
+
+@Serializable
+private data class AndroidCreateSessionAttachmentPayload(
+    val name: String,
+    @SerialName("content_type")
+    val contentType: String,
+    @SerialName("size_bytes")
+    val sizeBytes: Long,
+    @SerialName("content_bytes_b64")
+    val contentBytesBase64: String,
 )
 
 @Serializable

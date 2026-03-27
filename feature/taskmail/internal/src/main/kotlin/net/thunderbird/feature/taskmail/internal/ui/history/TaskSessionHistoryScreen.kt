@@ -1,4 +1,4 @@
-package net.thunderbird.feature.taskmail.internal.ui.detail
+package net.thunderbird.feature.taskmail.internal.ui.history
 
 import android.content.Context
 import android.content.Intent
@@ -6,7 +6,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,30 +17,21 @@ import androidx.compose.ui.platform.LocalContext
 import app.k9mail.core.android.common.activity.CreateDocumentResultContract
 import net.thunderbird.core.ui.contract.mvi.observe
 import net.thunderbird.feature.taskmail.internal.ui.TaskMailForegroundRefreshLifecycleEffect
+import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract
+import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailViewModel
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-internal fun TaskSessionDetailScreen(
+internal fun TaskSessionHistoryScreen(
     workspaceId: String?,
     sessionId: String,
     onBack: () -> Unit,
-    onOpenHistory: (workspaceId: String?, sessionId: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TaskSessionDetailContract.ViewModel = koinViewModel<TaskSessionDetailViewModel>(),
 ) {
     val context = LocalContext.current
     var pendingAttachmentSave by remember { mutableStateOf<String?>(null) }
-    val attachmentPicker = rememberAttachmentPicker(
-        context = context,
-        onAttachmentsSelected = { uris ->
-            viewModel.event(
-                TaskSessionDetailContract.Event.AttachmentsSelected(
-                    uriStrings = uris.map(Uri::toString),
-                ),
-            )
-        },
-    )
-    val saveAttachmentLauncher = rememberSaveAttachmentLauncher(
+    val saveAttachmentLauncher = rememberHistorySaveAttachmentLauncher(
         pendingAttachmentId = pendingAttachmentSave,
         onPendingAttachmentConsumed = { pendingAttachmentSave = null },
         onAttachmentSaveSelected = { attachmentId, destinationUriString ->
@@ -55,7 +45,7 @@ internal fun TaskSessionDetailScreen(
     )
 
     val (state, dispatch) = viewModel.observe { effect ->
-        pendingAttachmentSave = handleDetailEffect(
+        pendingAttachmentSave = handleHistoryEffect(
             effect = effect,
             context = context,
             onBack = onBack,
@@ -69,6 +59,7 @@ internal fun TaskSessionDetailScreen(
             TaskSessionDetailContract.Event.LoadDetail(
                 workspaceId = workspaceId,
                 sessionId = sessionId,
+                preferServerHistoryRounds = true,
             ),
         )
     }
@@ -78,32 +69,16 @@ internal fun TaskSessionDetailScreen(
         onStop = { dispatch(TaskSessionDetailContract.Event.ForegroundRefreshStopped) },
     )
 
-    TaskSessionDetailContent(
+    TaskSessionHistoryContent(
         state = state.value,
+        onBack = onBack,
         onEvent = dispatch,
-        onOpenHistory = { onOpenHistory(workspaceId, sessionId) },
-        onPickAttachments = {
-            attachmentPicker.launch(arrayOf("*/*"))
-        },
         modifier = modifier,
     )
 }
 
 @Composable
-private fun rememberAttachmentPicker(
-    context: Context,
-    onAttachmentsSelected: (List<Uri>) -> Unit,
-): ActivityResultLauncher<Array<String>> {
-    return rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) {
-            persistAttachmentPermissions(context = context, uris = uris)
-            onAttachmentsSelected(uris)
-        }
-    }
-}
-
-@Composable
-private fun rememberSaveAttachmentLauncher(
+private fun rememberHistorySaveAttachmentLauncher(
     pendingAttachmentId: String?,
     onPendingAttachmentConsumed: () -> Unit,
     onAttachmentSaveSelected: (attachmentId: String, destinationUriString: String) -> Unit,
@@ -121,21 +96,7 @@ private fun rememberSaveAttachmentLauncher(
     }
 }
 
-private fun persistAttachmentPermissions(
-    context: Context,
-    uris: List<Uri>,
-) {
-    uris.forEach { uri ->
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-        }
-    }
-}
-
-private fun handleDetailEffect(
+private fun handleHistoryEffect(
     effect: TaskSessionDetailContract.Effect,
     context: Context,
     onBack: () -> Unit,
@@ -154,51 +115,32 @@ private fun handleDetailEffect(
         }
 
         is TaskSessionDetailContract.Effect.OpenAttachment -> {
-            openTimelineAttachment(context = context, intent = effect.intent)
+            runCatching {
+                context.startActivity(effect.intent)
+            }.onFailure {
+                Toast.makeText(context, "No app can open this attachment.", Toast.LENGTH_LONG).show()
+            }
             pendingAttachmentSave
         }
 
         is TaskSessionDetailContract.Effect.CreateAttachmentDocument -> {
-            launchSaveDialog(
-                context = context,
-                effect = effect,
-                saveAttachmentLauncher = saveAttachmentLauncher,
-            )
+            runCatching {
+                saveAttachmentLauncher.launch(
+                    CreateDocumentResultContract.Input(
+                        title = effect.displayName,
+                        mimeType = effect.mimeType,
+                    ),
+                )
+                effect.attachmentId
+            }.getOrElse {
+                Toast.makeText(context, "Unable to open the save dialog.", Toast.LENGTH_LONG).show()
+                null
+            }
         }
 
         is TaskSessionDetailContract.Effect.ShowAttachmentActionError -> {
             Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()
             pendingAttachmentSave
         }
-    }
-}
-
-private fun openTimelineAttachment(
-    context: Context,
-    intent: Intent,
-) {
-    runCatching {
-        context.startActivity(intent)
-    }.onFailure {
-        Toast.makeText(context, "No app can open this attachment.", Toast.LENGTH_LONG).show()
-    }
-}
-
-private fun launchSaveDialog(
-    context: Context,
-    effect: TaskSessionDetailContract.Effect.CreateAttachmentDocument,
-    saveAttachmentLauncher: ActivityResultLauncher<CreateDocumentResultContract.Input>,
-): String? {
-    return runCatching {
-        saveAttachmentLauncher.launch(
-            CreateDocumentResultContract.Input(
-                title = effect.displayName,
-                mimeType = effect.mimeType,
-            ),
-        )
-        effect.attachmentId
-    }.getOrElse {
-        Toast.makeText(context, "Unable to open the save dialog.", Toast.LENGTH_LONG).show()
-        null
     }
 }

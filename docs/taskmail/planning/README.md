@@ -15,8 +15,14 @@
 - 核心页面低保真方案：`android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
 - 高保真视觉方向：`android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`
 - 高保真 HTML 预览：`android/mockups/taskmail-vps-first-multi-pc-high-fi-preview-v0.1.html`
+- 新任务页高保真补充预览：`android/mockups/taskmail-vps-first-multi-pc-new-task-high-fi-preview-v0.1.html`
+- 首页树形工作台高保真补充预览：`android/mockups/taskmail-vps-first-multi-pc-home-tree-high-fi-preview-v0.1.html`
 - 历史复盘高保真补充预览：`android/mockups/taskmail-vps-first-multi-pc-history-review-high-fi-preview-v0.1.html`
+- Session 状态轮替高保真补充预览：`android/mockups/taskmail-vps-first-multi-pc-session-mode-high-fi-preview-v0.1.html`
+- UI 到代码接口实现清单：`android/taskmail-vps-first-multi-pc-ui-interface-implementation-checklist-v0.1.md`
+- UI Skeleton 本次执行边界：`android/taskmail-vps-first-multi-pc-ui-skeleton-boundary-v0.1.md`
 - 页面级 API 需求：`android/taskmail-vps-first-multi-pc-page-api-requirements-v0.1.md`
+- 环境库存 contract：`android/taskmail-vps-first-multi-pc-environment-inventory-contract-v0.1.md`
 - Compose 页面结构与实现骨架：`android/taskmail-vps-first-multi-pc-compose-screen-structure-v0.1.md`
 - Android 骨架实施计划：`android/taskmail-vps-first-multi-pc-android-skeleton-implementation-plan-v0.1.md`
 - Session Slice 1 文件计划：`android/taskmail-vps-first-multi-pc-session-slice1-file-plan-v0.1.md`
@@ -37,6 +43,7 @@
 - `E:\projects\mail_based_task_manager\docs\plans\README.md`
 - `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_control_plane_mainline_v0.1.md`
 - `E:\projects\mail_based_task_manager\docs\plans\vps_first_multi_pc_phase1_execution_plan_v0.1.md`
+- `E:\projects\mail_based_task_manager\docs\plans\android_facing_environment_inventory_facade_requirements_v0.1.md`
 
 这些文档当前的正确读法是：
 

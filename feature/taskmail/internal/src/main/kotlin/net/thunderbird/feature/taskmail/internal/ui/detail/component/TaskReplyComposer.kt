@@ -47,6 +47,8 @@ internal fun TaskReplyComposer(
     modifier: Modifier = Modifier,
     onRemoveAttachment: (String) -> Unit = {},
 ) {
+    val hasQuickAnswers = state.quickAnswerChoices.isNotEmpty()
+
     CardElevated(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -58,7 +60,7 @@ internal fun TaskReplyComposer(
                 onDismissSendError = onDismissSendError,
             )
 
-            if (!state.canReply && !state.canQueryStatus) {
+            if (!state.canReply && !state.canQueryStatus && !hasQuickAnswers) {
                 ReplyUnavailableWarning(reason = state.replyUnavailableReason)
                 return@CardElevated
             }
@@ -82,7 +84,7 @@ internal fun TaskReplyComposer(
                 onSendReply = onSendReply,
                 onStatusQuery = onStatusQuery,
             )
-            if (state.canReply) {
+            if (hasQuickAnswers) {
                 QuickAnswersSection(
                     quickAnswerChoices = state.quickAnswerChoices,
                     isSending = state.isSending,

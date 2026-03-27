@@ -3,9 +3,11 @@ package net.thunderbird.feature.taskmail.internal.ui.newtask
 import androidx.compose.runtime.Immutable
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.contract.mvi.UnidirectionalViewModel
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskMode
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
@@ -65,6 +67,8 @@ internal interface TaskNewTaskContract {
         data class RepoChanged(val value: String) : Event
         data class TaskChanged(val value: String) : Event
         data class SubjectTitleChanged(val value: String) : Event
+        data class AttachmentsSelected(val uriStrings: List<String>) : Event
+        data class RemoveAttachmentClicked(val attachmentId: String) : Event
         data object AdvancedToggleClicked : Event
         data class WorkdirChanged(val value: String) : Event
         data class ModeChanged(val mode: TaskMailNewTaskMode) : Event
@@ -112,6 +116,9 @@ internal data class TaskNewTaskWorkspaceOptionUi(
     val supportingText: String? = null,
     val repoPath: String? = null,
     val workdir: String? = null,
+    val supportedBackends: ImmutableList<TaskMailBackend> = persistentListOf(),
+    val supportedPermissions: ImmutableList<TaskMailNewTaskPermission> =
+        TaskMailNewTaskPermission.entries.toImmutableList(),
 )
 
 @Immutable
@@ -119,14 +126,18 @@ internal data class TaskNewTaskTaskInputUiState(
     val taskText: String = "",
     val subjectTitle: String = "",
     val isSubjectTitleEdited: Boolean = false,
+    val attachments: ImmutableList<TaskReplyAttachment> = persistentListOf(),
 )
 
 @Immutable
 internal data class TaskNewTaskExecutionPolicyUiState(
     val backend: TaskMailBackend? = null,
+    val availableBackends: ImmutableList<TaskMailBackend> = persistentListOf(),
     val mode: TaskMailNewTaskMode = TaskMailNewTaskMode.Modify,
     val timeoutText: String = "",
     val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
+    val availablePermissions: ImmutableList<TaskMailNewTaskPermission> =
+        TaskMailNewTaskPermission.entries.toImmutableList(),
     val profile: String = "",
     val backendTransport: String = "",
     val acceptanceText: String = "",

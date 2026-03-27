@@ -3,22 +3,31 @@ package net.thunderbird.feature.taskmail.internal.ui.workspace
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilled
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilledTonal
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonIcon
+import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonText
+import app.k9mail.core.ui.compose.designsystem.atom.card.CardElevated
+import app.k9mail.core.ui.compose.designsystem.atom.card.CardOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyLarge
+import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodySmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
+import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
 import app.k9mail.core.ui.compose.designsystem.molecule.ErrorView
 import app.k9mail.core.ui.compose.designsystem.molecule.PullToRefreshBox
 import app.k9mail.core.ui.compose.designsystem.organism.TopAppBar
@@ -27,9 +36,10 @@ import app.k9mail.core.ui.compose.designsystem.template.Scaffold
 import net.thunderbird.core.ui.compose.common.modifier.testTagAsResourceId
 import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icons
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskBadgeRow
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskStatusBadge
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.workspace.component.SessionRow
-import net.thunderbird.feature.taskmail.internal.ui.workspace.component.WorkspaceCard
 
 @Composable
 internal fun TaskWorkspaceContent(
@@ -128,6 +138,8 @@ private fun WorkbenchHome(
     onEvent: (TaskWorkspaceContract.Event) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val pcNodes = state.pcTreeNodes.ifEmpty { state.toPlaceholderPcTree() }
+
     LazyColumn(
         modifier = modifier.testTagAsResourceId("TaskWorkspaceHomeList"),
         contentPadding = PaddingValues(16.dp),
@@ -136,7 +148,7 @@ private fun WorkbenchHome(
         item {
             TaskSectionHeader(
                 title = "Session workbench",
-                supportingText = "Sessions are the primary object. Routed workspace context stays attached so you can jump back into the active flow quickly.",
+                supportingText = "Sessions are grouped as PC -> workspace -> session. When live environment inventory is available, online/offline and missing workspace state come directly from VPS.",
             )
         }
 
@@ -150,104 +162,17 @@ private fun WorkbenchHome(
             }
         }
 
-        sessionSection(
-            title = "Needs attention",
-            supportingText = "Questions, paused sessions, and failed runs that may need action.",
-            sessions = state.attentionSessions,
-            emptyText = "No sessions need attention right now.",
-            onEvent = onEvent,
-        )
-
-        sessionSection(
-            title = "Active sessions",
-            supportingText = "Queued and running work that is still in flight.",
-            sessions = state.activeSessions,
-            emptyText = "No active sessions right now.",
-            onEvent = onEvent,
-        )
-
-        sessionSection(
-            title = "Recent sessions",
-            supportingText = "Most recently updated sessions from the current cached projection.",
-            sessions = state.recentSessions,
-            emptyText = "Recent history will appear here after sessions start syncing.",
-            onEvent = onEvent,
-        )
-
-        workspaceSummarySection(
-            state = state,
-            onEvent = onEvent,
-        )
-    }
-}
-
-private fun LazyListScope.sessionSection(
-    title: String,
-    supportingText: String,
-    sessions: List<TaskSessionItemUi>,
-    emptyText: String,
-    onEvent: (TaskWorkspaceContract.Event) -> Unit,
-) {
-    item {
-        TaskSectionHeader(
-            title = title,
-            supportingText = supportingText,
-        )
-    }
-
-    if (sessions.isEmpty()) {
-        item {
-            SectionPlaceholder(text = emptyText)
-        }
-        return
-    }
-
-    items(
-        items = sessions,
-        key = { session -> session.stableId },
-    ) { session ->
-        SessionRow(
-            session = session,
-            onClick = {
-                session.sessionId?.let { sessionId ->
-                    onEvent(
-                        TaskWorkspaceContract.Event.SessionClicked(
-                            workspaceId = session.workspaceId,
-                            sessionId = sessionId,
-                        ),
-                    )
-                }
-            },
-        )
-    }
-}
-
-private fun LazyListScope.workspaceSummarySection(
-    state: TaskWorkspaceContract.State,
-    onEvent: (TaskWorkspaceContract.Event) -> Unit,
-) {
-    item {
-        TaskSectionHeader(
-            title = "Routed workspaces",
-            supportingText = "Workspace route anchors derived from the current cached session bindings.",
-        )
-    }
-
-    if (state.workspaceSummaries.isEmpty()) {
-        item {
-            SectionPlaceholder(
-                text = "Routed workspaces will appear here once cached session details are available.",
-            )
-        }
-        return
-    }
-
-    items(state.workspaceSummaries) { workspace ->
-        WorkspaceCard(workspace = workspace) {
-            workspace.sessions.forEach { session ->
-                SessionRow(
-                    session = session,
-                    onClick = {
+        if (pcNodes.isEmpty()) {
+            item {
+                SectionPlaceholder(
+                    text = "PC/workspace trees will appear here once cached session projections are available.",
+                )
+            }
+        } else {
+            items(pcNodes, key = TaskWorkspacePcNodeUi::id) { pc ->
+                PcTreeCard(
+                    pc = pc,
+                    onSessionClick = { session ->
                         session.sessionId?.let { sessionId ->
                             onEvent(
                                 TaskWorkspaceContract.Event.SessionClicked(
@@ -316,6 +241,111 @@ private fun WorkspaceEmptyState(
 }
 
 @Composable
+private fun PcTreeCard(
+    pc: TaskWorkspacePcNodeUi,
+    onSessionClick: (TaskSessionItemUi) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var isExpanded by rememberSaveable(pc.id) { mutableStateOf(pc.isInitiallyExpanded) }
+
+    CardElevated(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextHeadlineSmall(text = pc.title)
+                    TextBodyMedium(
+                        text = pc.supportingText,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+                ButtonText(
+                    text = if (isExpanded) "Collapse" else "Expand",
+                    onClick = { isExpanded = !isExpanded },
+                )
+            }
+
+            TaskBadgeRow {
+                TaskStatusBadge(text = pc.connectionStatus)
+                TaskStatusBadge(text = pc.summaryLabel)
+            }
+
+            if (isExpanded) {
+                pc.workspaces.forEach { workspace ->
+                    WorkspaceTreeCard(
+                        workspace = workspace,
+                        onSessionClick = onSessionClick,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceTreeCard(
+    workspace: TaskWorkspaceTreeNodeUi,
+    onSessionClick: (TaskSessionItemUi) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var isExpanded by rememberSaveable(workspace.id) { mutableStateOf(workspace.isInitiallyExpanded) }
+
+    CardOutlined(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextLabelMedium(text = workspace.title)
+                    TextBodySmall(
+                        text = workspace.supportingText,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
+                ButtonText(
+                    text = if (isExpanded) "Collapse" else "Expand",
+                    onClick = { isExpanded = !isExpanded },
+                )
+            }
+
+            TaskBadgeRow {
+                TaskStatusBadge(text = workspace.summaryLabel)
+                workspace.presenceLabel?.let { presenceLabel ->
+                    TaskStatusBadge(text = presenceLabel)
+                }
+            }
+
+            if (isExpanded) {
+                workspace.sessions.forEach { session ->
+                    SessionRow(
+                        session = session,
+                        modifier = Modifier.padding(start = 8.dp),
+                        onClick = { onSessionClick(session) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorkspaceCenteredMessage(
     title: String,
     message: String,
@@ -333,5 +363,78 @@ private fun WorkspaceCenteredMessage(
             text = message,
             modifier = Modifier.padding(top = 8.dp),
         )
+    }
+}
+
+private fun TaskWorkspaceContract.State.toPlaceholderPcTree(): List<TaskWorkspacePcNodeUi> {
+    val groupedWorkspaces = workspaceSummaries.map { workspace ->
+        val runningCount = workspace.sessions.count(TaskSessionItemUi::isActiveSession)
+        val waitingCount = workspace.sessions.count(TaskSessionItemUi::requiresAttention)
+        TaskWorkspaceTreeNodeUi(
+            id = workspace.routeTargetLabel ?: workspace.title,
+            title = workspace.title,
+            supportingText = buildWorkspaceSupportingText(workspace),
+            summaryLabel = when {
+                waitingCount > 0 -> "$waitingCount needs attention"
+                runningCount > 0 -> "$runningCount active"
+                else -> workspace.sessionCountLabel
+            },
+            presenceLabel = if (workspace.routeTargetLabel == null) "Missing" else null,
+            isMissingBinding = workspace.routeTargetLabel == null,
+            isInitiallyExpanded = waitingCount > 0 || runningCount > 0,
+            sessions = workspace.sessions,
+        )
+    }
+
+    val groupedSessionIds = groupedWorkspaces
+        .flatMap(TaskWorkspaceTreeNodeUi::sessions)
+        .map(TaskSessionItemUi::stableId)
+        .toSet()
+    val looseSessions = (attentionSessions + activeSessions + recentSessions)
+        .distinctBy(TaskSessionItemUi::stableId)
+        .filterNot { session -> session.stableId in groupedSessionIds }
+
+    val workspaces = buildList {
+        addAll(groupedWorkspaces)
+        if (looseSessions.isNotEmpty()) {
+            add(
+                TaskWorkspaceTreeNodeUi(
+                    id = "workspace_missing",
+                    title = "Missing workspace",
+                    supportingText = "Session is still visible even though a stable workspace binding is missing.",
+                    summaryLabel = "${looseSessions.size} session(s)",
+                    presenceLabel = "Missing",
+                    isMissingBinding = true,
+                    isInitiallyExpanded = true,
+                    sessions = looseSessions,
+                ),
+            )
+        }
+    }
+
+    if (workspaces.isEmpty()) return emptyList()
+
+    return listOf(
+        TaskWorkspacePcNodeUi(
+            id = "placeholder_pc",
+            title = "Routed PC",
+            supportingText = "Placeholder PC grouping derived from current session bindings.",
+            connectionStatus = if (activeSessions.isNotEmpty()) "Online" else "Offline",
+            summaryLabel = "${workspaces.size} workspace(s)",
+            isInitiallyExpanded = true,
+            workspaces = workspaces,
+        ),
+    )
+}
+
+private fun buildWorkspaceSupportingText(workspace: TaskWorkspaceItemUi): String {
+    return when {
+        workspace.routeTargetLabel != null && workspace.subtitle != null -> {
+            "${workspace.routeTargetLabel} · ${workspace.subtitle}"
+        }
+
+        workspace.routeTargetLabel != null -> workspace.routeTargetLabel
+        workspace.subtitle != null -> "Workspace binding missing · ${workspace.subtitle}"
+        else -> "Workspace binding missing"
     }
 }

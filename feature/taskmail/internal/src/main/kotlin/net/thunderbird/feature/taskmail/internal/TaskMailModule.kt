@@ -63,6 +63,8 @@ import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportPro
 import net.thunderbird.feature.taskmail.internal.data.controlplane.RelayControlTaskMailSessionActionSender
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailCreateSessionFacadeClient
+import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskEnvironmentInventoryFacadeRepository
+import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskSessionHistorySnapshotFacadeRepository
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngressMessage
 import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
@@ -95,6 +97,7 @@ import net.thunderbird.feature.taskmail.internal.domain.projectsync.TaskMailDire
 import net.thunderbird.feature.taskmail.internal.domain.reply.RealTaskMailReplySender
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySender
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskEnvironmentInventoryRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailBotMailboxSettingsRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailNewTaskSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailProjectSyncDebugSettingsRepository
@@ -103,6 +106,7 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailRepos
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailSessionActionSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionHistorySnapshotRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
@@ -111,10 +115,12 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSe
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailProjectSyncResult
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskEnvironmentInventory
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionHistorySnapshot
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskSessionDetailStoreChanges
@@ -182,6 +188,19 @@ val taskMailModule: Module = module {
     }
     single<TaskMailCreateSessionClient> {
         OkHttpTaskMailCreateSessionFacadeClient(
+            transportConfigRepository = get(),
+            logger = get(),
+            replyAttachmentResolver = get(),
+        )
+    }
+    single<TaskEnvironmentInventoryRepository> {
+        OkHttpTaskEnvironmentInventoryFacadeRepository(
+            transportConfigRepository = get(),
+            logger = get(),
+        )
+    }
+    single<TaskSessionHistorySnapshotRepository> {
+        OkHttpTaskSessionHistorySnapshotFacadeRepository(
             transportConfigRepository = get(),
             logger = get(),
         )
@@ -508,6 +527,18 @@ val taskMailModule: Module = module {
     }
 
     factory {
+        GetTaskSessionHistorySnapshot(
+            repository = get(),
+        )
+    }
+
+    factory {
+        GetTaskEnvironmentInventory(
+            repository = get(),
+        )
+    }
+
+    factory {
         GetTaskMailSenderAccounts(
             senderAccountSource = get(),
         )
@@ -626,6 +657,7 @@ val taskMailModule: Module = module {
     viewModel {
         TaskWorkspaceViewModel(
             getTaskSessionDetails = get(),
+            getTaskEnvironmentInventory = get(),
             getTaskMailSenderAccounts = get(),
             refreshTaskMail = get(),
             observeTaskMailStoreChanges = get(),
@@ -642,6 +674,7 @@ val taskMailModule: Module = module {
             refreshTaskMail = get(),
             observeTaskMailStoreChanges = get(),
             foregroundRefreshTickerFactory = get(),
+            sendTaskMailReply = get(),
             sendTaskMailDirectSessionAction = get(),
             getLatestTaskMailSessionActionSendRecord = get(),
             recordTaskMailSessionActionSendRecord = get(),
@@ -651,15 +684,18 @@ val taskMailModule: Module = module {
             runTaskMailDirectDispatch = get(),
             syncTaskMailCache = get(),
             observeTaskMailDirectSessionDetail = get(),
+            getTaskSessionHistorySnapshot = get(),
         )
     }
 
     viewModel {
         TaskNewTaskViewModel(
             getTaskMailSenderAccounts = get(),
+            getTaskEnvironmentInventory = get(),
             getLatestTaskMailNewTaskSendRecord = get(),
             recordTaskMailNewTaskSendRecord = get(),
             createTaskMailSession = get(),
+            replyAttachmentResolver = get(),
             detailRepository = get(),
         )
     }

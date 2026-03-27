@@ -22,6 +22,7 @@ import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,12 +101,19 @@ class TaskNewTaskScreenKtTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Route target").assertIsDisplayed()
-        composeTestRule.onAllNodes(hasText("PC ID", substring = true)).assertCountEquals(1)
+        composeTestRule.onNodeWithText("Target environment").assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Workspace ID", substring = true))
-        composeTestRule.onAllNodes(hasText("Workspace ID", substring = true)).assertCountEquals(1)
+            .performScrollToNode(hasText("PC inventory is unavailable right now. You can still enter the target ID manually."))
+        composeTestRule.onNodeWithText(
+            "PC inventory is unavailable right now. You can still enter the target ID manually.",
+        ).assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Select a PC first, or enter the target workspace ID manually."))
+        composeTestRule.onNodeWithText(
+            "Select a PC first, or enter the target workspace ID manually.",
+        ).assertIsDisplayed()
     }
 
     @Test
@@ -163,9 +171,15 @@ class TaskNewTaskScreenKtTest {
             .onNodeWithTag("TaskNewTaskFormList")
             .performScrollToNode(hasText("TaskMail send failed"))
         composeTestRule.onNodeWithText("TaskMail send failed").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("TaskMail bot mailbox is not configured."))
         composeTestRule.onNodeWithText("TaskMail bot mailbox is not configured.").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("Sending this form creates a new session on the selected target environment."))
         composeTestRule.onNodeWithText(
-            "PC/workspace is the route target now. Sender identity plus repository context remain visible until routed workspace data is fully hydrated.",
+            "Sending this form creates a new session on the selected target environment.",
         ).assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Compatibility bridge").assertCountEquals(0)
     }
@@ -218,6 +232,38 @@ class TaskNewTaskScreenKtTest {
         composeTestRule.onNodeWithTag("TaskNewTaskChooseRepoButton").performClick()
 
         assertThat(chooseRepoClicked).isEqualTo(true)
+    }
+
+    @Test
+    fun `content should show selected input attachments and remove action`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskNewTaskContent(
+                    state = formState().copy(
+                        taskInput = TaskNewTaskTaskInputUiState(
+                            attachments = listOf(
+                                TaskReplyAttachment(
+                                    id = "content://taskmail/sketch",
+                                    uriString = "content://taskmail/sketch",
+                                    displayName = "sketch.png",
+                                    contentType = "image/png",
+                                    sizeBytes = 2048L,
+                                    isImage = true,
+                                ),
+                            ).toImmutableList(),
+                        ),
+                    ),
+                    onEvent = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskNewTaskFormList")
+            .performScrollToNode(hasText("sketch.png"))
+        composeTestRule.onNodeWithText("sketch.png").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Remove").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Input attachments coming soon").assertCountEquals(0)
     }
 
     @Test

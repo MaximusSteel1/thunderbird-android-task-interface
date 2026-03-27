@@ -10,11 +10,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.thunderbird.core.ui.contract.mvi.BaseViewModel
 import net.thunderbird.feature.taskmail.internal.data.TaskMailForegroundRefreshTickerFactory
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentInventorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentPc
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskEnvironmentWorkspace
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.model.lastUpdatedAt
 import net.thunderbird.feature.taskmail.internal.domain.model.prefersVpsProjection
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSenderAccounts
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskEnvironmentInventory
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskSessionDetailStoreChanges
@@ -27,6 +31,7 @@ import net.thunderbird.feature.taskmail.internal.ui.workspace.TaskWorkspaceContr
 
 internal class TaskWorkspaceViewModel(
     private val getTaskSessionDetails: GetTaskSessionDetails,
+    private val getTaskEnvironmentInventory: GetTaskEnvironmentInventory,
     private val getTaskMailSenderAccounts: GetTaskMailSenderAccounts,
     private val refreshTaskMail: RefreshTaskMail,
     private val observeTaskMailStoreChanges: ObserveTaskMailStoreChanges,
@@ -41,6 +46,7 @@ internal class TaskWorkspaceViewModel(
     private val loadMutex = Mutex()
     private val syncMutex = Mutex()
     private var foregroundRefreshJob: Job? = null
+    private var latestInventorySnapshot: TaskEnvironmentInventorySnapshot? = null
 
     init {
         observeLocalMailChanges()
@@ -129,7 +135,11 @@ internal class TaskWorkspaceViewModel(
                         cachedSessionDetails = cachedSessionDetails,
                     )
                 ) {
-                    handleLoadSuccess(cachedSessionDetails, syncError = null)
+                    handleLoadSuccess(
+                        sessionDetails = cachedSessionDetails,
+                        syncError = null,
+                        inventorySnapshot = latestInventorySnapshot,
+                    )
                     if (!shouldPreferVpsCachedSessions(cachedSessionDetails)) {
                         launchBackgroundSyncAndReload()
                     }
@@ -147,10 +157,20 @@ internal class TaskWorkspaceViewModel(
                     getTaskSessionDetails()
                 }
                     .onSuccess { sessionDetails ->
+                        val inventorySnapshot = getTaskEnvironmentInventory()
+                            .getOrNull()
+                            ?.takeIf { snapshot -> snapshot.pcs.isNotEmpty() }
+                        if (inventorySnapshot != null) {
+                            latestInventorySnapshot = inventorySnapshot
+                        }
                         if (!hasLoadedData && sessionDetails.isEmpty() && syncError != null) {
                             handleLoadFailure(syncError)
                         } else {
-                            handleLoadSuccess(sessionDetails, syncError)
+                            handleLoadSuccess(
+                                sessionDetails = sessionDetails,
+                                syncError = syncError,
+                                inventorySnapshot = inventorySnapshot,
+                            )
                         }
                     }
                     .onFailure { handleLoadFailure(syncError) }
@@ -215,7 +235,17 @@ internal class TaskWorkspaceViewModel(
                     getTaskSessionDetails()
                 }
                     .onSuccess { sessionDetails ->
-                        handleLoadSuccess(sessionDetails, syncError)
+                        val inventorySnapshot = getTaskEnvironmentInventory()
+                            .getOrNull()
+                            ?.takeIf { snapshot -> snapshot.pcs.isNotEmpty() }
+                        if (inventorySnapshot != null) {
+                            latestInventorySnapshot = inventorySnapshot
+                        }
+                        handleLoadSuccess(
+                            sessionDetails = sessionDetails,
+                            syncError = syncError,
+                            inventorySnapshot = inventorySnapshot,
+                        )
                     }
                     .onFailure { handleLoadFailure(syncError) }
             }
@@ -253,9 +283,12 @@ internal class TaskWorkspaceViewModel(
     private fun handleLoadSuccess(
         sessionDetails: List<TaskSessionDetail>,
         syncError: String?,
+        inventorySnapshot: TaskEnvironmentInventorySnapshot?,
     ) {
         hasLoadedData = true
         val workbench = sessionDetails.toWorkbenchUiState()
+        val effectiveInventory = inventorySnapshot ?: latestInventorySnapshot
+        val pcTreeNodes = sessionDetails.toPcTreeUiState(effectiveInventory)
         updateState {
             it.copy(
                 isLoading = false,
@@ -266,6 +299,7 @@ internal class TaskWorkspaceViewModel(
                 activeSessions = workbench.activeSessions,
                 recentSessions = workbench.recentSessions,
                 workspaceSummaries = workbench.workspaceSummaries,
+                pcTreeNodes = pcTreeNodes,
             )
         }
     }
@@ -373,6 +407,101 @@ private fun List<TaskSessionDetail>.toWorkbenchUiState(): TaskWorkspaceWorkbench
     )
 }
 
+private fun List<TaskSessionDetail>.toPcTreeUiState(
+    inventorySnapshot: TaskEnvironmentInventorySnapshot?,
+): List<TaskWorkspacePcNodeUi> {
+    if (inventorySnapshot == null) return emptyList()
+
+    val sessionItemsByWorkspaceId = groupBy { detail ->
+        detail.key.workspaceId
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: detail.workspace.workspaceId
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+    }
+    val consumedSessionIds = mutableSetOf<String>()
+    val pcNodes = inventorySnapshot.pcs.mapNotNull { pc ->
+        val workspaceNodes = pc.workspaces.mapNotNull { workspace ->
+            val matchedDetails = sessionItemsByWorkspaceId[workspace.workspaceId].orEmpty()
+            if (matchedDetails.isEmpty()) return@mapNotNull null
+
+            val sessions = matchedDetails
+                .sortedByDescending(TaskSessionDetail::lastUpdatedAt)
+                .map { detail ->
+                    detail.toUiState(
+                        workspaceTitle = workspace.displayName,
+                        workspaceSubtitle = workspace.workdir?.toDisplayWorkdir(),
+                        workspaceIdFallback = workspace.workspaceId,
+                    )
+                }
+            consumedSessionIds += sessions.map(TaskSessionItemUi::stableId)
+            val runningCount = sessions.count(TaskSessionItemUi::isActiveSession)
+            val waitingCount = sessions.count(TaskSessionItemUi::requiresAttention)
+            TaskWorkspaceTreeNodeUi(
+                id = "${pc.pcId}::${workspace.workspaceId}",
+                title = workspace.displayName,
+                supportingText = buildInventoryWorkspaceSupportingText(workspace),
+                summaryLabel = when {
+                    waitingCount > 0 -> "$waitingCount needs attention"
+                    runningCount > 0 -> "$runningCount active"
+                    else -> "${sessions.size} session(s)"
+                },
+                presenceLabel = workspace.presence.toWorkspacePresenceLabel(),
+                isMissingBinding = workspace.presence == "missing",
+                isInitiallyExpanded = waitingCount > 0 || runningCount > 0,
+                sessions = sessions,
+            )
+        }
+        if (workspaceNodes.isEmpty()) {
+            return@mapNotNull null
+        }
+
+        val waitingCount = workspaceNodes.sumOf { node -> node.sessions.count(TaskSessionItemUi::requiresAttention) }
+        val runningCount = workspaceNodes.sumOf { node -> node.sessions.count(TaskSessionItemUi::isActiveSession) }
+        TaskWorkspacePcNodeUi(
+            id = pc.pcId,
+            title = pc.displayName,
+            supportingText = buildInventoryPcSupportingText(pc),
+            connectionStatus = pc.status.toPcStatusLabel(),
+            summaryLabel = when {
+                waitingCount > 0 -> "$waitingCount needs attention"
+                runningCount > 0 -> "$runningCount active"
+                else -> "${workspaceNodes.size} workspace(s)"
+            },
+            isInitiallyExpanded = workspaceNodes.any(TaskWorkspaceTreeNodeUi::isInitiallyExpanded),
+            workspaces = workspaceNodes,
+        )
+    }
+
+    val unmatchedSessions = map { detail -> detail.toUiState() }
+        .filterNot { session -> session.stableId in consumedSessionIds }
+    if (unmatchedSessions.isEmpty()) {
+        return pcNodes
+    }
+
+    return pcNodes + TaskWorkspacePcNodeUi(
+        id = "pc_unknown",
+        title = "Unknown PC",
+        supportingText = "Some sessions are still visible even though the current environment inventory cannot map them to a PC.",
+        connectionStatus = "Unknown",
+        summaryLabel = "${unmatchedSessions.size} session(s)",
+        isInitiallyExpanded = true,
+        workspaces = listOf(
+            TaskWorkspaceTreeNodeUi(
+                id = "workspace_missing",
+                title = "Missing workspace",
+                supportingText = "These sessions still exist, but their current workspace route could not be resolved from environment inventory.",
+                summaryLabel = "${unmatchedSessions.size} session(s)",
+                presenceLabel = "Missing",
+                isMissingBinding = true,
+                isInitiallyExpanded = true,
+                sessions = unmatchedSessions,
+            ),
+        ),
+    )
+}
+
 private fun toWorkspaceUiState(details: List<TaskSessionDetail>): TaskWorkspaceItemUi {
     val primaryDetail = details.maxByOrNull(TaskSessionDetail::lastUpdatedAt) ?: details.first()
     val workspace = primaryDetail.workspace
@@ -432,6 +561,21 @@ private fun deriveWorkspaceTitle(repoPath: String): String {
     return File(repoPath).name.takeIf { it.isNotBlank() } ?: repoPath
 }
 
+private fun buildInventoryWorkspaceSupportingText(workspace: TaskEnvironmentWorkspace): String {
+    val repoName = deriveWorkspaceTitle(workspace.repoPath)
+    return listOfNotNull(
+        repoName,
+        workspace.workdir?.toDisplayWorkdir(),
+    ).joinToString(" · ")
+}
+
+private fun buildInventoryPcSupportingText(pc: TaskEnvironmentPc): String {
+    return listOfNotNull(
+        pc.pcId,
+        pc.workspaceInventoryState.takeIf(String::isNotBlank),
+    ).joinToString(" · ")
+}
+
 private fun resolveWorkspaceTitle(workspace: TaskWorkspaceKey): String {
     return workspace.repoPath
         .takeIf { it.isNotBlank() }
@@ -442,6 +586,22 @@ private fun resolveWorkspaceTitle(workspace: TaskWorkspaceKey): String {
 
 private val TaskSessionItemUi.identity: String
     get() = stableId
+
+private fun String.toPcStatusLabel(): String {
+    return when (lowercase()) {
+        "online" -> "Online"
+        "offline" -> "Offline"
+        else -> "Unknown"
+    }
+}
+
+private fun String.toWorkspacePresenceLabel(): String? {
+    return when (lowercase()) {
+        "missing" -> "Missing"
+        "stale" -> "Stale"
+        else -> null
+    }
+}
 
 private fun buildTaskSessionStableId(
     workspaceId: String?,

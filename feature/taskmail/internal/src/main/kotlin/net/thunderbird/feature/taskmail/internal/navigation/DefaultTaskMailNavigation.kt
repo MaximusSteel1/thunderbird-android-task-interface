@@ -8,6 +8,7 @@ import net.thunderbird.core.ui.navigation.deepLinkComposable
 import net.thunderbird.feature.taskmail.api.TaskMailNavigation
 import net.thunderbird.feature.taskmail.api.TaskMailRoute
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailScreen
+import net.thunderbird.feature.taskmail.internal.ui.history.TaskSessionHistoryScreen
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskScreen
 import net.thunderbird.feature.taskmail.internal.ui.projectsync.TaskProjectSyncScreen
 import net.thunderbird.feature.taskmail.internal.ui.settings.TaskMailSettingsScreen
@@ -37,7 +38,11 @@ internal class DefaultTaskMailNavigation : TaskMailNavigation {
         navGraphBuilder.registerWorkspaceRoute(onFinish)
 
         with(navGraphBuilder) {
-            registerSessionDetailRoute(onBack)
+            registerSessionDetailRoute(
+                onBack = onBack,
+                onFinish = onFinish,
+            )
+            registerSessionHistoryRoute(onBack)
 
             deepLinkComposable<TaskMailRoute.NewTask>(TaskMailRoute.NewTask.BASE_PATH) { backStackEntry ->
                 val selectedRepoPath by backStackEntry.savedStateHandle
@@ -101,11 +106,34 @@ private fun NavGraphBuilder.registerWorkspaceRoute(onFinish: (TaskMailRoute) -> 
     }
 }
 
-private fun NavGraphBuilder.registerSessionDetailRoute(onBack: () -> Unit) {
+private fun NavGraphBuilder.registerSessionDetailRoute(
+    onBack: () -> Unit,
+    onFinish: (TaskMailRoute) -> Unit,
+) {
     deepLinkComposable<TaskMailRoute.SessionDetail>(TaskMailRoute.SessionDetail.BASE_PATH) { backStackEntry ->
         val route = backStackEntry.toRoute<TaskMailRoute.SessionDetail>()
 
         TaskSessionDetailScreen(
+            workspaceId = route.workspaceId,
+            sessionId = route.sessionId,
+            onBack = onBack,
+            onOpenHistory = { workspaceId, sessionId ->
+                onFinish(
+                    createSessionHistoryRoute(
+                        workspaceId = workspaceId,
+                        sessionId = sessionId,
+                    ),
+                )
+            },
+        )
+    }
+}
+
+private fun NavGraphBuilder.registerSessionHistoryRoute(onBack: () -> Unit) {
+    deepLinkComposable<TaskMailRoute.SessionHistory>(TaskMailRoute.SessionHistory.BASE_PATH) { backStackEntry ->
+        val route = backStackEntry.toRoute<TaskMailRoute.SessionHistory>()
+
+        TaskSessionHistoryScreen(
             workspaceId = route.workspaceId,
             sessionId = route.sessionId,
             onBack = onBack,
@@ -118,6 +146,16 @@ private fun createSessionDetailRoute(
     sessionId: String,
 ): TaskMailRoute.SessionDetail {
     return TaskMailRoute.SessionDetail(
+        workspaceId = workspaceId,
+        sessionId = sessionId,
+    )
+}
+
+private fun createSessionHistoryRoute(
+    workspaceId: String?,
+    sessionId: String,
+): TaskMailRoute.SessionHistory {
+    return TaskMailRoute.SessionHistory(
         workspaceId = workspaceId,
         sessionId = sessionId,
     )
