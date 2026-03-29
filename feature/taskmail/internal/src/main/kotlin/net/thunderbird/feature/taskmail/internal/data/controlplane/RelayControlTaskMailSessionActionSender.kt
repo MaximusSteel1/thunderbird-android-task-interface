@@ -112,7 +112,7 @@ internal class RelayControlTaskMailSessionActionSender(
                     "target",
                     buildJsonObject {
                         put("scope", CURRENT_SESSION_SCOPE)
-                        put("workspace_id", request.target.workspaceId)
+                        request.target.workspaceId?.takeIf(String::isNotBlank)?.let { put("workspace_id", it) }
                         put("session_id", request.target.sessionId)
                         request.target.threadId?.takeIf(String::isNotBlank)?.let { put("thread_id", it) }
                     },
@@ -127,6 +127,7 @@ internal class RelayControlTaskMailSessionActionSender(
                         )
                     }
                     is TaskMailDirectSessionActionRequest.Status -> put("status", buildJsonObject {})
+                    else -> error("Unsupported control-plane session action: ${request.actionType.wireValue}")
                 }
             },
             related = buildJsonObject {

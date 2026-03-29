@@ -489,7 +489,7 @@ class TaskSessionDetailScreenKtTest {
                         detail = replyCapableDetail(
                             canReply = false,
                             canQueryStatus = true,
-                            replyUnavailableReason = "Direct plain reply is unavailable while the session is paused.",
+                            replyUnavailableReason = "Plain-text reply is unavailable while the session is paused.",
                         ),
                     ),
                     onEvent = {},
@@ -500,10 +500,10 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("Direct plain reply is unavailable while the session is paused."))
+            .performScrollToNode(hasText("Plain-text reply is unavailable while the session is paused."))
 
         composeTestRule
-            .onNodeWithText("Direct plain reply is unavailable while the session is paused.")
+            .onNodeWithText("Plain-text reply is unavailable while the session is paused.")
             .assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
@@ -798,7 +798,7 @@ class TaskSessionDetailScreenKtTest {
     }
 
     @Test
-    fun `content should show resume and send for paused sessions`() {
+    fun `content should not advertise resume and send when paused reply is unavailable`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskSessionDetailContent(
@@ -807,8 +807,10 @@ class TaskSessionDetailScreenKtTest {
                             pendingQuestions = persistentListOf(),
                             quickAnswerChoices = persistentListOf(),
                             requiresResumeBeforeReply = true,
+                            canReply = false,
+                            replyUnavailableReason = "Plain-text reply is unavailable while the session is paused.",
                             replySupportingText =
-                            "This session is paused. Sending will prepend /resume before continuing.",
+                            "This session is paused. Plain-text reply is currently unavailable in this screen.",
                         ),
                     ),
                     onEvent = {},
@@ -819,9 +821,10 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("Resume and send"))
+            .performScrollToNode(hasText("Plain-text reply is unavailable while the session is paused."))
 
-        composeTestRule.onNodeWithText("Resume and send").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Plain-text reply is unavailable while the session is paused.").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Resume and send").assertCountEquals(0)
     }
 
     @Test

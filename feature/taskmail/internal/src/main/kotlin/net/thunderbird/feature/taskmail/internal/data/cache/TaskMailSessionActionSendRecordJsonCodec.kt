@@ -29,7 +29,7 @@ internal class TaskMailSessionActionSendRecordJsonCodec(
             put(
                 "target",
                 buildJsonObject {
-                    put("workspaceId", record.target.workspaceId)
+                    putNullable("workspaceId", record.target.workspaceId)
                     put("sessionId", record.target.sessionId)
                     putNullable("threadId", record.target.threadId)
                 },
@@ -73,7 +73,7 @@ private fun JsonObject.toTaskMailSessionActionSendRecord(): TaskMailSessionActio
 
 private fun JsonObject.toTaskMailDirectSessionActionTarget(): TaskMailDirectSessionActionTarget {
     return TaskMailDirectSessionActionTarget(
-        workspaceId = string("workspaceId"),
+        workspaceId = optionalString("workspaceId"),
         sessionId = string("sessionId"),
         threadId = optionalString("threadId"),
     )

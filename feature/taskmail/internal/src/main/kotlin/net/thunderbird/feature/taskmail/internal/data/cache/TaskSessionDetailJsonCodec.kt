@@ -35,6 +35,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
@@ -43,6 +44,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirect
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskWorkspaceKey
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionAckStatus
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionType
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionTargetIdentity
 
 internal class TaskSessionDetailJsonCodec(
     private val json: Json = Json { ignoreUnknownKeys = true },
@@ -87,6 +91,12 @@ private fun TaskSessionDetail.toJsonObject(json: Json): JsonObject {
         )
         controlPlaneSnapshot?.let { snapshot ->
             put("controlPlaneSnapshot", snapshot.toJsonObject(json))
+        }
+        if (pendingSubmissions.isNotEmpty()) {
+            put(
+                "pendingSubmissions",
+                JsonArray(pendingSubmissions.map(TaskSessionPendingSubmission::toJsonObject)),
+            )
         }
         put("projectionSyncState", projectionSyncState.toJsonObject())
     }
@@ -183,6 +193,26 @@ private fun TaskSessionReplyContext.toJsonObject(): JsonObject {
         put("messageServerId", messageServerId)
         putNullable("threadRootId", threadRootId)
         putNullable("anchorTimestamp", anchorTimestamp)
+    }
+}
+
+private fun TaskSessionPendingSubmission.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("commandId", commandId)
+        put("requestId", requestId)
+        put("actionType", actionType.name)
+        put("submittedAt", submittedAt)
+        put("ackStatus", ackStatus.wireValue)
+        put("targetIdentity", targetIdentity.toJsonObject())
+    }
+}
+
+private fun TaskMailSessionActionTargetIdentity.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        putNullable("pcId", pcId)
+        put("workspaceId", workspaceId)
+        put("sessionId", sessionId)
+        putNullable("threadId", threadId)
     }
 }
 
@@ -391,6 +421,7 @@ private fun JsonObject.toTaskSessionDetail(json: Json): TaskSessionDetail {
         replyContext = objectValue("replyContext")?.toTaskSessionReplyContext(),
         timeline = arrayObjects("timeline").map(JsonObject::toTaskTimelineItem),
         controlPlaneSnapshot = objectValue("controlPlaneSnapshot")?.toTaskSessionControlPlaneSnapshot(json),
+        pendingSubmissions = arrayObjects("pendingSubmissions").map(JsonObject::toTaskSessionPendingSubmission),
         projectionSyncState = objectValue("projectionSyncState")?.toTaskSessionProjectionSyncState()
             ?: TaskSessionProjectionSyncState(),
     )
@@ -454,6 +485,31 @@ private fun JsonObject.toTaskSessionReplyContext(): TaskSessionReplyContext {
         messageServerId = string("messageServerId"),
         threadRootId = optionalLong("threadRootId"),
         anchorTimestamp = optionalLong("anchorTimestamp"),
+    )
+}
+
+private fun JsonObject.toTaskSessionPendingSubmission(): TaskSessionPendingSubmission {
+    return TaskSessionPendingSubmission(
+        commandId = string("commandId"),
+        requestId = string("requestId"),
+        actionType = TaskMailSessionActionType.entries.firstOrNull { actionType ->
+            actionType.name == optionalString("actionType")
+        } ?: TaskMailSessionActionType.Reply,
+        submittedAt = long("submittedAt"),
+        ackStatus = TaskMailSessionActionAckStatus.entries.firstOrNull { ackStatus ->
+            ackStatus.wireValue == optionalString("ackStatus")
+        } ?: TaskMailSessionActionAckStatus.Accepted,
+        targetIdentity = objectValue("targetIdentity")?.toTaskMailSessionActionTargetIdentity()
+            ?: error("Missing targetIdentity"),
+    )
+}
+
+private fun JsonObject.toTaskMailSessionActionTargetIdentity(): TaskMailSessionActionTargetIdentity {
+    return TaskMailSessionActionTargetIdentity(
+        pcId = optionalString("pcId"),
+        workspaceId = string("workspaceId"),
+        sessionId = string("sessionId"),
+        threadId = optionalString("threadId"),
     )
 }
 

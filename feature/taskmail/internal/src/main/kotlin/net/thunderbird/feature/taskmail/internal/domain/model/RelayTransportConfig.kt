@@ -31,6 +31,10 @@ internal data class RelayTransportConfig(
         return absoluteHttpUrl(ANDROID_SESSION_SNAPSHOT_PATH)
     }
 
+    fun androidSessionActionUrl(): String {
+        return absoluteHttpUrl(ANDROID_SESSION_ACTION_PATH)
+    }
+
     fun relayUrl(): String {
         return "${websocketScheme()}://$host:$port${normalizedPath()}"
     }
@@ -60,6 +64,10 @@ internal data class RelayTransportConfig(
     }
 
     fun isAndroidSessionSnapshotConfigured(): Boolean {
+        return host.isNotBlank() && port > 0 && androidAppToken.isNotBlank()
+    }
+
+    fun isAndroidSessionActionConfigured(): Boolean {
         return host.isNotBlank() && port > 0 && androidAppToken.isNotBlank()
     }
 
@@ -96,6 +104,7 @@ internal data class RelayTransportConfig(
         const val ANDROID_CREATE_SESSION_PATH = "/v1/android/create-session"
         const val ANDROID_ENVIRONMENT_INVENTORY_PATH = "/v1/android/environment-inventory"
         const val ANDROID_SESSION_SNAPSHOT_PATH = "/v1/android/session-snapshot"
+        const val ANDROID_SESSION_ACTION_PATH = "/v1/android/session-action"
         private const val TOKEN_FINGERPRINT_LENGTH = 12
     }
 }

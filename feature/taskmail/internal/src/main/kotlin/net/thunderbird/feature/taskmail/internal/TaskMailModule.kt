@@ -60,10 +60,10 @@ import net.thunderbird.feature.taskmail.internal.data.debug.FileBackedTaskMailTr
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailFileSampleStore
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailProjectSyncDebugRecorder
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeEventStore
-import net.thunderbird.feature.taskmail.internal.data.controlplane.RelayControlTaskMailSessionActionSender
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailCreateSessionFacadeClient
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskEnvironmentInventoryFacadeRepository
+import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailSessionActionFacadeSender
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskSessionHistorySnapshotFacadeRepository
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngressMessage
@@ -128,7 +128,6 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNe
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RequestTaskMailProjectSync
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SaveTaskMailBotMailboxSettings
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailFileSample
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
@@ -212,8 +211,10 @@ val taskMailModule: Module = module {
         )
     }
     single<TaskMailDirectSessionActionSender> {
-        RelayControlTaskMailSessionActionSender(
-            relayConnectionClient = get(),
+        OkHttpTaskMailSessionActionFacadeSender(
+            transportConfigRepository = get(),
+            logger = get(),
+            replyAttachmentResolver = get(),
         )
     }
     single { TaskMailDirectSessionProjector() }
@@ -600,13 +601,6 @@ val taskMailModule: Module = module {
     }
 
     factory {
-        RunTaskMailDirectDispatch(
-            relayBootstrapManager = get(),
-            relayConnectionClient = get(),
-        )
-    }
-
-    factory {
         CreateTaskMailSession(
             createSessionClient = get(),
         )
@@ -674,14 +668,12 @@ val taskMailModule: Module = module {
             refreshTaskMail = get(),
             observeTaskMailStoreChanges = get(),
             foregroundRefreshTickerFactory = get(),
-            sendTaskMailReply = get(),
             sendTaskMailDirectSessionAction = get(),
             getLatestTaskMailSessionActionSendRecord = get(),
             recordTaskMailSessionActionSendRecord = get(),
             replyAttachmentResolver = get(),
             timelineAttachmentHandler = get(),
             logger = get(),
-            runTaskMailDirectDispatch = get(),
             syncTaskMailCache = get(),
             observeTaskMailDirectSessionDetail = get(),
             getTaskSessionHistorySnapshot = get(),

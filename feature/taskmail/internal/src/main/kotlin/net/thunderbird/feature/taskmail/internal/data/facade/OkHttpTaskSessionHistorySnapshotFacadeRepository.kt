@@ -16,6 +16,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistory
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotProcessItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotRound
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLatestActionSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionHistorySnapshotRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -104,7 +105,20 @@ internal class OkHttpTaskSessionHistorySnapshotFacadeRepository(
         return TaskSessionHistorySnapshot(
             snapshotId = snapshotId,
             generatedAt = generatedAt,
+            latestSessionAction = sessionSnapshot.latestSessionAction?.toDomain(),
             rounds = sessionSnapshot.historyRounds.map { it.toDomain() }.toImmutableList(),
+        )
+    }
+
+    private fun SessionSnapshotLatestActionPayload.toDomain(): TaskSessionLatestActionSnapshot {
+        return TaskSessionLatestActionSnapshot(
+            commandId = commandId,
+            actionType = actionType,
+            ackStatus = submitAck.ackStatus,
+            createdAt = createdAt,
+            ackedAt = ackedAt,
+            pcId = pcId,
+            resultStatus = resultStatus,
         )
     }
 
@@ -165,8 +179,34 @@ private data class SessionSnapshotResponsePayload(
 
 @Serializable
 private data class SessionSnapshotPayload(
+    @SerialName("latest_session_action")
+    val latestSessionAction: SessionSnapshotLatestActionPayload? = null,
     @SerialName("history_rounds")
     val historyRounds: List<SessionSnapshotRoundPayload> = emptyList(),
+)
+
+@Serializable
+private data class SessionSnapshotLatestActionPayload(
+    @SerialName("command_id")
+    val commandId: String,
+    @SerialName("action_type")
+    val actionType: String,
+    @SerialName("submit_ack")
+    val submitAck: SessionSnapshotLatestActionSubmitAckPayload,
+    @SerialName("created_at")
+    val createdAt: String? = null,
+    @SerialName("acked_at")
+    val ackedAt: String? = null,
+    @SerialName("pc_id")
+    val pcId: String? = null,
+    @SerialName("result_status")
+    val resultStatus: String? = null,
+)
+
+@Serializable
+private data class SessionSnapshotLatestActionSubmitAckPayload(
+    @SerialName("ack_status")
+    val ackStatus: String,
 )
 
 @Serializable

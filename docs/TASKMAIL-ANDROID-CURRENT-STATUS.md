@@ -6,7 +6,7 @@
 
 ## 日期
 
-- 最后更新：2026-03-26
+- 最后更新：2026-03-29
 
 ## 文档维护约定
 
@@ -60,18 +60,31 @@
 - 当前这条主线不应再读成“旧 `/relay` packet 的 observation 阶段”，而应读成“Batch A facade cutover 已落地，后续继续承接 SessionDetail / route-key / reply-status”
 - relay-era `latest direct result` durable evidence 仍保留为 internal/debug guardrail，但已经退出 `New task` public surface
 
-### 3. `reply` / `/status`
+### 3. `session-action`
 
-- 当前 guarded direct lane 已接入 formal-host detail
-- v1 scope 仍只覆盖 `current-session plain reply` 与 `current-session /status`
-- 当前主写路径已从旧 `/relay` post-creation packet 切到 shared `/control command(status|reply)` compatibility lane
-- detail 发送成功后会先承接 `command_ack/result(session_action_result)` snapshot，再继续走本地 detail refresh；不再只靠退出重进或 canonical mail 才看到第一跳更新
-- latest session-action evidence 仍会按 canonical `workspace_id + session_id` 持久化，但已经退出 detail public surface
-- Android fallback evidence 现在也保留 `requestId`，并在可用时保留 `receiptId` / `transportMessageId`
-- `thread_105` 的 formal-host live rerun 已正向证明：
-  - `/status` 可 direct accepted，并回收到 canonical `[STATUS]` mail
-  - plain reply 可 direct accepted，并回收到 `[ACCEPTED] -> [RUNNING] -> [DONE]`
-- 当前这条主线不应再读成“全部 reply 语义都已经 direct 化完成”，而应读成“Batch B 的 current-session control write-path 已切通，但 canonical mail/fallback artifact 仍作为 compatibility closeout 保留”
+- formal-host detail 的当前主写路径已经切到 Android-facing `POST /v1/android/session-action` facade
+- 当前 detail public surface 已统一走同一家 `session-action` family：
+  - plain reply
+  - quick answer
+  - structured `Answers`
+  - `attachment_continuation`
+  - `/status`
+  - `/kill`
+  - `/end`
+- 当前 submit 成功后，Android 不再等 canonical mail 才承接第一跳状态，而是会先：
+  - 持久化 latest session-action evidence
+  - 在本地 detail cache 写入 `pendingSubmissions`
+  - 继续用 `session_snapshot.latest_session_action.command_id` 做 same-run continuity 清理
+- `session-action` 写路径当前按 `session_id` 为主锚点；缺 canonical `workspace_id` 时，只要已有 canonical `session_id`，仍可提交
+- Android 读侧当前仍保持 `workspace-aware`：
+  - 本地 detail key / navigation / history locator 还没有整体切到 `session_id only`
+  - submit 回包里的 canonical `workspace_id` 仍会继续回写到本地 identity
+- latest session-action evidence 仍会按 canonical target 持久化，但已经退出 detail public surface，只保留 internal/debug guardrail 价值
+- `paused` session 当前不会在 detail 页自动 prepend `/resume`：
+  - 当前 public UI 会把 plain-text reply 标记为 unavailable
+  - `pause` / `resume` action family 已进入 Android 领域模型与 facade sender 范围
+  - 但 detail public control 还没有单独暴露 dedicated `pause` / `resume` 按钮
+- 这条主线当前正确读法不再是“guarded direct lane”，而是“current-session `session-action` owner seam 已切通，后续继续围绕 projection / snapshot continuity 与 live smoke 收口”
 
 ### 3.5. workspace / workbench public shell
 
@@ -128,7 +141,8 @@
 ### 6. 其余已稳定能力
 
 - runtime TaskMail bot-mailbox settings 已存在，并且改动对发送路径即时可见
-- plain reply、attachment continuation、single-question quick answer、多问题 `Answers:` 模板、`/status`、`paused` `/resume` 语义都仍以 mail path 为当前稳定语义
+- plain reply、attachment continuation、single-question quick answer、多问题 `Answers:` 模板、`/status`、`/kill`、`/end` 在 detail 当前都已按 `session-action` 主路径读取
+- `paused` / `resume` 当前还没有 detail public control，但这不应再被误写成“reply/status 仍走 mail path”
 - drawer `Tasks` 入口、launcher handoff、workspace/detail refresh、attachment open/save 都已存在
 
 ## 当前不能误写的边界
@@ -137,18 +151,20 @@
   - 已进入 `VPS-native projection` 的 session，workspace/detail 以本地 projection cache 为主
   - legacy / mail-only session 仍以 mail 为唯一结果源
 - `[SYNC]` 仍然是 bootstrap discovery 行为，不创建 task/thread/session，也不进入 session 投影
-- `reply` / `/status` 的 direct lane 仍只覆盖当前最窄 v1 scope；quick answer、多问题 `Answers:`、attachment continuation、paused `/resume` 仍不能被误写成 direct scope
+- detail 当前已切通的是 `session-action` current-session write seam，不应再误写成 `/control status|reply` compatibility lane
+- Android 当前虽然已按 `session_id` 主锚点提交 `session-action`，但本地 detail/store/navigation/history 仍不是 `session_id only` 模型
+- `pause` / `resume` 虽已进入 action family 和 sender contract，但 detail public UI 还没有 dedicated control；不能误写成“已在页面上完整可用”
 - `new_task` 当前不是“回头扩旧 `/relay` submit”的阶段，而是 `create-session facade -> session binding -> routed workspace` 主线承接阶段
 - `[SYNC]` 当前不是“多账号都已严格支持”的阶段；当前只应按 single-account available 读
 - `transport_probe` 与 `/v1/files` debug harness 当前只应按 readiness / observability 基础设施读取，不能误写成 TaskMail 业务主链已经完成 `/control` cutover
 
 ## 当前验证读法
 
-截至 2026-03-26，应这样理解验证状态：
+截至 2026-03-29，应这样理解验证状态：
 
-- 读路径、projection、reply 基础语义、attachments、refresh、`reply/status` durable evidence、`Project list` 渲染与 repo prefill 都已有 focused automated coverage
+- 读路径、projection、reply 基础语义、attachments、refresh、`session-action` durable evidence、`Project list` 渲染与 repo prefill 都已有 focused automated coverage
 - `new_task` facade create-session client、config、ViewModel、navigation 与 screen 接线已有 focused automated coverage
-- `reply/status` 当前 `/control` sender、control bootstrap、detail ViewModel 承接与 route/key 收口已有 focused automated coverage
+- detail 当前 `session-action` facade sender、`pending submission`、`session_id` 主锚点写路径、history-snapshot continuity 清理与 screen 行为已有 focused automated coverage
 - Batch C 的 workbench/public-surface 收口与 legacy 删除已经补过 fresh focused regression
 - Batch D 第一轮 `VPS-native cache/projection` 已有 focused automated coverage：
   - provisional session detail seeding
@@ -156,7 +172,7 @@
   - workspace/detail 命中 VPS cache 后跳过默认 mail sync
   - mail compatibility repair 不再覆盖 VPS-native detail
 - `new_task` 当前仍缺 fresh Android / VPS / PC live smoke；因此不能把它误写成 raw `pc-control` websocket 已经在设备侧跑通
-- `reply/status` 已有正向 direct accepted live 样本，但仍需继续收口 same-run strong bind 与 fallback artifact 对齐
+- `session-action` 当前仍缺 fresh device live smoke；尤其还需要 fresh `reply / attachment_continuation / /status / /kill / /end` 样本来确认真机 closeout 与 projection continuity
 - `[SYNC]` 当前已证明 request path、waiting UI、follow-up refresh 与“不进入 session projection”边界，但对“同一轮 direct request 到 canonical reply”的时序闭环仍未完全关单
 - transport readiness / observability 当前已有真机 + PC/VPS focused live evidence，但这些证据只覆盖 `transport_probe` 与 `/v1/files` 单样本，不直接扩展 TaskMail 业务 cutover 结论
 
@@ -166,7 +182,7 @@
 
 - `new_task`：保持 facade cutover 主线，继续把 SessionDetail / route-key 承接到 VPS-first 主线，不再回头扩旧 `/relay` packet
 - `workspace/detail`：继续围绕 `VPS-native projection cache` 的 live continuity、gap repair 与 reconnect 行为做窄验证
-- `reply` / `/status`：继续收口 same-run strong bind、PC fallback artifact gaps，以及 current `/control` compatibility lane 到后续 `pc-control` 主线的承接
+- `session-action`：继续围绕 live continuity、`command_id` closeout、以及 paused / resume public control 的后续承接做窄验证
 - `[SYNC]`：继续联调 direct request 与 canonical reply 回流时间线，必要时再决定是否扩大 follow-up refresh 窗口
 
 说明：
@@ -176,9 +192,10 @@
 
 ## 当前下一步
 
-如果只看当前工程主线，最重要的是先把 `VPS-native cache/projection` 的 live smoke 补齐，再继续向真正 live `pc-control` 承接：
+如果只看当前工程主线，最重要的是把 `session-action + VPS-native projection/snapshot` 的真机闭环补齐，再继续收口 paused / resume 与更宽 live smoke：
 
 - `new_task` 继续围绕 `create-session facade -> session binding -> SessionDetail 承接` 推进
 - `workspace/detail` 继续围绕 `VPS-native projection cache -> immediate visible result` 做真机闭环验证
-- `reply` / `/status` 继续围绕 closeout、result continuity 和后续 `pc-control` 主线承接做窄验证，而不是误写成全量 direct 化
+- `session-action` 继续围绕 `pending submission -> latest_session_action.command_id closeout -> detail visible continuity` 做真机闭环验证
+- paused / resume 后续若要进入 public detail，需要以 dedicated `session-action` control 方式承接，而不是回退到旧 mail 语义
 - `[SYNC]` 继续围绕 direct request + canonical mail result 的边界闭环，而不是把它拉进 TaskMail session 投影

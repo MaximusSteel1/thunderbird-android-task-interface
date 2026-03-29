@@ -165,7 +165,7 @@ private fun ReplyAttachmentSection(
             supportingText = if (replyAttachments.isEmpty()) {
                 "Add screenshots, documents, or other files to this reply."
             } else {
-                "Selected files will be mailed with this reply."
+                "Selected files will be submitted together with this reply."
             },
         )
 

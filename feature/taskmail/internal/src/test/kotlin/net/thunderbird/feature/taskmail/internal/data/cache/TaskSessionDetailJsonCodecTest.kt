@@ -18,10 +18,14 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionType
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionAckStatus
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionTargetIdentity
 
 class TaskSessionDetailJsonCodecTest {
 
@@ -156,6 +160,21 @@ class TaskSessionDetailJsonCodecTest {
                         resolvedModel = "gpt-5-codex",
                     ),
                     structuredPayload = ControlPlaneStructuredPayload(kind = "task_outcome"),
+                ),
+            ),
+            pendingSubmissions = listOf(
+                TaskSessionPendingSubmission(
+                    commandId = "cmd_001",
+                    requestId = "req_001",
+                    actionType = TaskMailDirectSessionActionType.Reply,
+                    submittedAt = 456L,
+                    ackStatus = TaskMailSessionActionAckStatus.AcceptedButQueued,
+                    targetIdentity = TaskMailSessionActionTargetIdentity(
+                        pcId = "pc_home",
+                        workspaceId = "workspace_001",
+                        sessionId = "session_001",
+                        threadId = "thread_001",
+                    ),
                 ),
             ),
         )

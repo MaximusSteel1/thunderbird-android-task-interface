@@ -19,7 +19,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.buildJsonObject
@@ -40,22 +39,8 @@ import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.Cont
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneStructuredPayload
 import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayBootstrapManager
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClient
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommand
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayEvent
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayHelloAck
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacket
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayPacketAck
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
-import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapResult
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayHealthStatus
-import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
@@ -68,7 +53,11 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLatestActionSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
@@ -82,20 +71,23 @@ import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplySende
 import net.thunderbird.feature.taskmail.internal.domain.repository.MessageSyncStateRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailSessionActionSendRecordRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionHistorySnapshotRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionType
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionAckStatus
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionQuestionAnswer
+import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSessionActionTargetIdentity
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionHistorySnapshot
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
-import net.thunderbird.feature.taskmail.internal.domain.usecase.RunTaskMailDirectDispatch
-import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
@@ -775,7 +767,7 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should block attachments in direct only mode`() = runMviTest {
+    fun `send reply should use attachment continuation when attachments are selected`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val replyAttachment = sampleReplyAttachment()
         val attachmentResolver = FakeTaskMailReplyAttachmentResolver(
@@ -794,10 +786,20 @@ class TaskSessionDetailViewModelTest {
             start()
             loadDetail()
             selectAttachments(listOf(replyAttachment.uriString))
+            changeDraft("ship it with the report")
             sendReply()
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(viewModelState().replyAttachments).isEqualTo(persistentListOf(replyAttachment))
-            assertThat(viewModelState().sendError).isEqualTo("Direct plain reply does not support attachments yet.")
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.AttachmentContinuation(
+                    target = sampleDirectTarget(),
+                    replyText = "ship it with the report",
+                    attachments = listOf(replyAttachment),
+                ),
+            )
+            assertThat(viewModelState().replyAttachments).isEqualTo(persistentListOf())
+            assertThat(viewModelState().sendError).isNull()
+            assertShowMessageEffect(
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -893,7 +895,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(repository.requestedKeys.size).isEqualTo(3)
             assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf(null))
             assertShowMessageEffect(
-                "[Control] Reply accepted. Detail will keep following control and mail updates.",
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -936,8 +938,23 @@ class TaskSessionDetailViewModelTest {
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.transportMessageId).isEqualTo(
                 "transport-1",
             )
+            assertThat(repository.detail?.pendingSubmissions).isEqualTo(
+                listOf(
+                    TaskSessionPendingSubmission(
+                        commandId = "receipt-1",
+                        requestId = "req_001",
+                        actionType = TaskMailDirectSessionActionType.Reply,
+                        submittedAt = 1_234L,
+                        ackStatus = TaskMailSessionActionAckStatus.Accepted,
+                        targetIdentity = TaskMailSessionActionTargetIdentity(
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                        ),
+                    ),
+                ),
+            )
             assertShowMessageEffect(
-                "[Control] Reply accepted. Detail will keep following control and mail updates.",
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1022,20 +1039,52 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should be blocked when canonical workspace id is unavailable`() = runMviTest {
+    fun `send reply should allow session id only target when canonical workspace id is unavailable`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
-        val mailSender = FakeTaskMailReplySender()
-        val directSender = FakeTaskMailDirectSessionActionSender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionType.Reply,
+                requestId = "req_session_only",
+                receiptId = "receipt-session-only",
+                targetIdentity = TaskMailSessionActionTargetIdentity(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                ),
+            ),
+        )
 
-        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+        with(TaskSessionDetailViewModelRobot(this, repository, directSessionActionSender = directSender)) {
             start()
             loadDetail(workspaceId = null)
             changeDraft("ship it")
             sendReply()
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(mailSender.requests.size).isEqualTo(0)
-            assertThat(viewModelState().sendError).isEqualTo(
-                "Direct session action is unavailable until this session has canonical workspace and session ids.",
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Reply(
+                    target = TaskMailDirectSessionActionTarget(
+                        workspaceId = null,
+                        sessionId = "session_001",
+                    ),
+                    replyText = "ship it",
+                ),
+            )
+            assertThat(viewModelState().sendError).isNull()
+            assertThat(repository.detail?.pendingSubmissions).isEqualTo(
+                listOf(
+                    TaskSessionPendingSubmission(
+                        commandId = "receipt-session-only",
+                        requestId = "req_session_only",
+                        actionType = TaskMailDirectSessionActionType.Reply,
+                        submittedAt = 1_234L,
+                        ackStatus = TaskMailSessionActionAckStatus.Accepted,
+                        targetIdentity = TaskMailSessionActionTargetIdentity(
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                        ),
+                    ),
+                ),
+            )
+            assertShowMessageEffect(
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1057,14 +1106,23 @@ class TaskSessionDetailViewModelTest {
             changeDraft(structuredDraft)
             sendReply()
             assertThat(directSender.requests.single()).isEqualTo(
-                TaskMailDirectSessionActionRequest.Reply(
+                TaskMailDirectSessionActionRequest.Answers(
                     target = sampleDirectTarget(),
-                    replyText = structuredDraft,
+                    questionAnswers = listOf(
+                        TaskMailSessionQuestionAnswer(
+                            questionId = "phase2_entry_position",
+                            value = "below",
+                        ),
+                        TaskMailSessionQuestionAnswer(
+                            questionId = "phase2_icon_strings",
+                            value = "provide",
+                        ),
+                    ),
                 ),
             )
             assertThat(viewModelState().sendError).isNull()
             assertShowMessageEffect(
-                "[Control] Reply accepted. Detail will keep following control and mail updates.",
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1088,7 +1146,7 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should block attachment only structured answers`() = runMviTest {
+    fun `send reply should block attachment only structured answers until required answers are complete`() = runMviTest {
         val replyAttachment = sampleReplyAttachment()
         val attachmentResolver = FakeTaskMailReplyAttachmentResolver(
             attachmentsToReturn = listOf(replyAttachment),
@@ -1110,7 +1168,7 @@ class TaskSessionDetailViewModelTest {
             sendReply()
             assertThat(directSender.requests.size).isEqualTo(0)
             assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply does not support attachments yet.",
+                "Complete every required answer before sending this structured reply.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1151,7 +1209,7 @@ class TaskSessionDetailViewModelTest {
             assertThat(directSender.requests.size).isEqualTo(1)
             assertThat(viewModelState().sendError).isNull()
             assertShowMessageEffect(
-                "[Control] Reply accepted. Detail will keep following control and mail updates.",
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1199,57 +1257,117 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().isGuideComposerVisible).isEqualTo(false)
             assertShowMessageEffect(
-                "[Control] Guide accepted. Detail will keep following control and mail updates.",
+                "[VPS] Guide submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `stop running should send canonical kill through mail reply sender`() = runMviTest {
-        val mailSender = FakeTaskMailReplySender()
+    fun `stop running should submit kill through session action`() = runMviTest {
         val directSender = FakeTaskMailDirectSessionActionSender()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository = FakeTaskSessionDetailRepository(detail = currentInputLedDetail()),
-                replySender = mailSender,
                 directSessionActionSender = directSender,
             ),
         ) {
             start()
             loadDetail()
             stopRunning()
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(mailSender.requests.single().body).isEqualTo("/kill")
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Kill(
+                    target = sampleDirectTarget(),
+                ),
+            )
             assertShowMessageEffect(
-                "[Mail] /kill sent. Detail will refresh when the next TaskMail update arrives.",
+                "[VPS] /kill submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `deactivate should send canonical end through mail reply sender`() = runMviTest {
-        val mailSender = FakeTaskMailReplySender()
+    fun `deactivate should submit end through session action`() = runMviTest {
         val directSender = FakeTaskMailDirectSessionActionSender()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail()),
-                replySender = mailSender,
                 directSessionActionSender = directSender,
             ),
         ) {
             start()
             loadDetail()
             deactivateSession()
-            assertThat(directSender.requests.size).isEqualTo(0)
-            assertThat(mailSender.requests.single().body).isEqualTo("/end")
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.End(
+                    target = sampleDirectTarget(),
+                ),
+            )
             assertShowMessageEffect(
-                "[Mail] /end sent. Detail will refresh when the next TaskMail update arrives.",
+                "[VPS] /end submitted. Detail will keep following VPS-native session updates.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should clear matching pending submission when history snapshot reports latest session action command id`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
+        val historySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(
+            result = Result.success(
+                TaskSessionHistorySnapshot(
+                    snapshotId = "snapshot_001",
+                    generatedAt = "2026-03-29T10:00:00Z",
+                    latestSessionAction = TaskSessionLatestActionSnapshot(
+                        commandId = "cmd_001",
+                        actionType = "reply",
+                        ackStatus = "accepted",
+                    ),
+                ),
+            ),
+        )
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionType.Reply,
+                requestId = "req_001",
+                receiptId = "cmd_001",
+                targetIdentity = TaskMailSessionActionTargetIdentity(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                ),
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                directSessionActionSender = directSender,
+                historySnapshotRepository = historySnapshotRepository,
+            ),
+        ) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(repository.detail?.pendingSubmissions).isEqualTo(emptyList())
+            val expectedDetail = requireNotNull(repository.detail)
+            assertThat(historySnapshotRepository.requestedLocators.last()).isEqualTo(
+                TaskSessionHistorySnapshotLocator(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                    threadId = "thread_001",
+                    repoPath = expectedDetail.repoPath,
+                    workdir = expectedDetail.workdir,
+                ),
+            )
+            assertShowMessageEffect(
+                "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1276,7 +1394,7 @@ class TaskSessionDetailViewModelTest {
                 ),
             )
             assertShowMessageEffect(
-                "[Control] /status accepted. Detail will keep following control and mail updates.",
+                "[VPS] /status submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1284,6 +1402,7 @@ class TaskSessionDetailViewModelTest {
 
     @Test
     fun `status query should use direct lane when canonical workspace id is available`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val mailSender = FakeTaskMailReplySender()
         val directSender = FakeTaskMailDirectSessionActionSender(
             result = TaskMailDirectSessionActionResult.Accepted(
@@ -1299,7 +1418,7 @@ class TaskSessionDetailViewModelTest {
         with(
             TaskSessionDetailViewModelRobot(
                 this,
-                FakeTaskSessionDetailRepository(detail = directReplyCapableDetail()),
+                repository,
                 mailSender,
                 directSessionActionSender = directSender,
             ),
@@ -1317,8 +1436,23 @@ class TaskSessionDetailViewModelTest {
                 TaskMailDirectSessionActionType.Status,
             )
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.requestId).isEqualTo("req_002")
+            assertThat(repository.detail?.pendingSubmissions).isEqualTo(
+                listOf(
+                    TaskSessionPendingSubmission(
+                        commandId = "receipt-2",
+                        requestId = "req_002",
+                        actionType = TaskMailDirectSessionActionType.Status,
+                        submittedAt = 1_234L,
+                        ackStatus = TaskMailSessionActionAckStatus.Accepted,
+                        targetIdentity = TaskMailSessionActionTargetIdentity(
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                        ),
+                    ),
+                ),
+            )
             assertShowMessageEffect(
-                "[Control] /status accepted. Detail will keep following control and mail updates.",
+                "[VPS] /status submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1359,7 +1493,7 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().sendError).isNull()
             assertShowMessageEffect(
-                "[Control] Quick answer accepted. Detail will keep following control and mail updates.",
+                "[VPS] Quick answer submitted. Detail will keep following VPS-native session updates.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1375,7 +1509,7 @@ class TaskSessionDetailViewModelTest {
             changeDraft("Please continue with the cleanup.")
             sendReply()
             assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is paused.",
+                "Plain-text reply is unavailable while the session is paused.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1390,7 +1524,7 @@ class TaskSessionDetailViewModelTest {
             loadDetail()
             sendChoice("approve")
             assertThat(viewModelState().sendError).isEqualTo(
-                "Direct plain reply is unavailable while the session is paused.",
+                "Plain-text reply is unavailable while the session is paused.",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -1594,10 +1728,10 @@ private class TaskSessionDetailViewModelRobot(
         FakeTaskMailForegroundRefreshTickerFactory(),
     syncTaskMailCache: SyncTaskMailCache? = null,
     private val directObserver: FakeObserveTaskMailDirectSessionDetail = FakeObserveTaskMailDirectSessionDetail(),
+    historySnapshotRepository: TaskSessionHistorySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(),
     logger: DetailViewModelFakeLogger = DetailViewModelFakeLogger(),
     directSessionActionSender: FakeTaskMailDirectSessionActionSender? = FakeTaskMailDirectSessionActionSender(),
-    relayBootstrapManager: RelayBootstrapManager = FakeDetailRelayBootstrapManager(),
-    relayConnectionClient: RelayConnectionClient = FakeDetailRelayConnectionClient(),
+    currentTimeProvider: () -> Long = { 1_234L },
 ) {
     private val getLatestTaskMailSessionActionSendRecord =
         GetLatestTaskMailSessionActionSendRecord(sessionActionSendRecordRepository)
@@ -1609,21 +1743,16 @@ private class TaskSessionDetailViewModelRobot(
         refreshTaskMail = RefreshTaskMail(syncRequester),
         observeTaskMailStoreChanges = ObserveTaskMailStoreChanges(changeObserver),
         foregroundRefreshTickerFactory = foregroundRefreshTickerFactory,
-        sendTaskMailReply = SendTaskMailReply(replySender),
         sendTaskMailDirectSessionAction = directSessionActionSender?.let(::SendTaskMailDirectSessionAction),
         getLatestTaskMailSessionActionSendRecord = getLatestTaskMailSessionActionSendRecord,
         recordTaskMailSessionActionSendRecord = recordTaskMailSessionActionSendRecord,
         replyAttachmentResolver = attachmentResolver,
         timelineAttachmentHandler = timelineAttachmentHandler,
         logger = logger,
-        runTaskMailDirectDispatch = directSessionActionSender?.let {
-            RunTaskMailDirectDispatch(
-                relayBootstrapManager = relayBootstrapManager,
-                relayConnectionClient = relayConnectionClient,
-            )
-        },
         syncTaskMailCache = syncTaskMailCache,
         observeTaskMailDirectSessionDetail = directObserver,
+        getTaskSessionHistorySnapshot = GetTaskSessionHistorySnapshot(historySnapshotRepository),
+        currentTimeProvider = currentTimeProvider,
     )
     private lateinit var turbines: MviTurbines<TaskSessionDetailContract.State, TaskSessionDetailContract.Effect>
 
@@ -1846,14 +1975,26 @@ private class FakeTaskMailSessionActionSendRecordRepository(
         target: TaskMailDirectSessionActionTarget,
     ): TaskMailSessionActionSendRecord? {
         return records.firstOrNull { record ->
-            record.target.workspaceId == target.workspaceId &&
-                record.target.sessionId == target.sessionId
+            record.target.sessionId == target.sessionId &&
+                (target.workspaceId == null || record.target.workspaceId == target.workspaceId)
         }
     }
 
     override suspend fun saveRecord(record: TaskMailSessionActionSendRecord) {
         records = (listOf(record) + records)
             .sortedByDescending(TaskMailSessionActionSendRecord::recordedAt)
+    }
+}
+
+private class FakeTaskSessionHistorySnapshotRepository(
+    private val result: Result<TaskSessionHistorySnapshot> =
+        Result.failure(IllegalStateException("history snapshot not configured")),
+) : TaskSessionHistorySnapshotRepository {
+    val requestedLocators = mutableListOf<TaskSessionHistorySnapshotLocator>()
+
+    override suspend fun getHistorySnapshot(locator: TaskSessionHistorySnapshotLocator): Result<TaskSessionHistorySnapshot> {
+        requestedLocators += locator
+        return result
     }
 }
 
@@ -1992,102 +2133,6 @@ private class FakeTaskMailTimelineAttachmentHandler(
     ): Result<Unit> {
         savedAttachments += attachment to destinationUriString
         return saveResult
-    }
-}
-
-private class FakeDetailRelayBootstrapManager(
-    private val config: RelayTransportConfig = RelayTransportConfig(
-        host = "relay.example.test",
-        port = 8787,
-        transportToken = "transport-token",
-    ),
-) : RelayBootstrapManager {
-    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
-
-    override val connectionState = mutableConnectionState
-
-    override fun loadConfig(): RelayTransportConfig = config
-
-    override fun saveConfig(config: RelayTransportConfig): Boolean = true
-
-    override suspend fun probeHealth(config: RelayTransportConfig): Result<RelayHealthStatus> {
-        return Result.success(
-            RelayHealthStatus(
-                status = "ok",
-                service = "mail-runner-relay",
-                listenHost = "0.0.0.0",
-                listenPort = 8787,
-                sessionCount = 0,
-                packetCount = 0,
-                tlsEnabled = false,
-                transportTokenId = "token-id",
-            ),
-        )
-    }
-
-    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> {
-        return Result.success(
-            RelayHelloAck(
-                messageType = "hello_ack",
-                connectionId = "connection-1",
-                serverTime = "2026-03-21T12:00:00Z",
-                heartbeatSeconds = 30,
-            ),
-        )
-    }
-
-    override suspend fun disconnect() {
-        mutableConnectionState.value = RelayConnectionState.Idle
-    }
-
-    override suspend fun bootstrap(config: RelayTransportConfig): RelayBootstrapResult {
-        return RelayBootstrapResult(status = RelayBootstrapStatus.HelloAck)
-    }
-}
-
-private class FakeDetailRelayConnectionClient(
-    private val connectResult: Result<RelayHelloAck> = Result.success(
-        RelayHelloAck(
-            messageType = "hello_ack",
-            connectionId = "connection-1",
-            serverTime = "2026-03-21T12:00:00Z",
-            heartbeatSeconds = 30,
-            acceptedPayloadSchemas = listOf(
-                "taskmail-bootstrap-control-contract-v2",
-                "post-creation-session-action-contract-v1",
-            ),
-        ),
-    ),
-) : RelayConnectionClient {
-    private val mutableConnectionState = MutableStateFlow<RelayConnectionState>(RelayConnectionState.Idle)
-    private val mutableSessionUpdates = MutableSharedFlow<RelaySessionUpdate>(extraBufferCapacity = 1)
-    private val mutableServerEvents = MutableSharedFlow<RelayEvent>(extraBufferCapacity = 1)
-    private val mutableServerResults = MutableSharedFlow<RelayResult>(extraBufferCapacity = 1)
-
-    override val connectionState = mutableConnectionState
-    override val sessionUpdates: SharedFlow<RelaySessionUpdate> = mutableSessionUpdates
-    override val serverEvents: SharedFlow<RelayEvent> = mutableServerEvents
-    override val serverResults: SharedFlow<RelayResult> = mutableServerResults
-
-    override suspend fun connect(config: RelayTransportConfig): Result<RelayHelloAck> = connectResult
-
-    override suspend fun connect(
-        config: RelayTransportConfig,
-        supportedPayloadSchemas: List<String>,
-    ): Result<RelayHelloAck> = connectResult
-
-    override suspend fun sendPacket(
-        packet: RelayPacket,
-        ackTimeoutMillis: Long,
-    ): Result<RelayPacketAck> = error("Not used by this test")
-
-    override suspend fun sendCommand(
-        command: RelayCommand,
-        ackTimeoutMillis: Long,
-    ): Result<RelayCommandAck> = error("Not used by this test")
-
-    override suspend fun disconnect() {
-        mutableConnectionState.value = RelayConnectionState.Idle
     }
 }
 

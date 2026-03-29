@@ -31,8 +31,11 @@ internal class FileBackedTaskMailSessionActionSendRecordRepository(
         target: TaskMailDirectSessionActionTarget,
     ): TaskMailSessionActionSendRecord? {
         return records.firstOrNull { record ->
-            record.target.workspaceId == target.workspaceId &&
-                record.target.sessionId == target.sessionId
+            record.target.sessionId == target.sessionId &&
+                (
+                    target.workspaceId == null ||
+                        record.target.workspaceId == target.workspaceId
+                    )
         }
     }
 
@@ -42,7 +45,7 @@ internal class FileBackedTaskMailSessionActionSendRecordRepository(
                 (listOf(record) + records)
                     .distinctBy { candidate ->
                         listOf(
-                            candidate.target.workspaceId,
+                            candidate.target.workspaceId.orEmpty(),
                             candidate.target.sessionId,
                             candidate.actionType.name,
                             candidate.recordedAt.toString(),

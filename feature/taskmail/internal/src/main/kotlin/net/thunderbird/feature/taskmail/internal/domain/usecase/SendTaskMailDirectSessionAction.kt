@@ -13,3 +13,5 @@ internal class SendTaskMailDirectSessionAction(
         return directSessionActionSender.send(request)
     }
 }
+
+internal typealias SendTaskMailSessionAction = SendTaskMailDirectSessionAction

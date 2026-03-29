@@ -8,7 +8,19 @@ import kotlinx.collections.immutable.persistentListOf
 internal data class TaskSessionHistorySnapshot(
     val snapshotId: String,
     val generatedAt: String,
+    val latestSessionAction: TaskSessionLatestActionSnapshot? = null,
     val rounds: ImmutableList<TaskSessionHistorySnapshotRound> = persistentListOf(),
+)
+
+@Immutable
+internal data class TaskSessionLatestActionSnapshot(
+    val commandId: String,
+    val actionType: String,
+    val ackStatus: String,
+    val createdAt: String? = null,
+    val ackedAt: String? = null,
+    val pcId: String? = null,
+    val resultStatus: String? = null,
 )
 
 @Immutable
