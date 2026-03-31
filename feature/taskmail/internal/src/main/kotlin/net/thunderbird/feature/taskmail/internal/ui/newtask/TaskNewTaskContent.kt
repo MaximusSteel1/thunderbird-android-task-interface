@@ -32,7 +32,6 @@ import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodySmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
-import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlinedSelect
 import app.k9mail.core.ui.compose.designsystem.molecule.input.InputLayout
 import app.k9mail.core.ui.compose.designsystem.molecule.input.SelectInput
@@ -44,7 +43,6 @@ import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskMode
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
@@ -88,31 +86,19 @@ internal fun TaskNewTaskContent(
             )
         },
     ) { innerPadding ->
-        when {
-            state.isLoading -> {
-                NewTaskCenteredMessage(
-                    title = "Loading sender accounts",
-                    message = "Checking which mailbox accounts can send this TaskMail request.",
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
-
-            state.hasBlockingState -> {
-                NewTaskCenteredMessage(
-                    title = "Cannot send TaskMail yet",
-                    message = state.senderAccountBlockingError.orEmpty(),
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
-
-            else -> {
-                TaskNewTaskForm(
-                    state = state,
-                    onEvent = onEvent,
-                    onPickAttachments = onPickAttachments,
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
+        if (state.isLoading) {
+            NewTaskCenteredMessage(
+                title = "Loading task setup",
+                message = "Checking the latest route options and local TaskMail metadata.",
+                modifier = Modifier.padding(innerPadding),
+            )
+        } else {
+            TaskNewTaskForm(
+                state = state,
+                onEvent = onEvent,
+                onPickAttachments = onPickAttachments,
+                modifier = Modifier.padding(innerPadding),
+            )
         }
     }
 }
@@ -242,6 +228,18 @@ private fun LazyListScope.taskInputItems(
     item {
         TextInput(
             onTextChange = {
+                onEvent(TaskNewTaskContract.Event.SubjectTitleChanged(it))
+            },
+            text = state.taskInput.subjectTitle,
+            label = "Title",
+            isRequired = true,
+            errorMessage = state.validationErrors.titleError,
+        )
+    }
+
+    item {
+        TextInput(
+            onTextChange = {
                 onEvent(TaskNewTaskContract.Event.TaskChanged(it))
             },
             text = state.taskInput.taskText,
@@ -249,18 +247,6 @@ private fun LazyListScope.taskInputItems(
             isRequired = true,
             errorMessage = state.validationErrors.taskError,
             isSingleLine = false,
-        )
-    }
-
-    item {
-        TextInput(
-            onTextChange = {
-                onEvent(TaskNewTaskContract.Event.SubjectTitleChanged(it))
-            },
-            text = state.taskInput.subjectTitle,
-            label = "Title",
-            isRequired = true,
-            errorMessage = state.validationErrors.titleError,
         )
     }
 }
@@ -315,11 +301,6 @@ private fun LazyListScope.executionAndDeliveryItems(
             supportingText = EXECUTION_POLICY_SUPPORTING_TEXT,
         )
     }
-
-    senderAccountItems(
-        state = state,
-        onEvent = onEvent,
-    )
 
     item {
         BackendSelector(
@@ -398,38 +379,6 @@ private fun LazyListScope.executionAndDeliveryItems(
     }
 }
 
-private fun LazyListScope.senderAccountItems(
-    state: TaskNewTaskContract.State,
-    onEvent: (TaskNewTaskContract.Event) -> Unit,
-) {
-    when {
-        state.senderAccounts.size == 1 -> {
-            item {
-                InputLayout(contentPadding = PaddingValues(0.dp)) {
-                    TextFieldOutlined(
-                        value = (state.selectedSenderAccount ?: state.senderAccounts.single()).displayLabel,
-                        onValueChange = {},
-                        label = "Send from",
-                        isReadOnly = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        }
-
-        state.requiresSenderAccountSelection -> {
-            item {
-                SenderAccountSelector(
-                    state = state,
-                    onAccountSelected = {
-                        onEvent(TaskNewTaskContract.Event.SenderAccountSelected(it))
-                    },
-                )
-            }
-        }
-    }
-}
-
 private fun LazyListScope.repoPathItem(
     state: TaskNewTaskContract.State,
     onEvent: (TaskNewTaskContract.Event) -> Unit,
@@ -500,49 +449,6 @@ private fun BackendSelector(
                     .testTag("TaskNewTaskBackendSelector"),
             )
         }
-    }
-}
-
-@Composable
-private fun SenderAccountSelector(
-    state: TaskNewTaskContract.State,
-    onAccountSelected: (String?) -> Unit,
-) {
-    val options = buildList<SenderAccountOption> {
-        add(SenderAccountOption.Placeholder)
-        addAll(state.senderAccounts.map(SenderAccountOption::Account))
-    }.toImmutableList()
-    val selectedOption = state.selectedSenderAccount
-        ?.let(SenderAccountOption::Account)
-        ?: SenderAccountOption.Placeholder
-
-    InputLayout(
-        errorMessage = state.validationErrors.senderAccountError,
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        TextFieldOutlinedSelect(
-            options = options,
-            selectedOption = selectedOption,
-            onValueChange = { option ->
-                onAccountSelected(
-                    when (option) {
-                        SenderAccountOption.Placeholder -> null
-                        is SenderAccountOption.Account -> option.account.accountUuid
-                    },
-                )
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("TaskNewTaskSenderAccountSelector"),
-            optionToStringTransformation = { option ->
-                when (option) {
-                    SenderAccountOption.Placeholder -> "Select an account"
-                    is SenderAccountOption.Account -> option.account.displayLabel
-                }
-            },
-            label = "Send from",
-            hasError = state.validationErrors.senderAccountError != null,
-        )
     }
 }
 
@@ -733,11 +639,6 @@ private fun NewTaskCenteredMessage(
             modifier = Modifier.padding(top = 8.dp),
         )
     }
-}
-
-private sealed interface SenderAccountOption {
-    data object Placeholder : SenderAccountOption
-    data class Account(val account: TaskMailSenderAccount) : SenderAccountOption
 }
 
 @Composable

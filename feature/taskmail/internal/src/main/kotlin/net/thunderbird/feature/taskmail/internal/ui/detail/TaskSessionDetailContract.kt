@@ -54,6 +54,7 @@ internal interface TaskSessionDetailContract {
         data class ReplyPermissionChanged(val permission: TaskMailNewTaskPermission) : Event
         data object GuideClicked : Event
         data object GuideDismissed : Event
+        data object ResumeClicked : Event
         data object StopRunningClicked : Event
         data object DeactivateClicked : Event
         data object RefreshClicked : Event

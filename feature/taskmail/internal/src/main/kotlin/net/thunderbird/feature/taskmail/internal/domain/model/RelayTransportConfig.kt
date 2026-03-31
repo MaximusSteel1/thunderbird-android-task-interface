@@ -31,6 +31,10 @@ internal data class RelayTransportConfig(
         return absoluteHttpUrl(ANDROID_SESSION_SNAPSHOT_PATH)
     }
 
+    fun androidSessionUpdatesUrl(): String {
+        return absoluteWebSocketUrl(ANDROID_SESSION_UPDATES_PATH)
+    }
+
     fun androidSessionActionUrl(): String {
         return absoluteHttpUrl(ANDROID_SESSION_ACTION_PATH)
     }
@@ -51,6 +55,18 @@ internal data class RelayTransportConfig(
         return "${httpScheme()}://$host:$port$normalizedPath"
     }
 
+    fun absoluteWebSocketUrl(path: String): String {
+        val trimmedPath = path.trim()
+        if (trimmedPath.startsWith("ws://") || trimmedPath.startsWith("wss://")) {
+            return trimmedPath
+        }
+
+        val normalizedPath = trimmedPath.ifEmpty { "/" }
+            .let { value -> if (value.startsWith("/")) value else "/$value" }
+
+        return "${websocketScheme()}://$host:$port$normalizedPath"
+    }
+
     fun isConfigured(): Boolean {
         return host.isNotBlank() && port > 0 && transportToken.isNotBlank()
     }
@@ -64,6 +80,10 @@ internal data class RelayTransportConfig(
     }
 
     fun isAndroidSessionSnapshotConfigured(): Boolean {
+        return host.isNotBlank() && port > 0 && androidAppToken.isNotBlank()
+    }
+
+    fun isAndroidSessionUpdatesConfigured(): Boolean {
         return host.isNotBlank() && port > 0 && androidAppToken.isNotBlank()
     }
 
@@ -104,6 +124,7 @@ internal data class RelayTransportConfig(
         const val ANDROID_CREATE_SESSION_PATH = "/v1/android/create-session"
         const val ANDROID_ENVIRONMENT_INVENTORY_PATH = "/v1/android/environment-inventory"
         const val ANDROID_SESSION_SNAPSHOT_PATH = "/v1/android/session-snapshot"
+        const val ANDROID_SESSION_UPDATES_PATH = "/v1/android/session-updates"
         const val ANDROID_SESSION_ACTION_PATH = "/v1/android/session-action"
         private const val TOKEN_FINGERPRINT_LENGTH = 12
     }

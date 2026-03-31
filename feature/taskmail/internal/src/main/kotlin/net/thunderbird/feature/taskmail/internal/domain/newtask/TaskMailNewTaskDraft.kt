@@ -5,7 +5,7 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 
 internal data class TaskMailNewTaskDraft(
-    val senderAccountId: String,
+    val senderAccountId: String? = null,
     val backend: TaskMailBackend,
     val repoPath: String,
     val taskText: String,
@@ -34,4 +34,11 @@ internal enum class TaskMailNewTaskPermission(
 ) {
     Default(null),
     Highest("highest"),
+}
+
+internal fun TaskMailNewTaskPermission.toCanonicalWireValue(): String {
+    return when (this) {
+        TaskMailNewTaskPermission.Default -> "default"
+        TaskMailNewTaskPermission.Highest -> "highest"
+    }
 }

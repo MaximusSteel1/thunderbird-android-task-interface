@@ -18,7 +18,6 @@ internal interface TaskNewTaskContract {
 
     data class State(
         val isLoading: Boolean = false,
-        val senderAccountBlockingError: String? = null,
         val senderAccounts: ImmutableList<TaskMailSenderAccount> = persistentListOf(),
         val selectedSenderAccountId: String? = null,
         val pcSelection: TaskNewTaskPcSelectionUiState = TaskNewTaskPcSelectionUiState(),
@@ -46,21 +45,14 @@ internal interface TaskNewTaskContract {
         val hasControlPlaneRouteTarget: Boolean
             get() = pcSelection.selectedPcId.isNotBlank() && workspaceSelection.selectedWorkspaceId.isNotBlank()
 
-        val requiresSenderAccountSelection: Boolean
-            get() = senderAccounts.size > 1
-
-        val hasBlockingState: Boolean
-            get() = !isLoading && senderAccountBlockingError != null
-
         val canSend: Boolean
-            get() = !isLoading && !submitState.isSending && !hasBlockingState
+            get() = !isLoading && !submitState.isSending
     }
 
     sealed interface Event {
         data object LoadData : Event
         data object BackClicked : Event
         data object ChooseRepoClicked : Event
-        data class SenderAccountSelected(val accountUuid: String?) : Event
         data class PcChanged(val value: String) : Event
         data class WorkspaceChanged(val value: String) : Event
         data class BackendSelected(val backend: TaskMailBackend) : Event
@@ -152,7 +144,6 @@ internal data class TaskNewTaskSubmitUiState(
 
 @Immutable
 internal data class TaskNewTaskValidationErrors(
-    val senderAccountError: String? = null,
     val pcError: String? = null,
     val workspaceError: String? = null,
     val backendError: String? = null,

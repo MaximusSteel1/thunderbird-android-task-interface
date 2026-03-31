@@ -117,25 +117,31 @@ internal class TaskSessionDetailInlineImageScreenTest {
         richDocument: TaskRichTextDocument,
         attachment: TaskTimelineAttachmentUi,
     ): TaskSessionDetailUiState {
+        val resultBody = TaskTimelineItemUi(
+            id = "timeline_rich_image_001",
+            timestamp = 1L,
+            direction = "System",
+            statusLabel = "Done",
+            summary = "Rich image projection available",
+            plainText = "Fallback plain text",
+            renderMode = TaskBodyRenderMode.RichText,
+            richDocument = richDocument,
+            attachments = persistentListOf(attachment),
+        )
         return TaskSessionDetailUiState(
             sessionName = "Build TaskMail Phase 1",
             backend = "Codex",
             status = "Done",
+            pageMode = TaskSessionPageMode.Terminal,
             repoPath = "E:/projects/android_task_manager",
             workdir = "feature/taskmail",
-            timeline = persistentListOf(
-                TaskTimelineItemUi(
-                    id = "timeline_rich_image_001",
-                    timestamp = 1L,
-                    direction = "System",
-                    statusLabel = "Done",
-                    summary = "Rich image projection available",
-                    plainText = "Fallback plain text",
-                    renderMode = TaskBodyRenderMode.RichText,
-                    richDocument = richDocument,
-                    attachments = persistentListOf(attachment),
-                ),
+            resultSummary = TaskResultSummaryUi(
+                headline = "Latest run completed",
+                supportingText = "Rich image projection available",
+                statusLabel = "Done",
             ),
+            resultBody = resultBody,
+            timeline = persistentListOf(resultBody),
         )
     }
 }

@@ -12,11 +12,12 @@ import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.Cont
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult
+import net.thunderbird.feature.taskmail.internal.domain.model.buildRelayArtifactActionTarget
 
 internal data class TaskSessionControlPlaneOverlay(
     val recentContext: TaskRecentContextUi? = null,
     val resultSummary: TaskResultSummaryUi? = null,
-    val artifacts: ImmutableList<TaskSessionArtifactUi> = persistentListOf(),
+    val artifacts: ImmutableList<TaskTimelineAttachmentUi> = persistentListOf(),
 )
 
 internal fun buildTaskSessionControlPlaneOverlay(
@@ -27,7 +28,7 @@ internal fun buildTaskSessionControlPlaneOverlay(
 ): TaskSessionControlPlaneOverlay {
     val artifacts = artifactManifest?.artifacts
         .orEmpty()
-        .map(ControlPlaneArtifact::toTaskSessionArtifactUi)
+        .map(ControlPlaneArtifact::toTaskTimelineAttachmentUi)
         .toImmutableList()
 
     return TaskSessionControlPlaneOverlay(
@@ -36,7 +37,7 @@ internal fun buildTaskSessionControlPlaneOverlay(
             events = events,
             result = result,
         ),
-        resultSummary = result?.toTaskResultSummaryUi(artifactCount = artifacts.size),
+        resultSummary = result?.toTaskResultSummaryUi(),
         artifacts = artifacts,
     )
 }
@@ -54,13 +55,24 @@ internal fun TaskSessionDetailUiState.withControlPlaneOverlay(
 internal fun TaskSessionDetailUiState.withControlPlaneSnapshot(
     snapshot: TaskSessionControlPlaneSnapshot,
 ): TaskSessionDetailUiState {
-    return withControlPlaneOverlay(
-        buildTaskSessionControlPlaneOverlay(
-            commandAck = snapshot.commandAck,
-            events = snapshot.events,
-            result = snapshot.result,
-            artifactManifest = snapshot.artifactManifest,
-        ),
+    val overlay = buildTaskSessionControlPlaneOverlay(
+        commandAck = snapshot.commandAck,
+        events = snapshot.events,
+        result = snapshot.result,
+        artifactManifest = snapshot.artifactManifest,
+    )
+    val projectedState = withControlPlaneOverlay(overlay)
+
+    return projectedState.copy(
+        resultBody = snapshot.result
+            ?.summary
+            ?.let { summary ->
+                timeline.findLatestResultBodyCandidate(
+                    summary = summary,
+                    statusLabel = overlay.resultSummary?.statusLabel ?: projectedState.status,
+                )
+            }
+            ?: projectedState.resultBody,
     )
 }
 
@@ -122,7 +134,6 @@ private fun ControlPlaneEvent.toContextMessage(): String? {
 }
 
 private fun ControlPlaneResult.toTaskResultSummaryUi(
-    artifactCount: Int,
 ): TaskResultSummaryUi {
     val headline = when (finalStatus.lowercase()) {
         "done" -> "Latest run completed"
@@ -132,14 +143,7 @@ private fun ControlPlaneResult.toTaskResultSummaryUi(
         "paused" -> "Session paused"
         else -> "Latest session result"
     }
-    val supportingText = buildList {
-        summary.takeIf(String::isNotBlank)?.let(::add)
-        if (artifactCount > 0) {
-            add("$artifactCount file" + if (artifactCount == 1) "" else "s")
-        }
-    }
-        .joinToString(separator = " · ")
-        .ifBlank { null }
+    val supportingText = summary.takeIf(String::isNotBlank)
 
     return TaskResultSummaryUi(
         headline = headline,
@@ -149,21 +153,29 @@ private fun ControlPlaneResult.toTaskResultSummaryUi(
     )
 }
 
-private fun ControlPlaneArtifact.toTaskSessionArtifactUi(): TaskSessionArtifactUi {
-    val supportingText = buildList {
-        role?.takeIf(String::isNotBlank)?.let(::add)
-        kind.takeIf(String::isNotBlank)?.let(::add)
-        contentType.takeIf(String::isNotBlank)?.let(::add)
-        size.takeIf { it > 0 }?.let { add("${it} B") }
-        downloadRef?.kind?.takeIf(String::isNotBlank)?.let(::add)
+private fun ControlPlaneArtifact.toTaskTimelineAttachmentUi(): TaskTimelineAttachmentUi {
+    val actionTarget = downloadRef?.let { downloadRef ->
+        buildRelayArtifactActionTarget(
+            attachmentId = artifactId,
+            displayName = name,
+            contentType = contentType,
+            kind = downloadRef.kind,
+            fileId = downloadRef.fileId,
+            metadataUrl = downloadRef.metadataUrl,
+            contentUrl = downloadRef.contentUrl,
+            url = downloadRef.url,
+            relayContentType = downloadRef.contentType,
+            encoding = downloadRef.encoding,
+            data = downloadRef.data,
+        )
     }
-        .joinToString(separator = " · ")
-        .ifBlank { null }
-
-    return TaskSessionArtifactUi(
+    return TaskTimelineAttachmentUi(
         id = artifactId,
-        title = name,
-        supportingText = supportingText,
+        displayName = name,
+        contentType = contentType,
+        sizeBytes = size,
+        isImage = contentType.startsWith("image/", ignoreCase = true),
+        actionTarget = actionTarget,
     )
 }
 

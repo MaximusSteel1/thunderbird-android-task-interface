@@ -26,7 +26,9 @@ private const val NO_SENDER_ACCOUNT_MESSAGE =
     "Set up a mailbox account before requesting the TaskMail project list."
 private const val LOAD_SENDER_ACCOUNTS_ERROR =
     "Unable to load mailbox accounts for TaskMail project sync."
-private const val SENDER_ACCOUNT_REQUIRED_ERROR = "Select the mailbox account to sync."
+private const val MULTIPLE_SENDER_ACCOUNTS_MESSAGE =
+    "Android currently supports project sync with exactly one mailbox account. " +
+        "Remove extra accounts before loading the project list."
 private const val RESULT_LOAD_ERROR = "Unable to load the latest TaskMail project list."
 private const val SYNC_REQUEST_FAILURE = "Failed to send TaskMail project sync request."
 private const val SYNC_REQUEST_SUCCESS =
@@ -71,7 +73,6 @@ internal class TaskProjectSyncViewModel(
             Event.SyncRequested -> requestSync()
             Event.MailRetryRequested -> requestSyncViaMail()
             Event.DismissSyncError -> updateState { it.copy(syncError = null) }
-            is Event.SenderAccountSelected -> handleSenderAccountSelected(event.accountUuid)
             is Event.UseRepoClicked -> emitEffect(Effect.ReturnRepo(event.repoPath))
         }
     }
@@ -96,7 +97,6 @@ internal class TaskProjectSyncViewModel(
                 pendingSyncRequestStartedAt = null,
                 canRetryWithMail = false,
                 senderAccountBlockingError = null,
-                senderAccountError = null,
                 syncError = null,
                 resultError = null,
             )
@@ -107,19 +107,17 @@ internal class TaskProjectSyncViewModel(
                 getTaskMailSenderAccounts()
             }.onSuccess { accounts ->
                 hasLoadedAccounts = true
-                val selectedAccountId = resolveSelectedSenderAccountId(
-                    existingSelection = state.value.selectedSenderAccountId,
-                    accounts = accounts,
-                )
+                val selectedAccountId = accounts.singleOrNull()?.accountUuid
+                val blockingError = accounts.blockingErrorOrNull()
                 updateState { current ->
                     current.copy(
                         isLoading = false,
-                        senderAccountBlockingError = accounts.blockingErrorOrNull(),
+                        senderAccountBlockingError = blockingError,
                         senderAccounts = accounts.toImmutableList(),
                         selectedSenderAccountId = selectedAccountId,
                         pendingSyncRequestStartedAt = null,
                         canRetryWithMail = false,
-                        senderAccountError = null,
+                        latestResult = if (selectedAccountId == null) null else current.latestResult,
                     )
                 }
                 if (selectedAccountId != null) {
@@ -134,37 +132,9 @@ internal class TaskProjectSyncViewModel(
                         selectedSenderAccountId = null,
                         pendingSyncRequestStartedAt = null,
                         canRetryWithMail = false,
-                        senderAccountError = null,
                         latestResult = null,
                     )
                 }
-            }
-        }
-    }
-
-    private fun handleSenderAccountSelected(accountUuid: String?) {
-        pendingFollowUpRefreshJob?.cancel()
-        updateState {
-            it.copy(
-                selectedSenderAccountId = accountUuid,
-                pendingSyncRequestStartedAt = null,
-                canRetryWithMail = false,
-                senderAccountError = null,
-                syncError = null,
-                resultError = null,
-            )
-        }
-
-        if (accountUuid != null) {
-            loadLatestResult(accountUuid = accountUuid, clearCurrentResult = true)
-        } else {
-            updateState {
-                it.copy(
-                    latestResult = null,
-                    pendingSyncRequestStartedAt = null,
-                    canRetryWithMail = false,
-                    resultError = null,
-                )
             }
         }
     }
@@ -219,7 +189,7 @@ internal class TaskProjectSyncViewModel(
         val currentState = state.value
         if (!currentState.canRequestSync) return
 
-        val accountUuid = resolveSelectedAccountIdForSync(currentState) ?: return
+        val accountUuid = currentState.selectedSenderAccountId ?: return
         val requestStartedAt = currentTimeProvider()
         pendingFollowUpRefreshJob?.cancel()
         debugRecorder.record(
@@ -231,7 +201,6 @@ internal class TaskProjectSyncViewModel(
             it.copy(
                 isSyncing = true,
                 syncError = null,
-                senderAccountError = null,
             )
         }
 
@@ -264,7 +233,6 @@ internal class TaskProjectSyncViewModel(
                 isSyncing = true,
                 canRetryWithMail = false,
                 syncError = null,
-                senderAccountError = null,
             )
         }
 
@@ -400,36 +368,10 @@ internal class TaskProjectSyncViewModel(
         }
     }
 
-    private fun resolveSelectedAccountIdForSync(state: State): String? {
-        val selectedAccountId = state.selectedSenderAccountId
-            ?.takeIf { accountUuid ->
-                state.senderAccounts.any { it.accountUuid == accountUuid }
-            }
-
-        return if (state.requiresSenderAccountSelection && selectedAccountId == null) {
-            updateState { it.copy(senderAccountError = SENDER_ACCOUNT_REQUIRED_ERROR) }
-            null
-        } else {
-            selectedAccountId
-        }
-    }
-
-    private fun resolveSelectedSenderAccountId(
-        existingSelection: String?,
-        accounts: List<TaskMailSenderAccount>,
-    ): String? {
-        return when {
-            accounts.isEmpty() -> null
-            accounts.size == 1 -> accounts.single().accountUuid
-            existingSelection != null && accounts.any { it.accountUuid == existingSelection } -> existingSelection
-            else -> null
-        }
-    }
-
     private fun resolveMailRetryRequest(state: State): MailRetryRequest? {
         if (!state.canRetryWithMail) return null
 
-        val accountUuid = resolveSelectedAccountIdForSync(state)
+        val accountUuid = state.selectedSenderAccountId
         val requestStartedAt = state.pendingSyncRequestStartedAt
 
         return if (accountUuid != null && requestStartedAt != null) {
@@ -457,9 +399,9 @@ private fun Long?.clearIfFreshResult(result: TaskMailProjectSyncResult?): Long? 
 }
 
 private fun List<TaskMailSenderAccount>.blockingErrorOrNull(): String? {
-    return if (isEmpty()) {
-        NO_SENDER_ACCOUNT_MESSAGE
-    } else {
-        null
+    return when {
+        isEmpty() -> NO_SENDER_ACCOUNT_MESSAGE
+        size > 1 -> MULTIPLE_SENDER_ACCOUNTS_MESSAGE
+        else -> null
     }
 }

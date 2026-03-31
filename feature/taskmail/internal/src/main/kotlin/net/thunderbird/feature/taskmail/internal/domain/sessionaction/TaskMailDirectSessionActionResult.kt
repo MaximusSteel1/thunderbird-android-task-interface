@@ -29,6 +29,7 @@ internal sealed interface TaskMailDirectSessionActionResult {
 
     data class Rejected(
         val errorMessage: String,
+        val errorCode: String? = null,
         val requestId: String? = null,
         val receiptId: String? = null,
         val transportMessageId: String? = null,

@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.domain.reply
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlin.test.Test
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 
 class TaskMailReplyBodySerializerTest {
 
@@ -45,6 +46,19 @@ class TaskMailReplyBodySerializerTest {
     }
 
     @Test
+    fun `continue session should prepend permission header when selected`() {
+        val body = testSubject.serialize(
+            TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.ContinueSession,
+                userText = "Please continue with the cleanup.",
+                permission = TaskMailNewTaskPermission.Highest,
+            ),
+        )
+
+        assertThat(body).isEqualTo("Permission: highest\nPlease continue with the cleanup.")
+    }
+
+    @Test
     fun `resume session should prepend slash resume before user text`() {
         val body = testSubject.serialize(
             TaskMailReplyBodyInput(
@@ -66,6 +80,19 @@ class TaskMailReplyBodySerializerTest {
         )
 
         assertThat(body).isEqualTo("/resume")
+    }
+
+    @Test
+    fun `resume session should inject permission header after slash resume`() {
+        val body = testSubject.serialize(
+            TaskMailReplyBodyInput(
+                mode = TaskMailReplyMode.ResumeSession,
+                userText = "Please continue with the cleanup.",
+                permission = TaskMailNewTaskPermission.Default,
+            ),
+        )
+
+        assertThat(body).isEqualTo("/resume\nPermission: default\nPlease continue with the cleanup.")
     }
 
     @Test

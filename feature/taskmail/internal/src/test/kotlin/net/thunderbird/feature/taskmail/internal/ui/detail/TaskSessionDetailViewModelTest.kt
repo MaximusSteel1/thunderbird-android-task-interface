@@ -14,11 +14,13 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.buildJsonObject
@@ -35,12 +37,16 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
 import net.thunderbird.feature.taskmail.internal.data.cache.TaskMailMessageJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneArtifact
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneArtifactManifest
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneDownloadRef
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneExecutionPolicy
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneResult
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneStructuredPayload
-import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjection
+import net.thunderbird.feature.taskmail.internal.data.facade.SessionSnapshotRequestException
 import net.thunderbird.feature.taskmail.internal.domain.model.MessageSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayBootstrapStatus
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskAttachmentActionTarget
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectOutcome
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailDirectSendEvidence
@@ -53,17 +59,26 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageBody
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotHeader
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotRound
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLatestActionSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLiveProcess
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItemKind
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSubscriptionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionSyncState
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.UnifiedMessage
+import net.thunderbird.feature.taskmail.internal.domain.model.buildRelayArtifactActionTarget
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
@@ -84,11 +99,12 @@ import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailSe
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionHistorySnapshot
-import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailSessionUpdates
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailSessionActionSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RefreshTaskMail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailDirectSessionAction
+import net.thunderbird.feature.taskmail.internal.domain.usecase.SendTaskMailReply
 import net.thunderbird.feature.taskmail.internal.domain.usecase.SyncTaskMailCache
 import net.thunderbird.feature.taskmail.internal.preview.TaskMailPreviewData
 import net.thunderbird.feature.taskmail.internal.sync.DEFAULT_MESSAGE_SYNC_SCOPE_KEY
@@ -167,6 +183,25 @@ class TaskSessionDetailViewModelTest {
             assertLoadedDetail()
             assertThat(viewModelState().isRefreshing).isEqualTo(false)
             assertThat(viewModelState().detail?.lastSummary).isEqualTo("VPS cached summary")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load detail should mark legacy mail-only session actions unavailable`() = runMviTest {
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = legacyMailOnlyDetail()),
+            ),
+        ) {
+            start()
+            loadDetail()
+            assertThat(viewModelState().detail?.canReply).isEqualTo(false)
+            assertThat(viewModelState().detail?.canQueryStatus).isEqualTo(false)
+            assertThat(viewModelState().detail?.replyUnavailableReason).isEqualTo(
+                "Session actions are unavailable until this session is backed by VPS session-action data.",
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -394,21 +429,21 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `direct projection should overlay detail status and summary`() = runMviTest {
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `session updates snapshot should overlay detail status and summary`() = runMviTest {
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
-                FakeTaskSessionDetailRepository(),
-                directObserver = directObserver,
+                FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Done,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Done,
                     lastSummary = "Direct terminal summary",
                 ),
             )
@@ -419,22 +454,22 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `direct projection should persist vps native detail into repository`() = runMviTest {
-        val repository = FakeTaskSessionDetailRepository()
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `session updates snapshot should persist vps native detail into repository`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = vpsProjectedDetail())
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository,
-                directObserver = directObserver,
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Done,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Done,
                     lastSummary = "Direct terminal summary",
                 ),
             )
@@ -443,15 +478,73 @@ class TaskSessionDetailViewModelTest {
             assertThat(repository.detail?.projectionSyncState?.dataSource).isEqualTo(
                 TaskSessionProjectionDataSource.VpsNative,
             )
-            assertThat(repository.detail?.projectionSyncState?.lastSequence).isEqualTo(1L)
+            assertThat(repository.detail?.projectionSyncState?.subscriptionStatus).isEqualTo(
+                TaskSessionProjectionSubscriptionStatus.Active,
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `direct projection should continue after enriching provisional key with canonical thread id`() = runMviTest {
+    fun `session updates snapshot should surface live output into active run ui state`() = runMviTest {
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(
+                    detail = currentInputLedDetail().copy(
+                        timeline = listOf(
+                            TaskTimelineItem(
+                                id = "timeline_assistant_previous",
+                                timestamp = 100L,
+                                direction = TaskTimelineDirection.System,
+                                summary = "Older assistant output",
+                                body = TaskMessageBody(
+                                    plainTextFallback = "Older assistant output",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                sessionUpdatesObserver = sessionUpdatesObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Running,
+                    liveProcess = TaskSessionLiveProcess(
+                        status = "streaming",
+                        updatedAt = "2026-03-29T18:31:45Z",
+                        items = persistentListOf(
+                            TaskSessionProcessItem(
+                                itemId = "live_assistant_001",
+                                kind = TaskSessionProcessItemKind.Assistant,
+                                createdAt = "2026-03-29T18:31:30Z",
+                                updatedAt = "2026-03-29T18:31:45Z",
+                                status = "streaming",
+                                text = "Streaming assistant output.",
+                            ),
+                        ),
+                    ),
+                    lastProgressAt = "2026-03-29T18:31:45Z",
+                ),
+            )
+
+            assertThat(viewModelState().detail?.pageMode).isEqualTo(TaskSessionPageMode.ActiveRun)
+            assertThat(viewModelState().detail?.processSection?.visibleItems?.single()?.plainText)
+                .isEqualTo("Streaming assistant output.")
+            assertThat(viewModelState().detail?.lastProgressAt).isEqualTo("2026-03-29T18:31:45Z")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `session updates snapshot should continue after enriching provisional key with canonical thread id`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(
-            detail = directReplyCapableDetail().copy(
+            detail = vpsProjectedDetail().copy(
                 key = TaskSessionKey(
                     workspaceId = "workspace_001",
                     sessionId = "session_001",
@@ -459,54 +552,56 @@ class TaskSessionDetailViewModelTest {
                 ),
             ),
         )
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository,
-                directObserver = directObserver,
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Running,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Running,
                     lastSummary = "Direct running summary",
                 ),
             )
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Done,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Done,
                     lastSummary = "Direct terminal summary",
-                ).copy(lastSequence = 2L),
+                ),
             )
 
             assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
             assertThat(viewModelState().detail?.lastSummary).isEqualTo("Direct terminal summary")
             assertThat(repository.detail?.key?.threadId).isEqualTo("thread_001")
-            assertThat(repository.detail?.projectionSyncState?.lastSequence).isEqualTo(2L)
+            assertThat(repository.detail?.projectionSyncState?.subscriptionStatus).isEqualTo(
+                TaskSessionProjectionSubscriptionStatus.Active,
+            )
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `direct projection should update quick answers while preserving reply context`() = runMviTest {
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `session updates snapshot should update quick answers while preserving reply context`() = runMviTest {
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
-                FakeTaskSessionDetailRepository(),
-                directObserver = directObserver,
+                FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.WaitingUser,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.WaitingUser,
                     pendingQuestions = listOf(
                         TaskQuestionCapsule(
                             questionSetId = "question_set_001",
@@ -531,75 +626,110 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `direct projection should append provisional timeline item`() = runMviTest {
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `session updates snapshot should append terminal timeline item`() = runMviTest {
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
-                FakeTaskSessionDetailRepository(),
-                directObserver = directObserver,
+                FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            val directTimestamp = viewModelState().detail?.timeline
-                ?.maxOfOrNull(TaskTimelineItemUi::timestamp)
-                ?.plus(100L)
-                ?: 100L
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Running,
-                    provisionalTimeline = listOf(
-                        directTimelineItem(
-                            id = "direct:tl_reply_001",
-                            timestamp = directTimestamp,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Running,
+                    timelineItems = listOf(
+                        snapshotTimelineItem(
+                            itemId = "tl_reply_001",
                             businessEventKey = "reply/2026-03-21T22:37:03",
-                            plainText = "Direct reply preview",
+                            text = "Direct reply preview",
                         ),
                     ),
                 ),
             )
 
-            assertThat(viewModelState().detail?.timeline?.first()?.id).isEqualTo("direct:tl_reply_001")
+            assertThat(viewModelState().detail?.timeline?.first()?.id).isEqualTo("snapshot:tl_reply_001")
             assertThat(viewModelState().detail?.timeline?.first()?.plainText).isEqualTo("Direct reply preview")
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `matching mail business event should suppress provisional direct timeline item after refresh`() = runMviTest {
-        val repository = FakeTaskSessionDetailRepository()
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `session updates snapshot should prefer latest round result text for detail result body`() = runMviTest {
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                sessionUpdatesObserver = sessionUpdatesObserver,
+            ),
+        ) {
+            start()
+            loadDetail()
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Done,
+                    lastSummary = "Short terminal summary",
+                    timelineItems = listOf(
+                        snapshotTimelineItem(
+                            itemId = "tl_terminal_done_001",
+                            businessEventKey = "terminal/done/2026-03-29T18:31:00",
+                            text = "Short terminal summary",
+                            status = "done",
+                        ),
+                    ),
+                    historyRounds = listOf(
+                        TaskSessionHistorySnapshotRound(
+                            roundId = "round_003",
+                            roundNumber = 3,
+                            createdAt = "2026-03-29T18:31:00Z",
+                            status = "done",
+                            speakerLabel = "Codex",
+                            resultText = "Full preserved output\n\nChanged files:\n- TaskNewTaskViewModel.kt",
+                        ),
+                    ),
+                ),
+            )
+
+            assertThat(viewModelState().detail?.resultBody?.plainText).isEqualTo(
+                "Full preserved output\n\nChanged files:\n- TaskNewTaskViewModel.kt",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `matching mail business event should suppress snapshot timeline item after refresh`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = vpsProjectedDetail())
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository,
-                directObserver = directObserver,
+                sessionUpdatesObserver = sessionUpdatesObserver,
             ),
         ) {
             start()
             loadDetail()
-            val directTimestamp = viewModelState().detail?.timeline
-                ?.maxOfOrNull(TaskTimelineItemUi::timestamp)
-                ?.plus(100L)
-                ?: 100L
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Running,
-                    provisionalTimeline = listOf(
-                        directTimelineItem(
-                            id = "direct:tl_reply_001",
-                            timestamp = directTimestamp,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Running,
+                    timelineItems = listOf(
+                        snapshotTimelineItem(
+                            itemId = "tl_reply_001",
                             businessEventKey = "reply/2026-03-21T22:37:03",
-                            plainText = "Direct reply preview",
+                            text = "Direct reply preview",
                         ),
                     ),
                 ),
             )
             assertThat(viewModelState().detail?.timeline?.map(TaskTimelineItemUi::id)?.first()).isEqualTo(
-                "direct:tl_reply_001",
+                "snapshot:tl_reply_001",
             )
 
             val originalTimelineIds = repository.detail?.timeline.orEmpty()
@@ -609,7 +739,7 @@ class TaskSessionDetailViewModelTest {
                 timeline = repository.detail?.timeline.orEmpty() + listOf(
                     TaskTimelineItem(
                         id = "mail:reply_001",
-                        timestamp = directTimestamp + 100L,
+                        timestamp = 1_200L,
                         direction = TaskTimelineDirection.System,
                         summary = "Durable reply receipt",
                         body = TaskMessageBody(
@@ -643,35 +773,35 @@ class TaskSessionDetailViewModelTest {
             loadDetail()
             val debugLog = logger.debugMessages.joinToString("\n")
             assertThat(debugLog).contains("Rendered repository detail status=")
-            assertThat(debugLog).contains("directOverlayActive=false")
+            assertThat(debugLog).contains("mailTimelineCount=")
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `direct projection should log direct overlay application`() = runMviTest {
+    fun `session updates snapshot should log facade snapshot application`() = runMviTest {
         val logger = DetailViewModelFakeLogger()
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates()
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
-                FakeTaskSessionDetailRepository(),
-                directObserver = directObserver,
+                FakeTaskSessionDetailRepository(detail = vpsProjectedDetail()),
+                sessionUpdatesObserver = sessionUpdatesObserver,
                 logger = logger,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Done,
+            emitSessionUpdateSnapshot(
+                sampleSessionUpdateSnapshot(
+                    status = TaskMailSessionStatus.Done,
                     lastSummary = "Direct terminal summary",
                 ),
             )
 
             assertThat(logger.debugMessages.joinToString("\n")).contains(
-                "Applying direct detail projection status=Done",
+                "Applying Android session-updates snapshot",
             )
             ensureThatAllEventsAreConsumed()
         }
@@ -805,61 +935,132 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `direct projection should persist and render control-plane result summary`() = runMviTest {
-        val repository = FakeTaskSessionDetailRepository()
-        val directObserver = FakeObserveTaskMailDirectSessionDetail()
+    fun `open latest result artifact should delegate to timeline attachment handler`() = runMviTest {
+        val timelineAttachmentHandler = FakeTaskMailTimelineAttachmentHandler()
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = detailWithControlPlaneArtifact()),
+                timelineAttachmentHandler = timelineAttachmentHandler,
+            ),
+        ) {
+            start()
+            loadDetail()
+            openTimelineAttachment("artifact-summary")
+            assertOpenAttachmentEffect()
+            assertThat(timelineAttachmentHandler.openedAttachments.single().attachmentId).isEqualTo("artifact-summary")
+            assertThat(
+                timelineAttachmentHandler.openedAttachments.single().relayArtifact?.fileId,
+            ).isEqualTo("file_summary_01")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `open server history snapshot attachment should delegate to timeline attachment handler`() = runMviTest {
+        val timelineAttachmentHandler = FakeTaskMailTimelineAttachmentHandler()
+        val historySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(
+            result = Result.success(historySnapshotWithRelayAttachment()),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = legacyMailOnlyDetail()),
+                timelineAttachmentHandler = timelineAttachmentHandler,
+                historySnapshotRepository = historySnapshotRepository,
+            ),
+        ) {
+            start()
+            loadDetail(preferServerHistoryRounds = true)
+            openTimelineAttachment("hist_result_task_001_1")
+            assertOpenAttachmentEffect()
+            assertThat(timelineAttachmentHandler.openedAttachments.single().attachmentId)
+                .isEqualTo("hist_result_task_001_1")
+            assertThat(timelineAttachmentHandler.openedAttachments.single().relayArtifact?.fileId)
+                .isEqualTo("file_history_001")
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should be blocked for legacy mail-only session`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = legacyMailOnlyDetail())
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(directSender.requests.size).isEqualTo(0)
+            assertThat(viewModelState().sendError).isEqualTo(
+                "Session actions are unavailable until this session is backed by VPS session-action data.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should persist and render control-plane result summary`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionType.Reply,
+                requestId = "req_001",
+                receiptId = "cmd_001",
+                controlPlaneSnapshot = TaskSessionControlPlaneSnapshot(
+                    events = listOf(
+                        ControlPlaneEvent(
+                            eventId = "evt_001",
+                            commandId = "cmd_001",
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                            runId = "run_001",
+                            eventType = "running",
+                            payload = buildJsonObject {
+                                put("summary", "Applying persisted control-plane snapshot.")
+                            },
+                        ),
+                    ),
+                    result = ControlPlaneResult(
+                        resultId = "res_001",
+                        commandId = "cmd_001",
+                        workspaceId = "workspace_001",
+                        sessionId = "session_001",
+                        runId = "run_001",
+                        finalStatus = "done",
+                        summary = "Persisted result summary.",
+                        effectiveExecution = ControlPlaneExecutionPolicy(
+                            backend = "codex",
+                            profile = "strong",
+                            permission = "highest",
+                            backendTransport = "sdk",
+                            resolvedModel = "gpt-5-codex",
+                        ),
+                        structuredPayload = ControlPlaneStructuredPayload(kind = "task_outcome"),
+                    ),
+                ),
+            ),
+        )
 
         with(
             TaskSessionDetailViewModelRobot(
                 this,
                 repository,
-                directObserver = directObserver,
+                directSessionActionSender = directSender,
             ),
         ) {
             start()
             loadDetail()
-            emitDirectProjection(
-                sampleDirectProjection(
-                    headerStatus = TaskMailSessionStatus.Done,
-                    lastSummary = "Direct terminal summary",
-                    controlPlaneSnapshot = TaskSessionControlPlaneSnapshot(
-                        events = listOf(
-                            ControlPlaneEvent(
-                                eventId = "evt_001",
-                                commandId = "cmd_001",
-                                workspaceId = "workspace_001",
-                                sessionId = "session_001",
-                                runId = "run_001",
-                                eventType = "running",
-                                payload = buildJsonObject {
-                                    put("summary", "Applying persisted control-plane snapshot.")
-                                },
-                            ),
-                        ),
-                        result = ControlPlaneResult(
-                            resultId = "res_001",
-                            commandId = "cmd_001",
-                            workspaceId = "workspace_001",
-                            sessionId = "session_001",
-                            runId = "run_001",
-                            finalStatus = "done",
-                            summary = "Persisted result summary.",
-                            effectiveExecution = ControlPlaneExecutionPolicy(
-                                backend = "codex",
-                                profile = "strong",
-                                permission = "highest",
-                                backendTransport = "sdk",
-                                resolvedModel = "gpt-5-codex",
-                            ),
-                            structuredPayload = ControlPlaneStructuredPayload(kind = "task_outcome"),
-                        ),
-                    ),
-                ),
-            )
+            changeDraft("ship it")
+            sendReply()
 
             assertThat(viewModelState().detail?.resultSummary?.effectiveExecutionSummary)
                 .isEqualTo("backend=codex · profile=strong · permission=highest · transport=sdk · model=gpt-5-codex")
             assertThat(repository.detail?.controlPlaneSnapshot?.result?.summary).isEqualTo("Persisted result summary.")
+            assertShowMessageEffect("[VPS] Reply submitted. Detail will keep following VPS-native session updates.")
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -892,8 +1093,8 @@ class TaskSessionDetailViewModelTest {
             )
             assertThat(viewModelState().draftText).isEqualTo("")
             assertThat(viewModelState().sendError).isEqualTo(null)
-            assertThat(repository.requestedKeys.size).isEqualTo(3)
-            assertThat(syncRequester.requestedAccountUuids).isEqualTo(listOf(null))
+            assertThat(repository.requestedKeys.size).isEqualTo(2)
+            assertThat(syncRequester.requestedAccountUuids).isEqualTo(emptyList())
             assertShowMessageEffect(
                 "[VPS] Reply submitted. Detail will keep following VPS-native session updates.",
             )
@@ -920,6 +1121,7 @@ class TaskSessionDetailViewModelTest {
         with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
             start()
             loadDetail()
+            changeReplyPermission(TaskMailNewTaskPermission.Highest)
             changeDraft("ship it")
             sendReply()
             assertThat(mailSender.requests.size).isEqualTo(0)
@@ -927,6 +1129,7 @@ class TaskSessionDetailViewModelTest {
                 TaskMailDirectSessionActionRequest.Reply(
                     target = sampleDirectTarget(),
                     replyText = "ship it",
+                    permission = TaskMailNewTaskPermission.Highest,
                 ),
             )
             assertThat(viewModelState().draftText).isEqualTo("")
@@ -961,7 +1164,7 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should reject when direct lane is temporarily unavailable`() = runMviTest {
+    fun `send reply should fail when direct lane is temporarily unavailable`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val mailSender = FakeTaskMailReplySender()
         val directSender = FakeTaskMailDirectSessionActionSender(
@@ -1007,12 +1210,149 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
-    fun `send reply should preserve draft when direct lane hard rejects`() = runMviTest {
+    fun `direct detail should recover via session snapshot when observation completes without projection`() = runMviTest {
+        val initialDetail = queuedVpsPendingDetail()
+        val repository = FakeTaskSessionDetailRepository(detail = initialDetail)
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates().apply {
+            completeWithoutSnapshot()
+        }
+        val historySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(
+            result = Result.success(
+                TaskSessionHistorySnapshot(
+                    snapshotId = "snapshot_queued_001",
+                    generatedAt = "2026-03-29T17:52:52Z",
+                    sessionHeader = TaskSessionHistorySnapshotHeader(
+                        workspaceId = "workspace_001",
+                        sessionId = "session_001",
+                        threadId = "thread_001",
+                        sessionName = "thread_20260329_175239_d73c4a",
+                        backend = TaskMailBackend.Codex,
+                        repoPath = "E:/projects/android_task_manager",
+                        workdir = "feature/taskmail/internal",
+                        status = TaskMailSessionStatus.Done,
+                        lifecycle = TaskMailSessionLifecycle.Active,
+                        lastSummary = "Hi.",
+                        timelineItems = persistentListOf(
+                            TaskSessionHistorySnapshotTimelineItem(
+                                itemId = "tl_terminal_done_001",
+                                businessEventKey = "terminal/done/2026-03-29T17:52:52",
+                                itemType = "terminal_summary",
+                                createdAt = "2026-03-29T17:52:52",
+                                status = "done",
+                                text = "Hi.",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                sessionUpdatesObserver = sessionUpdatesObserver,
+                historySnapshotRepository = historySnapshotRepository,
+            ),
+        ) {
+            start()
+            loadDetail()
+
+            assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("Hi.")
+            assertThat(viewModelState().detail?.sessionName).isEqualTo("say hi")
+            assertThat(viewModelState().detail?.timeline?.first()?.plainText).isEqualTo("Hi.")
+            assertThat(repository.detail?.key?.threadId).isEqualTo("thread_001")
+            assertThat(repository.detail?.projectionSyncState?.subscriptionStatus).isEqualTo(
+                TaskSessionProjectionSubscriptionStatus.Idle,
+            )
+            assertThat(historySnapshotRepository.requestedLocators.last()).isEqualTo(
+                TaskSessionHistorySnapshotLocator(
+                    workspaceId = "workspace_001",
+                    sessionId = "session_001",
+                    threadId = null,
+                    repoPath = initialDetail.repoPath,
+                    workdir = initialDetail.workdir,
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `direct detail should retry session snapshot recovery when fallback first sees session not found`() = runMviTest {
+        val initialDetail = queuedVpsPendingDetail()
+        val repository = FakeTaskSessionDetailRepository(detail = initialDetail)
+        val sessionUpdatesObserver = FakeObserveTaskMailSessionUpdates().apply {
+            completeWithoutSnapshot()
+        }
+        val historySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(
+            scriptedResults = mutableListOf(
+                Result.failure(
+                    SessionSnapshotRequestException(
+                        errorCode = "session_not_found",
+                        message = "could not resolve a session for the requested session_id",
+                        retryable = true,
+                    ),
+                ),
+                Result.success(
+                    TaskSessionHistorySnapshot(
+                        snapshotId = "snapshot_queued_retry_001",
+                        generatedAt = "2026-03-29T18:30:55Z",
+                        sessionHeader = TaskSessionHistorySnapshotHeader(
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                            threadId = "thread_001",
+                            sessionName = "thread_20260329_182702_5ce18c",
+                            backend = TaskMailBackend.Codex,
+                            repoPath = "E:/projects/android_task_manager",
+                            status = TaskMailSessionStatus.Done,
+                            lifecycle = TaskMailSessionLifecycle.Active,
+                            lastSummary = "hi",
+                            timelineItems = persistentListOf(
+                                TaskSessionHistorySnapshotTimelineItem(
+                                    itemId = "tl_terminal_done_retry_001",
+                                    businessEventKey = "terminal/done/2026-03-29T18:27:15",
+                                    itemType = "terminal_summary",
+                                    createdAt = "2026-03-29T18:27:15",
+                                    status = "done",
+                                    text = "hi",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                sessionUpdatesObserver = sessionUpdatesObserver,
+                historySnapshotRepository = historySnapshotRepository,
+                sessionSnapshotRecoveryMaxAttempts = 2,
+                sessionSnapshotRecoveryDelayMs = 0L,
+            ),
+        ) {
+            start()
+            loadDetail()
+
+            assertThat(viewModelState().detail?.status).isEqualTo(TaskMailSessionStatus.Done.name)
+            assertThat(viewModelState().detail?.lastSummary).isEqualTo("hi")
+            assertThat(historySnapshotRepository.requestedLocators.size).isEqualTo(2)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should fail when direct lane reports unresolved recipient`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val mailSender = FakeTaskMailReplySender()
         val directSender = FakeTaskMailDirectSessionActionSender(
             result = TaskMailDirectSessionActionResult.Rejected(
-                errorMessage = "session identity mismatch",
+                errorMessage = "could not resolve a durable canonical reply recipient for the requested session action",
+                errorCode = "session_recipient_unresolved",
                 requestId = "req_rejected",
                 receiptId = "receipt-rejected",
             ),
@@ -1033,6 +1373,37 @@ class TaskSessionDetailViewModelTest {
                 .isEqualTo("req_rejected")
             assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.receiptId)
                 .isEqualTo("receipt-rejected")
+            assertThat(viewModelState().sendError).isEqualTo(
+                "could not resolve a durable canonical reply recipient for the requested session action",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send reply should preserve draft when direct lane hard rejects without mail fallback eligibility`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
+        val mailSender = FakeTaskMailReplySender()
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Rejected(
+                errorMessage = "session identity mismatch",
+                errorCode = "session_identity_mismatch",
+                requestId = "req_rejected",
+                receiptId = "receipt-rejected",
+            ),
+        )
+
+        with(TaskSessionDetailViewModelRobot(this, repository, mailSender, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            changeDraft("ship it")
+            sendReply()
+            assertThat(directSender.requests.size).isEqualTo(1)
+            assertThat(mailSender.requests.size).isEqualTo(0)
+            assertThat(viewModelState().draftText).isEqualTo("ship it")
+            assertThat(viewModelState().latestDirectSessionActionRecord?.evidence?.switchGate).isEqualTo(
+                TaskMailDirectSwitchGate.SwitchBlocker,
+            )
             assertThat(viewModelState().sendError).isEqualTo("session identity mismatch")
             ensureThatAllEventsAreConsumed()
         }
@@ -1401,6 +1772,23 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `status query should be blocked for legacy mail-only session`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = legacyMailOnlyDetail())
+        val directSender = FakeTaskMailDirectSessionActionSender()
+
+        with(TaskSessionDetailViewModelRobot(this, repository, directSessionActionSender = directSender)) {
+            start()
+            loadDetail()
+            sendStatusQuery()
+            assertThat(directSender.requests.size).isEqualTo(0)
+            assertThat(viewModelState().sendError).isEqualTo(
+                "Session actions are unavailable until this session is backed by VPS session-action data.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `status query should use direct lane when canonical workspace id is available`() = runMviTest {
         val repository = FakeTaskSessionDetailRepository(detail = directReplyCapableDetail())
         val mailSender = FakeTaskMailReplySender()
@@ -1459,6 +1847,63 @@ class TaskSessionDetailViewModelTest {
     }
 
     @Test
+    fun `resume should use direct lane for paused session and update pending submission state`() = runMviTest {
+        val repository = FakeTaskSessionDetailRepository(detail = pausedDetail())
+        val directSender = FakeTaskMailDirectSessionActionSender(
+            result = TaskMailDirectSessionActionResult.Accepted(
+                actionType = TaskMailDirectSessionActionRequest.Resume(
+                    target = sampleDirectTarget(),
+                ).actionType,
+                requestId = "req_resume",
+                receiptId = "receipt-resume",
+                transportMessageId = "transport-resume",
+            ),
+        )
+
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                repository,
+                directSessionActionSender = directSender,
+            ),
+        ) {
+            start()
+            loadDetail()
+            resumeSession()
+            assertThat(directSender.requests.single()).isEqualTo(
+                TaskMailDirectSessionActionRequest.Resume(
+                    target = sampleDirectTarget(),
+                ),
+            )
+            assertThat(viewModelState().latestDirectSessionActionRecord?.actionType).isEqualTo(
+                TaskMailDirectSessionActionType.Resume,
+            )
+            assertThat(viewModelState().detail?.pendingSubmission?.message).isEqualTo(
+                "Resume accepted by the PC.",
+            )
+            assertThat(repository.detail?.pendingSubmissions).isEqualTo(
+                listOf(
+                    TaskSessionPendingSubmission(
+                        commandId = "receipt-resume",
+                        requestId = "req_resume",
+                        actionType = TaskMailDirectSessionActionType.Resume,
+                        submittedAt = 1_234L,
+                        ackStatus = TaskMailSessionActionAckStatus.Accepted,
+                        targetIdentity = TaskMailSessionActionTargetIdentity(
+                            workspaceId = "workspace_001",
+                            sessionId = "session_001",
+                        ),
+                    ),
+                ),
+            )
+            assertShowMessageEffect(
+                "[VPS] Resume submitted. Detail will keep following VPS-native session updates.",
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
     fun `status query should be blocked while attachments are selected`() = runMviTest {
         val sender = FakeTaskMailReplySender()
         val replyAttachment = sampleReplyAttachment()
@@ -1481,14 +1926,20 @@ class TaskSessionDetailViewModelTest {
     fun `question choice should use direct answer flow while the session is awaiting user input`() = runMviTest {
         val directSender = FakeTaskMailDirectSessionActionSender()
 
-        with(TaskSessionDetailViewModelRobot(this, FakeTaskSessionDetailRepository(), directSessionActionSender = directSender)) {
+        with(
+            TaskSessionDetailViewModelRobot(
+                this,
+                FakeTaskSessionDetailRepository(detail = singleQuestionDetailWithChoiceLabels()),
+                directSessionActionSender = directSender,
+            ),
+        ) {
             start()
             loadDetail()
-            sendChoice("yes")
+            sendChoice("approve")
             assertThat(directSender.requests.single()).isEqualTo(
                 TaskMailDirectSessionActionRequest.Reply(
                     target = sampleDirectTarget(),
-                    replyText = "yes",
+                    replyText = "approve",
                 ),
             )
             assertThat(viewModelState().sendError).isNull()
@@ -1727,10 +2178,12 @@ private class TaskSessionDetailViewModelRobot(
     private val foregroundRefreshTickerFactory: FakeTaskMailForegroundRefreshTickerFactory =
         FakeTaskMailForegroundRefreshTickerFactory(),
     syncTaskMailCache: SyncTaskMailCache? = null,
-    private val directObserver: FakeObserveTaskMailDirectSessionDetail = FakeObserveTaskMailDirectSessionDetail(),
+    private val sessionUpdatesObserver: FakeObserveTaskMailSessionUpdates = FakeObserveTaskMailSessionUpdates(),
     historySnapshotRepository: TaskSessionHistorySnapshotRepository = FakeTaskSessionHistorySnapshotRepository(),
     logger: DetailViewModelFakeLogger = DetailViewModelFakeLogger(),
     directSessionActionSender: FakeTaskMailDirectSessionActionSender? = FakeTaskMailDirectSessionActionSender(),
+    sessionSnapshotRecoveryMaxAttempts: Int = 18,
+    sessionSnapshotRecoveryDelayMs: Long = 10_000L,
     currentTimeProvider: () -> Long = { 1_234L },
 ) {
     private val getLatestTaskMailSessionActionSendRecord =
@@ -1750,8 +2203,10 @@ private class TaskSessionDetailViewModelRobot(
         timelineAttachmentHandler = timelineAttachmentHandler,
         logger = logger,
         syncTaskMailCache = syncTaskMailCache,
-        observeTaskMailDirectSessionDetail = directObserver,
+        observeTaskMailSessionUpdates = sessionUpdatesObserver,
         getTaskSessionHistorySnapshot = GetTaskSessionHistorySnapshot(historySnapshotRepository),
+        sessionSnapshotRecoveryMaxAttempts = sessionSnapshotRecoveryMaxAttempts,
+        sessionSnapshotRecoveryDelayMs = sessionSnapshotRecoveryDelayMs,
         currentTimeProvider = currentTimeProvider,
     )
     private lateinit var turbines: MviTurbines<TaskSessionDetailContract.State, TaskSessionDetailContract.Effect>
@@ -1763,11 +2218,13 @@ private class TaskSessionDetailViewModelRobot(
     suspend fun loadDetail(
         workspaceId: String? = "workspace_001",
         sessionId: String = "session_001",
+        preferServerHistoryRounds: Boolean = false,
     ) {
         viewModel.event(
             TaskSessionDetailContract.Event.LoadDetail(
                 workspaceId = workspaceId,
                 sessionId = sessionId,
+                preferServerHistoryRounds = preferServerHistoryRounds,
             ),
         )
         mviContext.advanceUntilIdle()
@@ -1775,6 +2232,10 @@ private class TaskSessionDetailViewModelRobot(
 
     fun changeDraft(text: String) {
         viewModel.event(TaskSessionDetailContract.Event.DraftChanged(text))
+    }
+
+    fun changeReplyPermission(permission: TaskMailNewTaskPermission) {
+        viewModel.event(TaskSessionDetailContract.Event.ReplyPermissionChanged(permission))
     }
 
     suspend fun selectAttachments(uriStrings: List<String>) {
@@ -1794,6 +2255,11 @@ private class TaskSessionDetailViewModelRobot(
 
     suspend fun sendStatusQuery() {
         viewModel.event(TaskSessionDetailContract.Event.StatusQueryClicked)
+        mviContext.advanceUntilIdle()
+    }
+
+    suspend fun resumeSession() {
+        viewModel.event(TaskSessionDetailContract.Event.ResumeClicked)
         mviContext.advanceUntilIdle()
     }
 
@@ -1849,8 +2315,8 @@ private class TaskSessionDetailViewModelRobot(
         mviContext.advanceUntilIdle()
     }
 
-    suspend fun emitDirectProjection(projection: TaskMailDirectSessionProjection) {
-        directObserver.emit(projection)
+    suspend fun emitSessionUpdateSnapshot(snapshot: TaskSessionHistorySnapshot) {
+        sessionUpdatesObserver.emit(snapshot)
         mviContext.advanceUntilIdle()
     }
 
@@ -1989,12 +2455,17 @@ private class FakeTaskMailSessionActionSendRecordRepository(
 private class FakeTaskSessionHistorySnapshotRepository(
     private val result: Result<TaskSessionHistorySnapshot> =
         Result.failure(IllegalStateException("history snapshot not configured")),
+    private val scriptedResults: MutableList<Result<TaskSessionHistorySnapshot>> = mutableListOf(),
 ) : TaskSessionHistorySnapshotRepository {
     val requestedLocators = mutableListOf<TaskSessionHistorySnapshotLocator>()
 
     override suspend fun getHistorySnapshot(locator: TaskSessionHistorySnapshotLocator): Result<TaskSessionHistorySnapshot> {
         requestedLocators += locator
-        return result
+        return if (scriptedResults.isNotEmpty()) {
+            scriptedResults.removeAt(0)
+        } else {
+            result
+        }
     }
 }
 
@@ -2051,13 +2522,18 @@ private class DetailViewModelFakeLogger : Logger {
     override fun error(tag: LogTag?, throwable: Throwable?, message: () -> LogMessage) = Unit
 }
 
-private class FakeObserveTaskMailDirectSessionDetail : ObserveTaskMailDirectSessionDetail {
-    private val projections = MutableSharedFlow<TaskMailDirectSessionProjection>(extraBufferCapacity = 1)
+private class FakeObserveTaskMailSessionUpdates : ObserveTaskMailSessionUpdates {
+    private val snapshots = MutableSharedFlow<TaskSessionHistorySnapshot>(extraBufferCapacity = 1)
+    private var flow: Flow<TaskSessionHistorySnapshot> = snapshots
 
-    override fun invoke(detail: TaskSessionDetail): Flow<TaskMailDirectSessionProjection> = projections
+    override fun invoke(detail: TaskSessionDetail): Flow<TaskSessionHistorySnapshot> = flow
 
-    suspend fun emit(projection: TaskMailDirectSessionProjection) {
-        projections.emit(projection)
+    suspend fun emit(snapshot: TaskSessionHistorySnapshot) {
+        snapshots.emit(snapshot)
+    }
+
+    fun completeWithoutSnapshot() {
+        flow = emptyFlow()
     }
 }
 
@@ -2119,16 +2595,16 @@ private class FakeTaskMailTimelineAttachmentHandler(
     ),
     private val saveResult: Result<Unit> = Result.success(Unit),
 ) : TaskMailTimelineAttachmentHandler {
-    val openedAttachments = mutableListOf<TaskMessageAttachment>()
-    val savedAttachments = mutableListOf<Pair<TaskMessageAttachment, String>>()
+    val openedAttachments = mutableListOf<TaskAttachmentActionTarget>()
+    val savedAttachments = mutableListOf<Pair<TaskAttachmentActionTarget, String>>()
 
-    override suspend fun createOpenIntent(attachment: TaskMessageAttachment): Result<android.content.Intent> {
+    override suspend fun createOpenIntent(attachment: TaskAttachmentActionTarget): Result<android.content.Intent> {
         openedAttachments += attachment
         return openIntentResult
     }
 
     override suspend fun saveAttachmentTo(
-        attachment: TaskMessageAttachment,
+        attachment: TaskAttachmentActionTarget,
         destinationUriString: String,
     ): Result<Unit> {
         savedAttachments += attachment to destinationUriString
@@ -2183,6 +2659,72 @@ private fun directReplyCapableDetail(): TaskSessionDetail {
         status = TaskMailSessionStatus.Done,
         question = null,
         pendingQuestions = emptyList(),
+        projectionSyncState = TaskSessionProjectionSyncState(
+            dataSource = TaskSessionProjectionDataSource.VpsNative,
+            lastSequence = 1L,
+            lastProjectionUpdatedAt = 456L,
+            subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Active,
+        ),
+    )
+}
+
+private fun detailWithControlPlaneArtifact(): TaskSessionDetail {
+    return directReplyCapableDetail().copy(
+        controlPlaneSnapshot = TaskSessionControlPlaneSnapshot(
+            artifactManifest = ControlPlaneArtifactManifest(
+                runId = "run_01",
+                artifacts = listOf(
+                    ControlPlaneArtifact(
+                        artifactId = "artifact-summary",
+                        name = "summary.md",
+                        kind = "file",
+                        role = "output",
+                        contentType = "text/markdown",
+                        size = 512L,
+                        downloadRef = ControlPlaneDownloadRef(
+                            kind = "vps_file",
+                            fileId = "file_summary_01",
+                            metadataUrl = "/v1/files/file_summary_01",
+                            contentUrl = "/v1/files/file_summary_01/content",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
+private fun historySnapshotWithRelayAttachment(): TaskSessionHistorySnapshot {
+    return TaskSessionHistorySnapshot(
+        snapshotId = "snapshot_history_001",
+        generatedAt = "2026-03-31T01:40:00Z",
+        rounds = persistentListOf(
+            TaskSessionHistorySnapshotRound(
+                roundId = "hist_round_task_001",
+                roundNumber = 1,
+                createdAt = "2026-03-31T01:39:00Z",
+                status = "done",
+                speakerLabel = "Codex",
+                inputText = "Summarize the homepage changes.",
+                resultText = "Attached the homepage summary artifact.",
+                resultAttachments = persistentListOf(
+                    TaskSessionHistorySnapshotAttachment(
+                        attachmentId = "hist_result_task_001_1",
+                        displayName = "homepage-summary.md",
+                        contentType = "text/markdown",
+                        actionTarget = buildRelayArtifactActionTarget(
+                            attachmentId = "hist_result_task_001_1",
+                            displayName = "homepage-summary.md",
+                            contentType = "text/markdown",
+                            kind = "vps_file",
+                            fileId = "file_history_001",
+                            metadataUrl = "/v1/files/file_history_001",
+                            contentUrl = "/v1/files/file_history_001/content",
+                        ),
+                    ),
+                ),
+            ),
+        ),
     )
 }
 
@@ -2200,6 +2742,36 @@ private fun vpsProjectedDetail(): TaskSessionDetail {
             lastSequence = 9L,
             lastProjectionUpdatedAt = 789L,
             subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Active,
+        ),
+    )
+}
+
+private fun queuedVpsPendingDetail(): TaskSessionDetail {
+    return directReplyCapableDetail().copy(
+        key = TaskSessionKey(
+            workspaceId = "workspace_001",
+            sessionId = "session_001",
+            threadId = null,
+        ),
+        sessionName = "say hi",
+        status = TaskMailSessionStatus.Queued,
+        lastSummary = "[VPS] Task request submitted. Waiting for the first session update.",
+        timeline = listOf(
+            TaskTimelineItem(
+                id = "android-create-session:session_001",
+                timestamp = 1_000L,
+                direction = TaskTimelineDirection.System,
+                summary = "[VPS] Task request submitted. Waiting for the first session update.",
+                body = TaskMessageBody(
+                    plainTextFallback = "[VPS] Task request submitted. Waiting for the first session update.",
+                ),
+            ),
+        ),
+        projectionSyncState = TaskSessionProjectionSyncState(
+            dataSource = TaskSessionProjectionDataSource.VpsNative,
+            lastSequence = 0L,
+            lastProjectionUpdatedAt = 789L,
+            subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Idle,
         ),
     )
 }
@@ -2232,7 +2804,7 @@ private fun multiQuestionDetail(): TaskSessionDetail {
         ),
     )
 
-    return TaskMailPreviewData.sessionDetails.first().copy(
+    return directReplyCapableDetail().copy(
         question = pendingQuestions.last(),
         pendingQuestions = pendingQuestions,
     )
@@ -2249,14 +2821,14 @@ private fun singleQuestionDetailWithChoiceLabels(): TaskSessionDetail {
         ),
     )
 
-    return TaskMailPreviewData.sessionDetails.first().copy(
+    return directReplyCapableDetail().copy(
         question = question,
         pendingQuestions = listOf(question),
     )
 }
 
 private fun pausedDetail(): TaskSessionDetail {
-    return TaskMailPreviewData.sessionDetails.first().copy(
+    return directReplyCapableDetail().copy(
         status = TaskMailSessionStatus.Paused,
         pausedFromStatus = TaskMailSessionStatus.Done,
         question = null,
@@ -2271,6 +2843,18 @@ private fun pausedSingleQuestionDetail(): TaskSessionDetail {
     )
 }
 
+private fun legacyMailOnlyDetail(): TaskSessionDetail {
+    return TaskMailPreviewData.sessionDetails.first().copy(
+        status = TaskMailSessionStatus.Done,
+        question = null,
+        pendingQuestions = emptyList(),
+        projectionSyncState = TaskSessionProjectionSyncState(
+            dataSource = TaskSessionProjectionDataSource.MailCompatibilityImport,
+            subscriptionStatus = TaskSessionProjectionSubscriptionStatus.Unknown,
+        ),
+    )
+}
+
 private fun sampleDirectTarget(): TaskMailDirectSessionActionTarget {
     return TaskMailDirectSessionActionTarget(
         workspaceId = "workspace_001",
@@ -2278,47 +2862,54 @@ private fun sampleDirectTarget(): TaskMailDirectSessionActionTarget {
     )
 }
 
-private fun sampleDirectProjection(
-    headerStatus: TaskMailSessionStatus,
+private fun sampleSessionUpdateSnapshot(
+    status: TaskMailSessionStatus,
     lastSummary: String? = null,
+    lastProgressAt: String? = null,
+    liveProcess: TaskSessionLiveProcess? = null,
     pendingQuestions: List<TaskQuestionCapsule> = emptyList(),
-    provisionalTimeline: List<TaskTimelineItem> = emptyList(),
-    controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
-): TaskMailDirectSessionProjection {
-    return TaskMailDirectSessionProjection(
-        canonicalWorkspaceId = "workspace_001",
-        canonicalSessionId = "session_001",
-        canonicalThreadId = "thread_001",
-        taskId = "task_001",
-        sessionName = "Build TaskMail Phase 1",
-        backend = TaskMailBackend.Codex,
-        headerStatus = headerStatus,
-        headerLifecycle = TaskMailSessionLifecycle.Active,
-        repoPath = "E:/projects/android_task_manager",
-        workdir = "feature/taskmail/internal",
-        lastSummary = lastSummary,
-        pendingQuestions = pendingQuestions,
-        provisionalTimeline = provisionalTimeline,
-        lastSequence = 1L,
-        controlPlaneSnapshot = controlPlaneSnapshot,
+    timelineItems: List<TaskSessionHistorySnapshotTimelineItem> = emptyList(),
+    historyRounds: List<TaskSessionHistorySnapshotRound> = emptyList(),
+    threadId: String = "thread_001",
+): TaskSessionHistorySnapshot {
+    return TaskSessionHistorySnapshot(
+        snapshotId = "snapshot_001",
+        generatedAt = "2026-03-29T18:31:00Z",
+        sessionHeader = TaskSessionHistorySnapshotHeader(
+            workspaceId = "workspace_001",
+            sessionId = "session_001",
+            threadId = threadId,
+            sessionName = "Build TaskMail Phase 1",
+            backend = TaskMailBackend.Codex,
+            repoPath = "E:/projects/android_task_manager",
+            workdir = "feature/taskmail/internal",
+            status = status,
+            lifecycle = TaskMailSessionLifecycle.Active,
+            lastSummary = lastSummary,
+            lastProgressAt = lastProgressAt,
+            liveProcess = liveProcess,
+            pendingQuestions = pendingQuestions.toImmutableList(),
+            timelineItems = timelineItems.toImmutableList(),
+        ),
+        rounds = historyRounds.toImmutableList(),
     )
 }
 
-private fun directTimelineItem(
-    id: String,
-    timestamp: Long,
+private fun snapshotTimelineItem(
+    itemId: String,
     businessEventKey: String,
-    plainText: String,
-): TaskTimelineItem {
-    return TaskTimelineItem(
-        id = id,
-        timestamp = timestamp,
-        direction = TaskTimelineDirection.System,
-        summary = plainText,
-        body = TaskMessageBody(
-            plainTextFallback = plainText,
-        ),
-        businessEventKeys = listOf(businessEventKey),
+    text: String,
+    createdAt: String = "2026-03-29T18:31:00Z",
+    itemType: String = "terminal_summary",
+    status: String? = "running",
+): TaskSessionHistorySnapshotTimelineItem {
+    return TaskSessionHistorySnapshotTimelineItem(
+        itemId = itemId,
+        businessEventKey = businessEventKey,
+        itemType = itemType,
+        createdAt = createdAt,
+        status = status,
+        text = text,
     )
 }
 

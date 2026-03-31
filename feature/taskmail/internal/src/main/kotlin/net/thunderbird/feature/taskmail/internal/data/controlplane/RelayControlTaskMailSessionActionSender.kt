@@ -20,6 +20,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayComman
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayCommandAck
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.newtask.toCanonicalWireValue
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
@@ -123,6 +124,7 @@ internal class RelayControlTaskMailSessionActionSender(
                             "reply",
                             buildJsonObject {
                                 put("reply_text", request.replyText)
+                                put("permission", request.permission.toCanonicalWireValue())
                             },
                         )
                     }
@@ -160,6 +162,7 @@ private fun Throwable.toDirectSessionActionResult(
             if (code in HARD_REJECTION_CODES) {
                 TaskMailDirectSessionActionResult.Rejected(
                     errorMessage = message,
+                    errorCode = code,
                     requestId = requestId,
                 )
             } else {
@@ -199,6 +202,7 @@ private fun RelayCommandAck.toDirectSessionActionResult(
         if (relayErrorCode in HARD_REJECTION_CODES) {
             TaskMailDirectSessionActionResult.Rejected(
                 errorMessage = errorMessage?.takeIf(String::isNotBlank) ?: DEFAULT_DIRECT_REJECTION_MESSAGE,
+                errorCode = relayErrorCode,
                 requestId = requestId,
                 receiptId = receiptId,
                 transportMessageId = transportMessageId,

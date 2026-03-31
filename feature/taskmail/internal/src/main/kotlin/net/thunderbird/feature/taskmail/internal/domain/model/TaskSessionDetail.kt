@@ -22,4 +22,5 @@ internal data class TaskSessionDetail(
     val controlPlaneSnapshot: TaskSessionControlPlaneSnapshot? = null,
     val pendingSubmissions: List<TaskSessionPendingSubmission> = emptyList(),
     val projectionSyncState: TaskSessionProjectionSyncState = TaskSessionProjectionSyncState(),
+    val liveProcess: TaskSessionLiveProcess? = null,
 )

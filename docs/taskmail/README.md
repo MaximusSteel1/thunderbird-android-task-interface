@@ -45,6 +45,8 @@
   这份文档当前冻结了 Android 侧“用户如何理解并使用多 PC TaskMail 工作台”的主读法
 - 信息架构 companion：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-information-architecture-v0.1.md`
   这份文档当前冻结了页面结构、导航层次与页面职责
+- Artifact 体验规则 companion：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-artifact-experience-rules-v0.1.md`
+  这份文档当前冻结了 Android 侧“输入附件 / 结果文件 / 历史文件”应如何被统一消费，以及 `Open / Save / Preview` 的长期规则
 - 页面状态与交互映射 companion：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-viewstate-action-mapping-v0.1.md`
   这份文档当前冻结了页面状态、VPS 领域对象与交互动作之间的映射
 - 核心页面低保真方案：`docs/taskmail/planning/android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`

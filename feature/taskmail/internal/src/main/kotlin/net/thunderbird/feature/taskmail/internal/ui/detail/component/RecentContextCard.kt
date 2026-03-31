@@ -10,17 +10,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonText
 import app.k9mail.core.ui.compose.designsystem.atom.card.CardOutlined
-import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorText
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorTextStyle
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskRecentContextUi
 
 @Composable
 internal fun RecentContextCard(
     context: TaskRecentContextUi,
-    onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showHistoryButton: Boolean = false,
+    onHistoryClick: () -> Unit = {},
 ) {
     CardOutlined(
         modifier = modifier
@@ -38,6 +40,7 @@ internal fun RecentContextCard(
             ContextLine(
                 label = "You last said",
                 value = context.latestUserMessage,
+                enableLocatorCollapse = false,
             )
             ContextLine(
                 label = "Latest session output",
@@ -47,11 +50,13 @@ internal fun RecentContextCard(
                 label = "Waiting for",
                 value = context.waitingForUserText,
             )
-            ButtonText(
-                text = "View history",
-                onClick = onHistoryClick,
-                modifier = Modifier.testTag("TaskSessionDetailHistoryButton"),
-            )
+            if (showHistoryButton) {
+                ButtonText(
+                    text = "View history",
+                    onClick = onHistoryClick,
+                    modifier = Modifier.testTag("TaskSessionDetailRecentContextHistoryButton"),
+                )
+            }
         }
     }
 }
@@ -60,6 +65,7 @@ internal fun RecentContextCard(
 private fun ContextLine(
     label: String,
     value: String?,
+    enableLocatorCollapse: Boolean = true,
 ) {
     if (value.isNullOrBlank()) return
 
@@ -68,6 +74,14 @@ private fun ContextLine(
             text = label,
             color = MainTheme.colors.onSurfaceVariant,
         )
-        TextBodyMedium(text = value)
+        if (enableLocatorCollapse) {
+            TaskCodeLocatorText(
+                text = value,
+                style = TaskCodeLocatorTextStyle.BodyMedium,
+                color = MainTheme.colors.onSurface,
+            )
+        } else {
+            app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium(text = value)
+        }
     }
 }

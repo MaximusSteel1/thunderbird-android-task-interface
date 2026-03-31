@@ -65,6 +65,81 @@ internal fun parseStructuredReplyAnswers(
     return Result.success(answers.values.toList())
 }
 
+internal fun extractStructuredReplyDraftValues(
+    draftText: String,
+    pendingQuestions: List<TaskPendingQuestionUi>,
+): Map<String, String> {
+    if (pendingQuestions.isEmpty()) return emptyMap()
+
+    val questionIds = pendingQuestions.map(TaskPendingQuestionUi::questionId).toSet()
+    val lines = structuredReplyLines(draftText)
+    val answers = linkedMapOf<String, String>()
+    var index = 0
+
+    while (index < lines.size) {
+        val line = lines[index]
+        val parsedAnswer = if (line.equals("Answers:", ignoreCase = true)) {
+            null
+        } else {
+            parseStructuredAnswerLine(line)
+        }
+
+        if (parsedAnswer == null) {
+            index += 1
+            continue
+        }
+
+        val (key, value) = parsedAnswer
+        when {
+            key in questionIds -> {
+                if (value.isNotBlank()) {
+                    answers[key] = value
+                }
+                index += 1
+            }
+
+            key.equals(QUESTION_ID_KEY, ignoreCase = true) -> {
+                val questionId = value
+                val nextLine = lines.getOrNull(index + 1)
+                    ?.takeIf { candidate ->
+                        candidate.isNotBlank() &&
+                            !candidate.equals("Answers:", ignoreCase = true) &&
+                            !candidate.isStructuredAnswerDeclaration(questionIds)
+                    }
+                if (questionId in questionIds && nextLine != null) {
+                    answers[questionId] = nextLine
+                    index += 2
+                } else {
+                    index += 1
+                }
+            }
+
+            else -> index += 1
+        }
+    }
+
+    return answers
+}
+
+internal fun buildStructuredReplyDraft(
+    questionIdsInOrder: List<String>,
+    answersByQuestionId: Map<String, String>,
+): String {
+    return buildString {
+        append("Answers:")
+        questionIdsInOrder.forEach { questionId ->
+            val answer = answersByQuestionId[questionId]
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: return@forEach
+            appendLine()
+            append(questionId)
+            append(": ")
+            append(answer)
+        }
+    }
+}
+
 private fun structuredReplyLines(draftText: String): List<String> {
     return draftText.lineSequence()
         .map { it.trim() }

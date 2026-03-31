@@ -1,5 +1,6 @@
 package app.k9mail.core.ui.compose.designsystem.atom.text
 
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -7,6 +8,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import androidx.compose.material3.Text as Material3Text
 
@@ -40,6 +43,7 @@ fun TextBodyMedium(
     textAlign: TextAlign? = null,
     overflow: TextOverflow = TextOverflow.Clip,
     maxLines: Int = Int.MAX_VALUE,
+    inlineContent: ImmutableMap<String, InlineTextContent> = persistentMapOf(),
     onTextLayout: (TextLayoutResult) -> Unit = {},
 ) {
     Material3Text(
@@ -50,6 +54,7 @@ fun TextBodyMedium(
         overflow = overflow,
         maxLines = maxLines,
         style = MainTheme.typography.bodyMedium,
+        inlineContent = inlineContent,
         onTextLayout = onTextLayout,
     )
 }

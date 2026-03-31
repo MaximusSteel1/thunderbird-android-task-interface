@@ -12,22 +12,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilled
-import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilledTonal
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonOutlined
-import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonSegmentedSingleChoice
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonText
 import app.k9mail.core.ui.compose.designsystem.atom.card.CardElevated
-import app.k9mail.core.ui.compose.designsystem.atom.card.CardOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyLarge
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
-import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
 import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlined
 import app.k9mail.core.ui.compose.designsystem.molecule.ErrorView
 import app.k9mail.core.ui.compose.designsystem.molecule.PullToRefreshBox
@@ -35,31 +31,27 @@ import app.k9mail.core.ui.compose.designsystem.organism.SubtitleTopAppBarWithBac
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
+import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import kotlinx.collections.immutable.toImmutableList
-import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.ArtifactSection
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.CurrentRoundInputCard
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.HistoryContextSheet
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.PendingQuestionCard
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.ProcessFoldCard
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.ResultSummaryCard
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionControlRail
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionEnvironmentCard
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionMetadataCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskProcessSection
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposer
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskReplyComposerState
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCard
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCardStyle
-
-private val replyPermissionOptions = TaskMailNewTaskPermission.entries.toImmutableList()
-private val replyPermissionLabel: (TaskMailNewTaskPermission) -> String = { permission ->
-    when (permission) {
-        TaskMailNewTaskPermission.Default -> "Default"
-        TaskMailNewTaskPermission.Highest -> "Highest"
-    }
-}
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskSecondaryActionsCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskSessionMetaCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskSessionStatusCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskStructuredReplyInputUi
 
 @Composable
 internal fun TaskSessionDetailContent(
@@ -167,9 +159,12 @@ private fun TaskSessionDetailLoadedContent(
 ) {
     val detail = state.detail ?: return
     val replyComposerState = state.toReplyComposerState(detail)
-    val isCurrentInputLedMode = detail.isCurrentInputLedMode()
-    var isProcessExpanded by rememberSaveable(detail.sessionId, detail.status) {
-        mutableStateOf(false)
+    var isProcessExpanded by rememberSaveable(
+        detail.sessionId,
+        detail.pageMode,
+        detail.processSection?.defaultExpanded,
+    ) {
+        mutableStateOf(detail.processSection?.defaultExpanded == true)
     }
 
     PullToRefreshBox(
@@ -186,115 +181,135 @@ private fun TaskSessionDetailLoadedContent(
         ) {
             refreshErrorItem(refreshError = state.refreshError)
             item {
-                SessionEnvironmentCard(
-                    headline = detail.environmentHeadline(),
-                    workspaceLabel = detail.workspaceLabel(),
+                TaskSessionStatusCard(
+                    status = detail.status,
+                    headline = detail.statusHeadline(),
+                    actorHint = detail.statusActorHint(),
+                    submissionMessage = detail.pendingSubmission?.message,
+                    supportingText = detail.statusSupportingText(),
+                    timingRows = detail.statusTimingRows(),
                 )
             }
 
-            if (isCurrentInputLedMode) {
-                item {
-                    CurrentRoundInputCard(
-                        status = detail.status,
-                        body = detail.currentInputBodyText(state),
-                        permissionLabel = replyPermissionLabel(state.selectedReplyPermission),
-                        attachments = state.replyAttachments,
-                    )
-                }
-            } else {
-                resultSummaryItem(
-                    detail = detail,
-                    title = "Latest result",
-                    supportingText = "Read the last stable output before deciding how to continue.",
-                )
-            }
-
-            processItems(
-                timeline = detail.timeline,
-                isExpanded = isProcessExpanded,
-                onToggle = { isProcessExpanded = !isProcessExpanded },
-                onOpenTimelineAttachment = onOpenTimelineAttachment,
-                onSaveTimelineAttachment = onSaveTimelineAttachment,
-                processSectionTitle = processSectionTitle(isCurrentInputLedMode = isCurrentInputLedMode),
-                processSectionSupportingText = processSectionSupportingText(
-                    isCurrentInputLedMode = isCurrentInputLedMode,
-                ),
-            )
-
-            if (isCurrentInputLedMode) {
-                item {
-                    SessionControlRail(
-                        canQueryStatus = replyComposerState.canQueryStatus,
-                        isActionEnabled = !state.isSending,
-                        onStatusQuery = {
-                            onEvent(TaskSessionDetailContract.Event.StatusQueryClicked)
-                        },
-                        onGuide = { onEvent(TaskSessionDetailContract.Event.GuideClicked) },
-                        onStopRunning = {
-                            onEvent(TaskSessionDetailContract.Event.StopRunningClicked)
-                        },
-                    )
-                }
-                if (state.isGuideComposerVisible) {
+            when (detail.pageMode) {
+                TaskSessionPageMode.ActiveRun -> {
                     item {
-                        GuideComposerCard(
+                        CurrentRoundInputCard(
+                            status = detail.status,
+                            body = detail.currentInputBodyText(state),
+                            permissionLabel = state.selectedReplyPermission.displayLabel(),
+                            attachments = state.replyAttachments,
+                        )
+                    }
+                    item {
+                        TaskSecondaryActionsCard(
+                            canQueryStatus = replyComposerState.canQueryStatus,
+                            showGuide = true,
+                            showResume = false,
+                            showStopRunning = true,
+                            showDeactivate = false,
+                            isActionEnabled = !state.isSending,
+                            onStatusQuery = {
+                                onEvent(TaskSessionDetailContract.Event.StatusQueryClicked)
+                            },
+                            onGuide = { onEvent(TaskSessionDetailContract.Event.GuideClicked) },
+                            onResume = {},
+                            onStopRunning = {
+                                onEvent(TaskSessionDetailContract.Event.StopRunningClicked)
+                            },
+                            onDeactivate = {},
+                        )
+                    }
+                    if (state.isGuideComposerVisible) {
+                        item {
+                            GuideComposerCard(
+                                state = replyComposerState,
+                                onDraftChanged = {
+                                    onEvent(TaskSessionDetailContract.Event.DraftChanged(it))
+                                },
+                                onSendReply = {
+                                    onEvent(TaskSessionDetailContract.Event.SendReplyClicked)
+                                },
+                                onDismiss = {
+                                    onEvent(TaskSessionDetailContract.Event.GuideDismissed)
+                                },
+                            )
+                        }
+                    }
+                    if (detail.resultSummary != null && detail.resultBody != null) {
+                        resultSummaryItem(
+                            detail = detail,
+                            title = "Previous result",
+                            supportingText = "Latest stable result before the current round started.",
+                            resultBody = detail.resultBody,
+                            onOpenTimelineAttachment = onOpenTimelineAttachment,
+                            onSaveTimelineAttachment = onSaveTimelineAttachment,
+                        )
+                    }
+                }
+
+                TaskSessionPageMode.AwaitingReply,
+                TaskSessionPageMode.Terminal,
+                -> {
+                    resultSummaryItem(
+                        detail = detail,
+                        title = "Latest result",
+                        supportingText = "Read the latest stable output before deciding what to do next.",
+                        resultBody = detail.resultBody,
+                        onOpenTimelineAttachment = onOpenTimelineAttachment,
+                        onSaveTimelineAttachment = onSaveTimelineAttachment,
+                    )
+                    if (detail.pendingQuestions.isNotEmpty()) {
+                        item {
+                            PendingQuestionCard(questions = detail.pendingQuestions)
+                        }
+                    }
+                    if (shouldShowReplyComposer(detail = detail, state = state)) {
+                        replyItem(
                             state = replyComposerState,
-                            onDraftChanged = {
-                                onEvent(TaskSessionDetailContract.Event.DraftChanged(it))
+                            detail = detail,
+                            onEvent = onEvent,
+                            onPickAttachments = onPickAttachments,
+                        )
+                    }
+                    item {
+                        TaskSecondaryActionsCard(
+                            canQueryStatus = replyComposerState.canQueryStatus,
+                            showGuide = false,
+                            showResume = detail.requiresResumeBeforeReply,
+                            showStopRunning = false,
+                            showDeactivate = detail.pageMode != TaskSessionPageMode.ActiveRun,
+                            isActionEnabled = !state.isSending,
+                            onStatusQuery = {
+                                onEvent(TaskSessionDetailContract.Event.StatusQueryClicked)
                             },
-                            onSendReply = {
-                                onEvent(TaskSessionDetailContract.Event.SendReplyClicked)
+                            onGuide = {},
+                            onResume = {
+                                onEvent(TaskSessionDetailContract.Event.ResumeClicked)
                             },
-                            onDismiss = {
-                                onEvent(TaskSessionDetailContract.Event.GuideDismissed)
+                            onStopRunning = {},
+                            onDeactivate = {
+                                onEvent(TaskSessionDetailContract.Event.DeactivateClicked)
                             },
                         )
                     }
                 }
-                resultSummaryItem(
-                    detail = detail,
-                    title = "Previous result",
-                    supportingText = "This was the last stable output before the current round started.",
+            }
+
+            detail.processSection?.let { processSection ->
+                processSectionItem(
+                    section = processSection,
+                    isExpanded = isProcessExpanded,
+                    onToggle = { isProcessExpanded = !isProcessExpanded },
+                    onOpenTimelineAttachment = onOpenTimelineAttachment,
+                    onSaveTimelineAttachment = onSaveTimelineAttachment,
                 )
-                artifactItem(detail = detail)
-            } else {
-                artifactItem(detail = detail)
-                if (detail.pendingQuestions.isNotEmpty()) {
-                    item {
-                        PendingQuestionCard(questions = detail.pendingQuestions)
-                    }
-                }
-                item {
-                    ReplyPermissionCard(
-                        selectedPermission = state.selectedReplyPermission,
-                        onPermissionSelected = {
-                            onEvent(TaskSessionDetailContract.Event.ReplyPermissionChanged(it))
-                        },
-                        enabled = !state.isSending && replyComposerState.canReply,
-                    )
-                }
-                replyItem(
-                    state = replyComposerState,
-                    onEvent = onEvent,
-                    onPickAttachments = onPickAttachments,
-                )
-                item {
-                    DeactivateCard(
-                        enabled = !state.isSending,
-                        onDeactivate = {
-                            onEvent(TaskSessionDetailContract.Event.DeactivateClicked)
-                        },
-                    )
-                }
             }
 
             item {
-                SessionMetadataCard(
+                TaskSessionMetaCard(
+                    headline = detail.sessionMetaHeadline(),
                     lines = detail.metadataLines(),
-                    canQueryStatus = replyComposerState.canQueryStatus && !state.isSending,
-                    onStatusQuery = {
-                        onEvent(TaskSessionDetailContract.Event.StatusQueryClicked)
-                    },
                 )
             }
         }
@@ -324,6 +339,7 @@ private fun LazyListScope.refreshErrorItem(refreshError: String?) {
 
 private fun LazyListScope.replyItem(
     state: TaskReplyComposerState,
+    detail: TaskSessionDetailUiState,
     onEvent: (TaskSessionDetailContract.Event) -> Unit,
     onPickAttachments: () -> Unit,
 ) {
@@ -333,21 +349,42 @@ private fun LazyListScope.replyItem(
             onDraftChanged = {
                 onEvent(TaskSessionDetailContract.Event.DraftChanged(it))
             },
+            onStructuredAnswerChanged = { questionId, answerText ->
+                val nextAnswers = state.structuredQuestions
+                    .associate { structuredQuestion ->
+                        structuredQuestion.questionId to if (structuredQuestion.questionId == questionId) {
+                            answerText
+                        } else {
+                            structuredQuestion.answerText
+                        }
+                    }
+                onEvent(
+                    TaskSessionDetailContract.Event.DraftChanged(
+                        buildStructuredReplyDraft(
+                            questionIdsInOrder = detail.pendingQuestions.map(TaskPendingQuestionUi::questionId),
+                            answersByQuestionId = nextAnswers,
+                        ),
+                    ),
+                )
+            },
             onPickAttachments = onPickAttachments,
             onSendReply = {
                 onEvent(TaskSessionDetailContract.Event.SendReplyClicked)
             },
-            onStatusQuery = {
-                onEvent(TaskSessionDetailContract.Event.StatusQueryClicked)
+            onResume = {
+                onEvent(TaskSessionDetailContract.Event.ResumeClicked)
             },
             onSendChoice = {
                 onEvent(TaskSessionDetailContract.Event.SendChoiceClicked(it))
             },
-            onRemoveAttachment = {
-                onEvent(TaskSessionDetailContract.Event.RemoveAttachmentClicked(it))
-            },
             onDismissSendError = {
                 onEvent(TaskSessionDetailContract.Event.DismissSendError)
+            },
+            onPermissionSelected = {
+                onEvent(TaskSessionDetailContract.Event.ReplyPermissionChanged(it))
+            },
+            onRemoveAttachment = {
+                onEvent(TaskSessionDetailContract.Event.RemoveAttachmentClicked(it))
             },
         )
     }
@@ -431,31 +468,18 @@ private fun GuideComposerCard(
     }
 }
 
-private fun LazyListScope.processItems(
-    timeline: kotlinx.collections.immutable.ImmutableList<TaskTimelineItemUi>,
+private fun LazyListScope.processSectionItem(
+    section: TaskProcessSectionUi,
     isExpanded: Boolean,
     onToggle: () -> Unit,
     onOpenTimelineAttachment: (String) -> Unit,
     onSaveTimelineAttachment: (String) -> Unit,
-    processSectionTitle: String,
-    processSectionSupportingText: String,
 ) {
     item {
-        ProcessFoldCard(
-            timelineCount = timeline.size,
+        TaskProcessSection(
+            section = section,
             isExpanded = isExpanded,
             onToggle = onToggle,
-            title = processSectionTitle,
-            supportingText = processSectionSupportingText,
-        )
-    }
-
-    if (!isExpanded) return
-
-    items(timeline, key = TaskTimelineItemUi::id) { item ->
-        TimelineMessageCard(
-            item = item,
-            style = TimelineMessageCardStyle.ProcessRecord,
             onOpenAttachment = onOpenTimelineAttachment,
             onSaveAttachment = onSaveTimelineAttachment,
         )
@@ -466,6 +490,9 @@ private fun LazyListScope.resultSummaryItem(
     detail: TaskSessionDetailUiState,
     title: String,
     supportingText: String,
+    resultBody: TaskTimelineItemUi? = null,
+    onOpenTimelineAttachment: (String) -> Unit,
+    onSaveTimelineAttachment: (String) -> Unit,
 ) {
     detail.resultSummary?.let { result ->
         item {
@@ -474,22 +501,28 @@ private fun LazyListScope.resultSummaryItem(
                 title = title,
                 supportingText = supportingText,
                 speakerLabel = detail.backend,
+                resultBody = resultBody,
+                supplementalAttachments = detail.artifacts,
+                timestampText = resultBody?.timestampText(prefix = "Updated"),
+                onOpenAttachment = onOpenTimelineAttachment,
+                onSaveAttachment = onSaveTimelineAttachment,
             )
         }
-    }
-}
-
-private fun LazyListScope.artifactItem(detail: TaskSessionDetailUiState) {
-    if (detail.artifacts.isEmpty()) return
-
-    item {
-        ArtifactSection(artifacts = detail.artifacts)
     }
 }
 
 private fun TaskSessionDetailContract.State.toReplyComposerState(
     detail: TaskSessionDetailUiState,
 ): TaskReplyComposerState {
+    val structuredAnswers = if (detail.requiresStructuredReply) {
+        extractStructuredReplyDraftValues(
+            draftText = draftText,
+            pendingQuestions = detail.pendingQuestions,
+        )
+    } else {
+        emptyMap()
+    }
+
     return TaskReplyComposerState(
         draftText = draftText,
         isSending = isSending,
@@ -504,108 +537,41 @@ private fun TaskSessionDetailContract.State.toReplyComposerState(
         quickAnswerChoices = detail.quickAnswerChoices,
         replyAttachments = replyAttachments,
         requiresStructuredReply = detail.requiresStructuredReply,
+        structuredQuestions = detail.pendingQuestions
+            .map { question ->
+                TaskStructuredReplyInputUi(
+                    questionId = question.questionId,
+                    questionText = question.questionText,
+                    answerText = structuredAnswers[question.questionId].orEmpty(),
+                    choices = question.choices,
+                    isRequired = question.isRequired,
+                )
+            }
+            .toImmutableList(),
         requiresResumeBeforeReply = detail.requiresResumeBeforeReply,
+        canResume = detail.requiresResumeBeforeReply,
+        selectedPermission = selectedReplyPermission,
         isQuestionReply = detail.pendingQuestions.isNotEmpty(),
         replyLabel = detail.replyLabel,
         replySupportingText = detail.replySupportingText,
     )
 }
 
-@Composable
-private fun ReplyPermissionCard(
-    selectedPermission: TaskMailNewTaskPermission,
-    onPermissionSelected: (TaskMailNewTaskPermission) -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    CardOutlined(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            TextLabelMedium(
-                text = "Permission",
-                color = MainTheme.colors.onSurfaceVariant,
-            )
-            ButtonSegmentedSingleChoice(
-                onClick = {
-                    if (enabled) {
-                        onPermissionSelected(it)
-                    }
-                },
-                options = replyPermissionOptions,
-                optionTitle = replyPermissionLabel,
-                selectedOption = selectedPermission,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DeactivateCard(
-    enabled: Boolean,
-    onDeactivate: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    CardOutlined(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            TextLabelMedium(
-                text = "Session controls",
-                color = MainTheme.colors.onSurfaceVariant,
-            )
-            ButtonFilledTonal(
-                text = "Deactivate",
-                onClick = onDeactivate,
-                enabled = enabled,
-            )
-        }
-    }
-}
-
-private fun TaskSessionDetailUiState.isCurrentInputLedMode(): Boolean {
-    return status.equals("Queued", ignoreCase = true) ||
-        status.equals("Running", ignoreCase = true)
+private fun shouldShowReplyComposer(
+    detail: TaskSessionDetailUiState,
+    state: TaskSessionDetailContract.State,
+): Boolean {
+    return detail.canReply ||
+        detail.requiresResumeBeforeReply ||
+        detail.pendingQuestions.isNotEmpty() ||
+        state.replyAttachments.isNotEmpty() ||
+        state.sendError != null
 }
 
 private fun TaskSessionDetailUiState.topBarSubtitle(): String {
     return workdir
         ?.takeIf(String::isNotBlank)
         ?: backend
-}
-
-private fun TaskSessionDetailUiState.environmentHeadline(): String {
-    val workdirLabel = workdir
-        ?.takeIf(String::isNotBlank)
-        ?: repoPath.substringAfterLast('/').substringAfterLast('\\')
-            .ifBlank { repoPath }
-    return "PC pending · $workdirLabel"
-}
-
-private fun TaskSessionDetailUiState.workspaceLabel(): String {
-    return workspaceId
-        ?.takeIf(String::isNotBlank)
-        ?.let { "Workspace · $it" }
-        ?: "Workspace · missing binding"
-}
-
-private fun processSectionTitle(isCurrentInputLedMode: Boolean): String {
-    return if (isCurrentInputLedMode) {
-        "Run activity"
-    } else {
-        "Run records"
-    }
-}
-
-private fun processSectionSupportingText(isCurrentInputLedMode: Boolean): String {
-    return if (isCurrentInputLedMode) {
-        "Preserved activity records explain what the current run has emitted so far."
-    } else {
-        "Open the preserved records behind the latest stable result when you need detail."
-    }
 }
 
 private fun TaskSessionDetailUiState.currentInputBodyText(
@@ -620,14 +586,132 @@ private fun TaskSessionDetailUiState.currentInputBodyText(
     }
 }
 
+private fun TaskSessionDetailUiState.statusHeadline(): String {
+    return when (pageMode) {
+        TaskSessionPageMode.ActiveRun -> when {
+            status.equals("Queued", ignoreCase = true) -> "Task is queued"
+            else -> "Task is running"
+        }
+
+        TaskSessionPageMode.AwaitingReply -> when {
+            status.equals("Paused", ignoreCase = true) -> "Session is paused"
+            else -> "System is waiting for your reply"
+        }
+
+        TaskSessionPageMode.Terminal -> when {
+            status.equals("Done", ignoreCase = true) -> "Latest run completed"
+            status.equals("Failed", ignoreCase = true) -> "Latest run failed"
+            status.equals("Killed", ignoreCase = true) -> "Run stopped"
+            else -> "Latest session state"
+        }
+    }
+}
+
+private fun TaskSessionDetailUiState.statusActorHint(): String {
+    return when (pageMode) {
+        TaskSessionPageMode.ActiveRun -> "The PC is still working on the current round."
+        TaskSessionPageMode.AwaitingReply -> {
+            if (requiresResumeBeforeReply) {
+                "Resume the session first, then continue with your reply."
+            } else {
+                "It is your turn to reply."
+            }
+        }
+
+        TaskSessionPageMode.Terminal -> "Review the latest result and decide whether to continue."
+    }
+}
+
+private fun TaskSessionDetailUiState.statusSupportingText(): String? {
+    return when (pageMode) {
+        TaskSessionPageMode.ActiveRun -> null
+
+        TaskSessionPageMode.AwaitingReply -> pendingQuestions
+            .takeIf { it.isNotEmpty() }
+            ?.let { questions ->
+                if (questions.size == 1) {
+                    "Review the pending question below before replying."
+                } else {
+                    "${questions.size} pending questions are ready below."
+                }
+            }
+            ?: recentContext?.waitingForUserText?.takeIf(String::isNotBlank)
+            ?: lastSummary?.takeIf(String::isNotBlank)
+
+        TaskSessionPageMode.Terminal -> lastSummary?.takeIf(String::isNotBlank)
+            ?: recentContext?.latestAssistantMessage?.takeIf(String::isNotBlank)
+    }
+}
+
+private fun TaskSessionDetailUiState.statusTimingRows(): List<Pair<String, String>> {
+    return buildList {
+        pendingSubmission
+            ?.submittedAt
+            ?.takeIf { it > 0L }
+            ?.let { submittedAt ->
+                add("Submitted" to submittedAt.timestampText())
+            }
+        lastProgressAt
+            ?.toTimestampLabelOrNull()
+            ?.let { add("Last progress" to it) }
+        lastActiveAt
+            ?.toTimestampLabelOrNull()
+            ?.takeIf { lastActive ->
+                none { (label, value) -> label == "Last progress" && value == lastActive }
+            }
+            ?.let { add("Last active" to it) }
+    }
+}
+
+private fun TaskSessionDetailUiState.sessionMetaHeadline(): String {
+    return workdir
+        ?.takeIf(String::isNotBlank)
+        ?: repoPath.substringAfterLast('/').substringAfterLast('\\').ifBlank { repoPath }
+}
+
 private fun TaskSessionDetailUiState.metadataLines(): List<Pair<String, String>> {
     return buildList {
-        add("Status" to status)
-        add("Backend" to backend)
         add("Repository" to repoPath)
+        add("Backend" to backend)
         workdir?.takeIf(String::isNotBlank)?.let { add("Workdir" to it) }
         workspaceId?.takeIf(String::isNotBlank)?.let { add("Workspace ID" to it) }
         sessionId?.takeIf(String::isNotBlank)?.let { add("Session ID" to it) }
+    }
+}
+
+private fun String.toTimestampLabelOrNull(): String? {
+    return toEpochMillis()
+        .takeIf { it > 0L }
+        ?.timestampText()
+}
+
+private fun String.toEpochMillis(): Long {
+    return runCatching {
+        OffsetDateTime.parse(this).toInstant().toEpochMilli()
+    }.recoverCatching {
+        LocalDateTime.parse(this, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+    }.getOrDefault(0L)
+}
+
+private fun Long.timestampText(prefix: String? = null): String {
+    if (this <= 0L) return prefix?.let { "$it · Unknown time" } ?: "Unknown time"
+
+    val formatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(this))
+    return prefix?.let { "$it · $formatted" } ?: formatted
+}
+
+private fun TaskTimelineItemUi.timestampText(prefix: String? = null): String {
+    return timestamp.timestampText(prefix = prefix)
+}
+
+private fun TaskMailNewTaskPermission.displayLabel(): String {
+    return if (name.equals("Highest", ignoreCase = true)) {
+        "Highest"
+    } else {
+        "Default"
     }
 }
 

@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonSegmentedSingleChoice
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonFilled
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.button.ButtonText
@@ -24,26 +25,39 @@ import app.k9mail.core.ui.compose.designsystem.atom.card.CardOutlined
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyMedium
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodySmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
+import app.k9mail.core.ui.compose.designsystem.atom.text.TextTitleMedium
 import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlined
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icon
 import net.thunderbird.core.ui.compose.designsystem.atom.icon.Icons
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskPendingQuestionChoiceUi
+
+private val replyPermissionOptions = TaskMailNewTaskPermission.entries.toImmutableList()
+private val replyPermissionLabel: (TaskMailNewTaskPermission) -> String = { permission ->
+    when (permission) {
+        TaskMailNewTaskPermission.Default -> "Default"
+        TaskMailNewTaskPermission.Highest -> "Highest"
+    }
+}
 
 @Composable
 internal fun TaskReplyComposer(
     state: TaskReplyComposerState,
     onDraftChanged: (String) -> Unit,
+    onStructuredAnswerChanged: (String, String) -> Unit,
     onPickAttachments: () -> Unit,
     onSendReply: () -> Unit,
-    onStatusQuery: () -> Unit,
+    onResume: () -> Unit,
     onSendChoice: (String) -> Unit,
     onDismissSendError: () -> Unit,
+    onPermissionSelected: (TaskMailNewTaskPermission) -> Unit,
     modifier: Modifier = Modifier,
     onRemoveAttachment: (String) -> Unit = {},
 ) {
@@ -60,7 +74,7 @@ internal fun TaskReplyComposer(
                 onDismissSendError = onDismissSendError,
             )
 
-            if (!state.canReply && !state.canQueryStatus && !hasQuickAnswers) {
+            if (!state.canReply && !state.canResume && !hasQuickAnswers) {
                 ReplyUnavailableWarning(reason = state.replyUnavailableReason)
                 return@CardElevated
             }
@@ -68,10 +82,18 @@ internal fun TaskReplyComposer(
             if (!state.canReply) {
                 ReplyUnavailableWarning(reason = state.replyUnavailableReason)
             } else {
-                ReplyComposerInput(
-                    state = state,
-                    onDraftChanged = onDraftChanged,
-                )
+                if (state.requiresStructuredReply) {
+                    StructuredReplySection(
+                        structuredQuestions = state.structuredQuestions,
+                        isSending = state.isSending,
+                        onStructuredAnswerChanged = onStructuredAnswerChanged,
+                    )
+                } else {
+                    ReplyComposerInput(
+                        state = state,
+                        onDraftChanged = onDraftChanged,
+                    )
+                }
                 ReplyAttachmentSection(
                     replyAttachments = state.replyAttachments,
                     isSending = state.isSending,
@@ -79,12 +101,19 @@ internal fun TaskReplyComposer(
                     onRemoveAttachment = onRemoveAttachment,
                 )
             }
+            if (state.canReply || state.canResume) {
+                ReplyPermissionSection(
+                    selectedPermission = state.selectedPermission,
+                    enabled = !state.isSending && state.canReply,
+                    onPermissionSelected = onPermissionSelected,
+                )
+            }
             ReplyComposerActions(
                 state = state,
                 onSendReply = onSendReply,
-                onStatusQuery = onStatusQuery,
+                onResume = onResume,
             )
-            if (hasQuickAnswers) {
+            if (hasQuickAnswers && state.canReply) {
                 QuickAnswersSection(
                     quickAnswerChoices = state.quickAnswerChoices,
                     isSending = state.isSending,
@@ -150,6 +179,94 @@ private fun ReplyComposerInput(
         isEnabled = !state.isSending,
         isSingleLine = false,
     )
+}
+
+@Composable
+private fun StructuredReplySection(
+    structuredQuestions: ImmutableList<TaskStructuredReplyInputUi>,
+    isSending: Boolean,
+    onStructuredAnswerChanged: (String, String) -> Unit,
+) {
+    structuredQuestions.forEach { question ->
+        StructuredReplyQuestionField(
+            question = question,
+            isSending = isSending,
+            onStructuredAnswerChanged = onStructuredAnswerChanged,
+        )
+    }
+}
+
+@Composable
+private fun StructuredReplyQuestionField(
+    question: TaskStructuredReplyInputUi,
+    isSending: Boolean,
+    onStructuredAnswerChanged: (String, String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextTitleMedium(text = question.questionText)
+        TextLabelMedium(
+            text = buildString {
+                append(if (question.isRequired) "Required" else "Optional")
+                append(" · ID: ")
+                append(question.questionId)
+            },
+            color = MainTheme.colors.onSurfaceVariant,
+        )
+        TextFieldOutlined(
+            value = question.answerText,
+            onValueChange = { answer -> onStructuredAnswerChanged(question.questionId, answer) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("TaskReplyComposerStructuredInput_${question.questionId}"),
+            label = if (question.isRequired) {
+                "Answer"
+            } else {
+                "Optional answer"
+            },
+            isEnabled = !isSending,
+            isSingleLine = false,
+        )
+        if (question.choices.isNotEmpty()) {
+            ChoiceSuggestionsRow(
+                choices = question.choices,
+                selectedValue = question.answerText,
+                isSending = isSending,
+                onChoiceSelected = { answer -> onStructuredAnswerChanged(question.questionId, answer) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChoiceSuggestionsRow(
+    choices: ImmutableList<TaskPendingQuestionChoiceUi>,
+    selectedValue: String,
+    isSending: Boolean,
+    onChoiceSelected: (String) -> Unit,
+) {
+    ButtonSegmentedSingleChoice(
+        onClick = { choice ->
+            if (!isSending) {
+                onChoiceSelected(choice.value)
+            }
+        },
+        options = choices,
+        optionTitle = TaskPendingQuestionChoiceUi::label,
+        selectedOption = choices.firstOrNull { it.value == selectedValue },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    val labeledChoices = choices.filter { it.label != it.value }
+    if (labeledChoices.isNotEmpty()) {
+        TextBodySmall(
+            text = labeledChoices.joinToString(
+                separator = " | ",
+                prefix = "Accepted values: ",
+            ) { choice ->
+                "${choice.label} = ${choice.value}"
+            },
+            color = MainTheme.colors.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -248,13 +365,20 @@ private fun ReplyAttachmentRow(
 private fun ReplyComposerActions(
     state: TaskReplyComposerState,
     onSendReply: () -> Unit,
-    onStatusQuery: () -> Unit,
+    onResume: () -> Unit,
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (state.canReply) {
+        if (state.canResume) {
+            ButtonFilled(
+                text = if (state.isSending) "Sending..." else "Resume",
+                onClick = onResume,
+                modifier = Modifier.testTag("TaskReplyComposerResumeButton"),
+                enabled = !state.isSending,
+            )
+        } else if (state.canReply) {
             ButtonFilled(
                 text = state.sendButtonText,
                 onClick = onSendReply,
@@ -262,11 +386,30 @@ private fun ReplyComposerActions(
                 enabled = !state.isSending && state.canSendReply,
             )
         }
-        ButtonOutlined(
-            text = "/status",
-            onClick = onStatusQuery,
-            modifier = Modifier.testTag("TaskReplyComposerStatusButton"),
-            enabled = state.canQueryStatus && !state.isSending,
+    }
+}
+
+@Composable
+private fun ReplyPermissionSection(
+    selectedPermission: TaskMailNewTaskPermission,
+    enabled: Boolean,
+    onPermissionSelected: (TaskMailNewTaskPermission) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextLabelMedium(
+            text = "Permission",
+            color = MainTheme.colors.onSurfaceVariant,
+        )
+        ButtonSegmentedSingleChoice(
+            onClick = {
+                if (enabled) {
+                    onPermissionSelected(it)
+                }
+            },
+            options = replyPermissionOptions,
+            optionTitle = replyPermissionLabel,
+            selectedOption = selectedPermission,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

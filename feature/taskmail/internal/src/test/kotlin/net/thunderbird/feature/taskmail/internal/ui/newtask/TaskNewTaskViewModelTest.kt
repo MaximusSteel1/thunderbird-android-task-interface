@@ -63,25 +63,23 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
-    fun `load data should block when no sender accounts exist`() = runMviTest {
+    fun `load data should keep send available when no sender accounts exist`() = runMviTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = emptyList())) {
             start()
             loadData()
-            assertThat(viewModelState().senderAccountBlockingError).isEqualTo(
-                "Set up a mailbox account before sending TaskMail requests.",
-            )
-            assertThat(viewModelState().hasBlockingState).isEqualTo(true)
+            assertThat(viewModelState().senderAccounts).isEqualTo(persistentListOf())
+            assertThat(viewModelState().selectedSenderAccountId).isEqualTo(null)
+            assertThat(viewModelState().canSend).isEqualTo(true)
             ensureThatAllEventsAreConsumed()
         }
     }
 
     @Test
-    fun `load data should auto select the only sender account`() = runMviTest {
+    fun `load data should auto resolve single sender account for evidence lookup`() = runMviTest {
         with(TaskNewTaskViewModelRobot(this, senderAccounts = listOf(primarySenderAccount))) {
             start()
             loadData()
             assertThat(viewModelState().selectedSenderAccountId).isEqualTo(primarySenderAccount.accountUuid)
-            assertThat(viewModelState().requiresSenderAccountSelection).isEqualTo(false)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -123,7 +121,7 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
-    fun `load data should leave sender account unselected when multiple accounts exist`() = runMviTest {
+    fun `load data should skip evidence sender resolution when multiple accounts exist`() = runMviTest {
         with(
             TaskNewTaskViewModelRobot(
                 this,
@@ -133,7 +131,7 @@ class TaskNewTaskViewModelTest {
             start()
             loadData()
             assertThat(viewModelState().selectedSenderAccountId).isEqualTo(null)
-            assertThat(viewModelState().requiresSenderAccountSelection).isEqualTo(true)
+            assertThat(viewModelState().lastDirectSendEvidence).isEqualTo(null)
             ensureThatAllEventsAreConsumed()
         }
     }
@@ -187,7 +185,7 @@ class TaskNewTaskViewModelTest {
     }
 
     @Test
-    fun `send should require explicit sender account selection when multiple accounts exist`() = runMviTest {
+    fun `send should not require sender selection when multiple accounts exist`() = runMviTest {
         with(
             TaskNewTaskViewModelRobot(
                 this,
@@ -196,12 +194,52 @@ class TaskNewTaskViewModelTest {
         ) {
             start()
             loadData()
+            selectRouteTarget()
             selectBackend(TaskMailBackend.Codex)
             changeRepo("E:/projects/android_task_manager")
             changeTask("Audit the new flow")
             send()
-            assertThat(viewModelState().validationErrors.senderAccountError).isEqualTo("Select the sending account.")
-            assertThat(createSessionCallCount()).isEqualTo(0)
+            assertThat(createSessionCallCount()).isEqualTo(1)
+            assertThat(latestSentDraft()?.senderAccountId).isEqualTo(null)
+            assertThat(collectedEffects().toSet()).isEqualTo(
+                setOf(
+                    TaskNewTaskContract.Effect.ShowMessage(
+                        "[VPS] Session accepted. Opening session detail.",
+                    ),
+                    TaskNewTaskContract.Effect.NavigateToSession(
+                        workspaceId = "workspace_android_app",
+                        sessionId = "sess_001",
+                    ),
+                ),
+            )
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `send should not require sender account when no sender accounts exist`() = runMviTest {
+        with(TaskNewTaskViewModelRobot(this, senderAccounts = emptyList())) {
+            start()
+            loadData()
+            selectRouteTarget()
+            selectBackend(TaskMailBackend.Codex)
+            changeRepo("E:/projects/android_task_manager")
+            changeTask("Audit the new flow")
+            send()
+
+            assertThat(createSessionCallCount()).isEqualTo(1)
+            assertThat(latestSentDraft()?.senderAccountId).isEqualTo(null)
+            assertThat(collectedEffects().toSet()).isEqualTo(
+                setOf(
+                    TaskNewTaskContract.Effect.ShowMessage(
+                        "[VPS] Session accepted. Opening session detail.",
+                    ),
+                    TaskNewTaskContract.Effect.NavigateToSession(
+                        workspaceId = "workspace_android_app",
+                        sessionId = "sess_001",
+                    ),
+                ),
+            )
             ensureThatAllEventsAreConsumed()
         }
     }

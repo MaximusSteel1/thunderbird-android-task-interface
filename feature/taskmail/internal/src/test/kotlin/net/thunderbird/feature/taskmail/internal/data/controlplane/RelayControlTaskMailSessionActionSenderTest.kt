@@ -26,6 +26,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayResult
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelaySessionUpdate
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayConnectionState
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionTarget
@@ -133,6 +134,7 @@ class RelayControlTaskMailSessionActionSenderTest {
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.Rejected(
                 errorMessage = "workspace_id + session_id did not resolve to a current session",
+                errorCode = "session_identity_unresolved",
                 requestId = "req_003",
             ),
         )
@@ -178,6 +180,7 @@ private fun canonicalReplyRequest(): TaskMailDirectSessionActionRequest.Reply {
     return TaskMailDirectSessionActionRequest.Reply(
         target = canonicalTarget(),
         replyText = "Please continue and keep the current scope.",
+        permission = TaskMailNewTaskPermission.Highest,
     )
 }
 
@@ -214,6 +217,7 @@ private fun assertCanonicalReplyCommand(sentCommand: RelayCommand) {
 
     val reply = sentCommand.payload.jsonObject("reply")
     assertThat(reply.string("reply_text")).isEqualTo("Please continue and keep the current scope.")
+    assertThat(reply.string("permission")).isEqualTo("highest")
 }
 
 private fun assertCanonicalStatusCommand(sentCommand: RelayCommand) {

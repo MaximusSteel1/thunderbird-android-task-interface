@@ -158,6 +158,64 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
     }
 
     @Test
+    fun `createSession should not require sender account id in draft`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                    {
+                      "schema_version": "taskmail-android-create-session-facade-v1",
+                      "status": "accepted",
+                      "command_id": "cmd_senderless",
+                      "submit_ack": {
+                        "ack_status": "accepted"
+                      },
+                      "session_binding": {
+                        "session_id": "sess_senderless",
+                        "pc_id": "pc_home",
+                        "workspace_id": "workspace_android_app"
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+        server.start()
+        val config = RelayTransportConfig(
+            host = server.hostName,
+            port = server.port,
+            useTls = false,
+            androidAppToken = "android-app-token",
+        )
+        val testSubject = OkHttpTaskMailCreateSessionFacadeClient(
+            transportConfigRepository = FakeTaskTransportConfigRepository(config),
+            logger = RelayFakeLogger(),
+            replyAttachmentResolver = FakeTaskMailReplyAttachmentResolver(),
+        )
+
+        val result = testSubject.createSession(
+            draft = testDraft(senderAccountId = null),
+        )
+
+        val request = server.takeRequest()
+        val requestBody = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+
+        assertThat(requestBody["pc_id"]?.jsonPrimitive?.content).isEqualTo("pc_home")
+        assertThat(requestBody["workspace_id"]?.jsonPrimitive?.content).isEqualTo("workspace_android_app")
+        assertThat(result).isEqualTo(
+            TaskMailCreateSessionResult.Submitted(
+                commandId = "cmd_senderless",
+                submitAck = TaskMailCreateSessionSubmitAck(
+                    ackStatus = TaskMailCreateSessionAckStatus.Accepted,
+                ),
+                sessionBinding = TaskMailCreateSessionBinding(
+                    sessionId = "sess_senderless",
+                    pcId = "pc_home",
+                    workspaceId = "workspace_android_app",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `createSession should fail fast when android app token is missing`() = runTest {
         val testSubject = OkHttpTaskMailCreateSessionFacadeClient(
             transportConfigRepository = FakeTaskTransportConfigRepository(
@@ -265,10 +323,11 @@ class OkHttpTaskMailCreateSessionFacadeClientTest {
 }
 
 private fun testDraft(
+    senderAccountId: String? = "account_primary",
     attachments: List<TaskReplyAttachment> = emptyList(),
 ): TaskMailNewTaskDraft {
     return TaskMailNewTaskDraft(
-        senderAccountId = "account_primary",
+        senderAccountId = senderAccountId,
         backend = TaskMailBackend.Codex,
         repoPath = "E:/projects/android_task_manager",
         taskText = "Audit the create-session path",

@@ -93,13 +93,37 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
     }
 
     private fun uiState(detail: TaskSessionDetail): TaskSessionDetailUiState {
+        val timelineItems = detail.timeline.map { item ->
+            TaskTimelineItemUi(
+                id = item.id,
+                timestamp = item.timestamp,
+                direction = item.direction.name,
+                statusLabel = item.statusLabel?.name,
+                summary = item.summary,
+                plainText = item.body.plainText,
+                renderMode = item.body.renderMode,
+                richDocument = item.body.richDocument,
+            )
+        }.toImmutableList()
+        val statusLabel = detail.status.name
+
         return TaskSessionDetailUiState(
             sessionName = detail.sessionName,
             backend = detail.backend.name,
-            status = detail.status.name,
+            status = statusLabel,
+            pageMode = statusLabel.toPageModeForTest(),
             repoPath = detail.repoPath,
             workdir = detail.workdir,
             lastSummary = detail.lastSummary,
+            resultSummary = TaskResultSummaryUi(
+                headline = statusLabel.toHeadlineForTest(),
+                supportingText = detail.lastSummary,
+                statusLabel = statusLabel,
+            ),
+            resultBody = timelineItems.findLatestResultBodyCandidate(
+                summary = detail.lastSummary,
+                statusLabel = statusLabel,
+            ),
             pendingQuestions = detail.pendingQuestions.map { question ->
                 question.toPendingQuestionUi()
             }.toImmutableList(),
@@ -108,18 +132,7 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
                 ?.toPendingQuestionUi()
                 ?.choices
                 ?: persistentListOf(),
-            timeline = detail.timeline.map { item ->
-                TaskTimelineItemUi(
-                    id = item.id,
-                    timestamp = item.timestamp,
-                    direction = item.direction.name,
-                    statusLabel = item.statusLabel?.name,
-                    summary = item.summary,
-                    plainText = item.body.plainText,
-                    renderMode = item.body.renderMode,
-                    richDocument = item.body.richDocument,
-                )
-            }.toImmutableList(),
+            timeline = timelineItems,
         )
     }
 
@@ -135,5 +148,25 @@ internal class TaskSessionDetailRepresentativeSamplesTest {
             }.toImmutableList(),
             isRequired = required,
         )
+    }
+}
+
+private fun String.toPageModeForTest(): TaskSessionPageMode {
+    return when (uppercase()) {
+        "QUEUED", "RUNNING" -> TaskSessionPageMode.ActiveRun
+        "WAITINGUSER", "PAUSED" -> TaskSessionPageMode.AwaitingReply
+        else -> TaskSessionPageMode.Terminal
+    }
+}
+
+private fun String.toHeadlineForTest(): String {
+    return when (uppercase()) {
+        "DONE" -> "Latest run completed"
+        "FAILED" -> "Latest run failed"
+        "WAITINGUSER" -> "Waiting for your reply"
+        "PAUSED" -> "Session is paused"
+        "QUEUED" -> "Task is queued"
+        "RUNNING" -> "Run in progress"
+        else -> "Latest session state"
     }
 }

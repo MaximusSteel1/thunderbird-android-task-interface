@@ -13,9 +13,13 @@ internal class SendTaskMailNewTask(
     private val subjectBuilder: TaskMailNewTaskSubjectBuilder = TaskMailNewTaskSubjectBuilder(),
 ) {
     suspend operator fun invoke(draft: TaskMailNewTaskDraft): TaskMailNewTaskResult {
+        val senderAccountId = draft.senderAccountId
+            ?: return TaskMailNewTaskResult.failure(
+                errorMessage = "TaskMail sending account is unavailable.",
+            )
         return newTaskSender.send(
             TaskMailNewTaskRequest(
-                accountUuid = draft.senderAccountId,
+                accountUuid = senderAccountId,
                 subject = subjectBuilder.build(
                     backend = draft.backend,
                     subjectTitle = draft.subjectTitle,

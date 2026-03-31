@@ -7,6 +7,7 @@ import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailBotMailboxS
 import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailProjectSyncDebugSettingsRepository
 import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailForegroundRefreshTickerFactory
 import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailProjectSyncRepository
+import net.thunderbird.feature.taskmail.internal.data.DefaultTaskMailTimelineAttachmentHandler
 import net.thunderbird.feature.taskmail.internal.data.DefaultTaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailAttachmentMetadataExtractor
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailBodyExtractor
@@ -18,7 +19,6 @@ import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailReplySourceM
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailSenderAccountSource
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailSyncRequester
-import net.thunderbird.feature.taskmail.internal.data.LegacyTaskMailTimelineAttachmentHandler
 import net.thunderbird.feature.taskmail.internal.data.MailStoreBackedTaskMailProjectSyncResultReader
 import net.thunderbird.feature.taskmail.internal.data.PreferencesBackedTaskMailSettingsStorage
 import net.thunderbird.feature.taskmail.internal.data.SnapshotBackedTaskMailRepository
@@ -60,11 +60,11 @@ import net.thunderbird.feature.taskmail.internal.data.debug.FileBackedTaskMailTr
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailFileSampleStore
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailProjectSyncDebugRecorder
 import net.thunderbird.feature.taskmail.internal.data.debug.TaskMailTransportProbeEventStore
-import net.thunderbird.feature.taskmail.internal.data.direct.TaskMailDirectSessionProjector
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailCreateSessionFacadeClient
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskEnvironmentInventoryFacadeRepository
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskMailSessionActionFacadeSender
 import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskSessionHistorySnapshotFacadeRepository
+import net.thunderbird.feature.taskmail.internal.data.facade.OkHttpTaskSessionUpdatesFacadeRepository
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngress
 import net.thunderbird.feature.taskmail.internal.data.ingress.EmailIngressMessage
 import net.thunderbird.feature.taskmail.internal.data.ingress.MessageIngress
@@ -80,7 +80,6 @@ import net.thunderbird.feature.taskmail.internal.data.relay.RelayConnectionClien
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailFileSampleSender
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayHealthProbe
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectProjectSyncSender
-import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailDirectSessionDetailSubscriber
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayTaskMailTransportProbeSender
 import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayProtocolJsonCodec
 import net.thunderbird.feature.taskmail.internal.data.transport.EmailTaskMailNewTaskTransport
@@ -107,10 +106,11 @@ import net.thunderbird.feature.taskmail.internal.domain.repository.TaskMailSessi
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionDetailRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionHistorySnapshotRepository
+import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionUpdatesRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.domain.transportprobe.TaskMailTransportProbeSender
 import net.thunderbird.feature.taskmail.internal.domain.repository.UnifiedMessageRepository
-import net.thunderbird.feature.taskmail.internal.domain.usecase.DefaultObserveTaskMailDirectSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.DefaultObserveTaskMailSessionUpdates
 import net.thunderbird.feature.taskmail.internal.domain.usecase.CreateTaskMailSession
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailNewTaskSendRecord
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetLatestTaskMailProjectSyncResult
@@ -121,7 +121,7 @@ import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskMailSende
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionDetails
 import net.thunderbird.feature.taskmail.internal.domain.usecase.GetTaskSessionHistorySnapshot
-import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailDirectSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailSessionUpdates
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskMailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.ObserveTaskSessionDetailStoreChanges
 import net.thunderbird.feature.taskmail.internal.domain.usecase.RecordTaskMailNewTaskSendRecord
@@ -204,6 +204,12 @@ val taskMailModule: Module = module {
             logger = get(),
         )
     }
+    single<TaskSessionUpdatesRepository> {
+        OkHttpTaskSessionUpdatesFacadeRepository(
+            transportConfigRepository = get(),
+            logger = get(),
+        )
+    }
     single<TaskMailDirectProjectSyncSender> {
         RelayTaskMailDirectProjectSyncSender(
             relayConnectionClient = get(),
@@ -217,18 +223,9 @@ val taskMailModule: Module = module {
             replyAttachmentResolver = get(),
         )
     }
-    single { TaskMailDirectSessionProjector() }
-    single {
-        RelayTaskMailDirectSessionDetailSubscriber(
-            relayConnectionClient = get(),
-        )
-    }
-    single<ObserveTaskMailDirectSessionDetail> {
-        DefaultObserveTaskMailDirectSessionDetail(
-            relayBootstrapManager = get(),
-            relayConnectionClient = get(),
-            directSessionDetailSubscriber = get(),
-            projector = get(),
+    single<ObserveTaskMailSessionUpdates> {
+        DefaultObserveTaskMailSessionUpdates(
+            repository = get(),
             logger = get(),
         )
     }
@@ -420,11 +417,13 @@ val taskMailModule: Module = module {
     }
 
     single<TaskMailTimelineAttachmentHandler> {
-        LegacyTaskMailTimelineAttachmentHandler(
+        DefaultTaskMailTimelineAttachmentHandler(
             context = get(),
             accountManager = get(),
             localStoreProvider = get(),
             messagingController = get(),
+            fileSurfaceClient = get(),
+            transportConfigRepository = get(),
             logger = get(),
         )
     }
@@ -675,7 +674,7 @@ val taskMailModule: Module = module {
             timelineAttachmentHandler = get(),
             logger = get(),
             syncTaskMailCache = get(),
-            observeTaskMailDirectSessionDetail = get(),
+            observeTaskMailSessionUpdates = get(),
             getTaskSessionHistorySnapshot = get(),
         )
     }

@@ -60,7 +60,23 @@ class TaskProjectSyncViewModelTest {
     }
 
     @Test
-    fun `sync requested should require explicit sender account selection when multiple accounts exist`() = runMviTest {
+    fun `load data should block when no sender account exists`() = runMviTest {
+        with(TaskProjectSyncViewModelRobot(this, senderAccounts = emptyList())) {
+            start()
+            loadData()
+
+            assertThat(viewModelState().hasBlockingState).isEqualTo(true)
+            assertThat(viewModelState().senderAccountBlockingError).isEqualTo(
+                "Set up a mailbox account before requesting the TaskMail project list.",
+            )
+            assertThat(viewModelState().selectedSenderAccountId).isEqualTo(null)
+            assertThat(viewModelState().latestResult).isEqualTo(null)
+            ensureThatAllEventsAreConsumed()
+        }
+    }
+
+    @Test
+    fun `load data should block when multiple sender accounts exist`() = runMviTest {
         with(
             TaskProjectSyncViewModelRobot(
                 this,
@@ -71,7 +87,12 @@ class TaskProjectSyncViewModelTest {
             loadData()
             requestSync()
 
-            assertThat(viewModelState().senderAccountError).isEqualTo("Select the mailbox account to sync.")
+            assertThat(viewModelState().hasBlockingState).isEqualTo(true)
+            assertThat(viewModelState().senderAccountBlockingError).isEqualTo(
+                "Android currently supports project sync with exactly one mailbox account. " +
+                    "Remove extra accounts before loading the project list.",
+            )
+            assertThat(viewModelState().selectedSenderAccountId).isEqualTo(null)
             assertThat(requestedSyncAccounts()).isEqualTo(emptyList())
             ensureThatAllEventsAreConsumed()
         }

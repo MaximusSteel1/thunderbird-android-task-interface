@@ -1,9 +1,12 @@
 package net.thunderbird.feature.taskmail.internal.ui.history
 
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,8 +15,9 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlinx.collections.immutable.persistentListOf
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotAttachment
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotProcessItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotRound
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItemKind
 import net.thunderbird.core.ui.compose.theme2.k9mail.K9MailTheme2
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailUiState
@@ -54,8 +58,12 @@ class TaskSessionHistoryContentTest {
             .onNodeWithTag("TaskSessionHistoryList")
             .performScrollToNode(hasTestTag("TaskSessionHistoryRoundCard:round_2_incoming_result_2"))
 
-        composeTestRule.onNodeWithText("Review the latest homepage sketch and keep the task tree.").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Added the tree-based homepage draft and updated the history card layout.").assertIsDisplayed()
+        composeTestRule
+            .onAllNodesWithText("Review the latest homepage sketch and keep the task tree.")
+            .assertCountEquals(2)
+        composeTestRule
+            .onAllNodesWithText("Added the tree-based homepage draft and updated the history card layout.")
+            .assertCountEquals(1)
 
         composeTestRule.onNodeWithTag("TaskSessionHistoryAttachmentPreview:result_image_2").performClick()
         assertThat(openedAttachmentId).isEqualTo("result_image_2")
@@ -65,9 +73,15 @@ class TaskSessionHistoryContentTest {
             .performScrollToNode(hasTestTag("TaskSessionHistoryRoundCard:round_1_incoming_result_1"))
         composeTestRule.onNodeWithTag("TaskSessionHistoryRoundCard:round_1_incoming_result_1").performClick()
 
-        composeTestRule.onNodeWithText("Build the first Session page skeleton.").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Session skeleton is ready for the first VPS-only cutover pass.").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Review the latest homepage sketch and keep the task tree.").assertIsDisplayed()
+        composeTestRule
+            .onAllNodesWithText("Build the first Session page skeleton.")
+            .assertCountEquals(2)
+        composeTestRule
+            .onAllNodesWithText("Session skeleton is ready for the first VPS-only cutover pass.")
+            .assertCountEquals(1)
+        composeTestRule
+            .onAllNodesWithText("Review the latest homepage sketch and keep the task tree.")
+            .assertCountEquals(2)
     }
 
     @Test
@@ -86,9 +100,11 @@ class TaskSessionHistoryContentTest {
                                 speakerLabel = "Codex",
                                 inputText = "Server round: keep the homepage tree and tighten the gutter.",
                                 processItems = persistentListOf(
-                                    TaskSessionHistorySnapshotProcessItem(
+                                    TaskSessionProcessItem(
                                         itemId = "hist_process_task_002_running",
+                                        kind = TaskSessionProcessItemKind.Assistant,
                                         createdAt = "2026-03-27T12:00:00",
+                                        updatedAt = "2026-03-27T12:00:05",
                                         status = "running",
                                         text = "Server round: rebuilding the homepage rows.",
                                     ),
@@ -110,11 +126,61 @@ class TaskSessionHistoryContentTest {
             }
         }
 
-        composeTestRule.onNodeWithTag("TaskSessionHistoryRoundCard:hist_round_task_002").performClick()
-        composeTestRule.onNodeWithText("Server round: keep the homepage tree and tighten the gutter.")
-            .assertIsDisplayed()
-        composeTestRule.onNodeWithText("Server round: still processing the latest homepage follow-up.")
-            .assertIsDisplayed()
+        composeTestRule
+            .onAllNodesWithText("Server round: keep the homepage tree and tighten the gutter.")
+            .assertCountEquals(2)
+        composeTestRule
+            .onAllNodesWithText("Server round: still processing the latest homepage follow-up.")
+            .assertCountEquals(2)
+        composeTestRule
+            .onNodeWithTag("TaskSessionHistoryList")
+            .performScrollToNode(hasText("Collapse"))
+        composeTestRule.onNodeWithText("Collapse").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should normalize bare absolute path in round result and reveal it on tap`() {
+        val rawPath = "E:\\projects\\mail_based_task_manager\\scripts\\codex_sdk_sidecar\\dist\\index.js"
+        val resultText = "Command: node $rawPath"
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionHistoryContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = historyDetail().copy(
+                            timeline = persistentListOf(
+                                TaskTimelineItemUi(
+                                    id = "incoming_result_with_locator",
+                                    timestamp = 1_742_000_120_000,
+                                    direction = "Incoming",
+                                    statusLabel = "Done",
+                                    summary = "Session skeleton is ready.",
+                                    plainText = resultText,
+                                ),
+                                TaskTimelineItemUi(
+                                    id = "outgoing_with_locator",
+                                    timestamp = 1_742_000_000_000,
+                                    direction = "Outgoing",
+                                    plainText = "Build the first Session page skeleton.",
+                                ),
+                            ),
+                        ),
+                    ),
+                    onBack = {},
+                    onEvent = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionHistoryList")
+            .performScrollToNode(hasText("index.js", substring = true))
+        composeTestRule.onAllNodesWithText("index.js", substring = true).assertCountEquals(2)
+        composeTestRule.onAllNodesWithText(rawPath, substring = true).assertCountEquals(0)
+
+        composeTestRule.onNodeWithTag("TaskCodeLocatorToken:$rawPath").performClick()
+
+        composeTestRule.onNodeWithText(rawPath, substring = true).assertIsDisplayed()
     }
 }
 

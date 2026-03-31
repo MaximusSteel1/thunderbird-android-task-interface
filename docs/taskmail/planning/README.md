@@ -11,6 +11,7 @@
 - 主线 authority：`android/taskmail-vps-first-multi-pc-authority-v0.1.md`
 - 用户需求 authority：`android/taskmail-vps-first-multi-pc-user-requirements-authority-v0.1.md`
 - Android 信息架构：`android/taskmail-vps-first-multi-pc-information-architecture-v0.1.md`
+- Artifact 体验规则：`android/taskmail-vps-first-multi-pc-artifact-experience-rules-v0.1.md`
 - 页面状态与交互映射：`android/taskmail-vps-first-multi-pc-viewstate-action-mapping-v0.1.md`
 - 核心页面低保真方案：`android/taskmail-vps-first-multi-pc-core-screen-low-fi-v0.1.md`
 - 高保真视觉方向：`android/taskmail-vps-first-multi-pc-visual-direction-v0.1.md`

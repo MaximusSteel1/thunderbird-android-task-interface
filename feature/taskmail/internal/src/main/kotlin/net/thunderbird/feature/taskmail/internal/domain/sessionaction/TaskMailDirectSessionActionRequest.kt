@@ -1,6 +1,7 @@
 package net.thunderbird.feature.taskmail.internal.domain.sessionaction
 
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 
 internal sealed interface TaskMailDirectSessionActionRequest {
     val actionType: TaskMailDirectSessionActionType
@@ -9,6 +10,7 @@ internal sealed interface TaskMailDirectSessionActionRequest {
     data class Reply(
         override val target: TaskMailDirectSessionActionTarget,
         val replyText: String,
+        val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
     ) : TaskMailDirectSessionActionRequest {
         override val actionType: TaskMailDirectSessionActionType = TaskMailDirectSessionActionType.Reply
     }
@@ -22,6 +24,7 @@ internal sealed interface TaskMailDirectSessionActionRequest {
     data class Answers(
         override val target: TaskMailDirectSessionActionTarget,
         val questionAnswers: List<TaskMailSessionQuestionAnswer>,
+        val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
     ) : TaskMailDirectSessionActionRequest {
         override val actionType: TaskMailDirectSessionActionType = TaskMailDirectSessionActionType.Answers
     }
@@ -54,6 +57,7 @@ internal sealed interface TaskMailDirectSessionActionRequest {
         override val target: TaskMailDirectSessionActionTarget,
         val replyText: String = "",
         val attachments: List<TaskReplyAttachment>,
+        val permission: TaskMailNewTaskPermission = TaskMailNewTaskPermission.Default,
     ) : TaskMailDirectSessionActionRequest {
         override val actionType: TaskMailDirectSessionActionType =
             TaskMailDirectSessionActionType.AttachmentContinuation

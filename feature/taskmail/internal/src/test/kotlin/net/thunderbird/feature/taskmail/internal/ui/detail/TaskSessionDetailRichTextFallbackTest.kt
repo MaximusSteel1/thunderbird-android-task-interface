@@ -82,13 +82,21 @@ class TaskSessionDetailRichTextFallbackTest {
     private fun replyCapableDetail(
         timeline: ImmutableList<TaskTimelineItemUi>,
     ): TaskSessionDetailUiState {
+        val resultBody = timeline.first()
         return TaskSessionDetailUiState(
             sessionName = "Build TaskMail Phase 1",
             backend = "Codex",
             status = "WaitingUser",
+            pageMode = TaskSessionPageMode.AwaitingReply,
             repoPath = "E:/projects/android_task_manager",
             workdir = "feature/taskmail",
             lastSummary = "Parser layer is complete.",
+            resultSummary = TaskResultSummaryUi(
+                headline = "Waiting for your reply",
+                supportingText = "Parser layer is complete.",
+                statusLabel = "WaitingUser",
+            ),
+            resultBody = resultBody,
             pendingQuestions = persistentListOf(
                 TaskPendingQuestionUi(
                     questionId = "question_001",

@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
 import net.thunderbird.feature.taskmail.internal.data.relay.RelayFakeLogger
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import okhttp3.mockwebserver.MockResponse
@@ -27,9 +28,43 @@ class OkHttpTaskSessionHistorySnapshotFacadeRepositoryTest {
             MockResponse().setResponseCode(200).setBody(
                 """
                     {
+                      "locator": {
+                        "workspace_id": "workspace_android_app",
+                        "session_id": "session_001",
+                        "thread_id": "thread_001"
+                      },
                       "snapshot_id": "sess_snap_001",
                       "generated_at": "2026-03-27T12:00:00",
                       "session_snapshot": {
+                        "session_name": "say hi",
+                        "backend": "codex",
+                        "repo_path": "E:/projects/android_task_manager",
+                        "status": "done",
+                        "last_summary": "Hi.",
+                        "live_process": {
+                          "status": "streaming",
+                          "updated_at": "2026-03-27T12:00:30Z",
+                          "items": [
+                            {
+                              "item_id": "live_assistant_001",
+                              "kind": "assistant",
+                              "created_at": "2026-03-27T12:00:10Z",
+                              "updated_at": "2026-03-27T12:00:30Z",
+                              "status": "streaming",
+                              "text": "Streaming assistant output."
+                            }
+                          ]
+                        },
+                        "timeline_items": [
+                          {
+                            "item_id": "tl_terminal_done_001",
+                            "business_event_key": "terminal/done/2026-03-27T12:00:00",
+                            "item_type": "terminal_summary",
+                            "created_at": "2026-03-27T12:00:00",
+                            "status": "done",
+                            "text": "Hi."
+                          }
+                        ],
                         "history_rounds": [
                           {
                             "round_id": "hist_round_task_002",
@@ -53,7 +88,9 @@ class OkHttpTaskSessionHistorySnapshotFacadeRepositoryTest {
                               "items": [
                                 {
                                   "item_id": "hist_process_task_002_running",
+                                  "kind": "assistant",
                                   "created_at": "2026-03-27T12:00:00",
+                                  "updated_at": "2026-03-27T12:00:05",
                                   "status": "running",
                                   "text": "Still processing the latest homepage follow-up."
                                 }
@@ -61,7 +98,21 @@ class OkHttpTaskSessionHistorySnapshotFacadeRepositoryTest {
                             },
                             "result": {
                               "text": "Still processing the latest homepage follow-up.",
-                              "attachments": []
+                              "attachments": [
+                                {
+                                  "attachment_id": "hist_result_task_002_1",
+                                  "display_name": "homepage-followup.png",
+                                  "content_type": "image/png",
+                                  "size_bytes": 512,
+                                  "is_image": true,
+                                  "download_ref": {
+                                    "kind": "vps_file",
+                                    "file_id": "file_history_001",
+                                    "metadata_url": "/v1/files/file_history_001",
+                                    "content_url": "/v1/files/file_history_001/content"
+                                  }
+                                }
+                              ]
                             }
                           }
                         ]
@@ -100,8 +151,16 @@ class OkHttpTaskSessionHistorySnapshotFacadeRepositoryTest {
         assertThat(request.requestUrl?.queryParameter("session_id")).isEqualTo("session_001")
         assertThat(request.requestUrl?.queryParameter("repo_path")).isEqualTo("E:/projects/android_task_manager")
         assertThat(request.requestUrl?.queryParameter("workdir")).isEqualTo("feature/taskmail")
-        assertThat(result.getOrThrow().rounds.single().inputAttachments.single().displayName)
+        val snapshot = result.getOrThrow()
+        assertThat(snapshot.rounds.single().inputAttachments.single().displayName)
             .isEqualTo("homepage-followup.md")
+        assertThat(snapshot.rounds.single().resultAttachments.single().actionTarget?.relayArtifact?.fileId)
+            .isEqualTo("file_history_001")
+        assertThat(snapshot.sessionHeader?.threadId).isEqualTo("thread_001")
+        assertThat(snapshot.sessionHeader?.status).isEqualTo(TaskMailSessionStatus.Done)
+        assertThat(snapshot.sessionHeader?.lastSummary).isEqualTo("Hi.")
+        assertThat(snapshot.sessionHeader?.liveProcess?.items?.single()?.text).isEqualTo("Streaming assistant output.")
+        assertThat(snapshot.sessionHeader?.liveProcess?.status).isEqualTo("streaming")
     }
 
     @Test

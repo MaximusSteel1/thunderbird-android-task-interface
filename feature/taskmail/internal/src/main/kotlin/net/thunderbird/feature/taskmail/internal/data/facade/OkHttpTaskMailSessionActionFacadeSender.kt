@@ -18,6 +18,7 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentRes
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.newtask.toCanonicalWireValue
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
@@ -102,6 +103,7 @@ internal class OkHttpTaskMailSessionActionFacadeSender(
                 val errorPayload = parseErrorPayload(body)
                 return TaskMailDirectSessionActionResult.Rejected(
                     errorMessage = errorPayload.toUserMessage(response.code),
+                    errorCode = errorPayload.errorCode?.trim()?.takeIf(String::isNotEmpty),
                     requestId = requestId,
                     receiptId = errorPayload.commandId?.trim()?.takeIf(String::isNotEmpty),
                 )
@@ -127,6 +129,7 @@ internal class OkHttpTaskMailSessionActionFacadeSender(
                         ?.trim()
                         .takeUnless(String?::isNullOrEmpty)
                         ?: DEFAULT_REJECTED_MESSAGE,
+                    errorCode = payload.submitAck.errorCode?.trim()?.takeIf(String::isNotEmpty),
                     requestId = requestId,
                     receiptId = payload.commandId,
                 )
@@ -160,6 +163,7 @@ internal class OkHttpTaskMailSessionActionFacadeSender(
                 target = targetPayload,
                 reply = AndroidSessionActionReplyPayload(
                     replyText = requireNormalizedText(replyText, "reply.replyText"),
+                    permission = permission.toCanonicalWireValue(),
                 ),
             )
 
@@ -181,6 +185,7 @@ internal class OkHttpTaskMailSessionActionFacadeSender(
                             value = requireNormalizedText(answer.value, "answers.questionAnswers.value"),
                         )
                     },
+                    permission = permission.toCanonicalWireValue(),
                 ),
             )
 
@@ -219,6 +224,7 @@ internal class OkHttpTaskMailSessionActionFacadeSender(
                 attachmentContinuation = AndroidSessionActionAttachmentContinuationPayload(
                     attachments = buildAttachmentPayloads(attachments),
                     replyText = replyText.trim().takeIf(String::isNotEmpty),
+                    permission = permission.toCanonicalWireValue(),
                 ),
             )
         }
@@ -347,6 +353,7 @@ private data class AndroidSessionActionTargetPayload(
 private data class AndroidSessionActionReplyPayload(
     @SerialName("reply_text")
     val replyText: String,
+    val permission: String,
 )
 
 @Serializable
@@ -356,6 +363,7 @@ private class AndroidSessionActionEmptyPayload
 private data class AndroidSessionActionAnswersPayload(
     @SerialName("question_answers")
     val questionAnswers: List<AndroidSessionActionQuestionAnswerPayload>,
+    val permission: String,
 )
 
 @Serializable
@@ -370,6 +378,7 @@ private data class AndroidSessionActionAttachmentContinuationPayload(
     val attachments: List<AndroidSessionActionAttachmentPayload>,
     @SerialName("reply_text")
     val replyText: String? = null,
+    val permission: String,
 )
 
 @Serializable

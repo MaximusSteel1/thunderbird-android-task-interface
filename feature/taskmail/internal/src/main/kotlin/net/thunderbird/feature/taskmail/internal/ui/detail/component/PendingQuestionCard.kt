@@ -41,16 +41,14 @@ internal fun PendingQuestionCard(
 @Composable
 private fun PendingQuestionItem(question: TaskPendingQuestionUi) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextTitleMedium(text = question.questionText)
         TextLabelMedium(
             text = buildString {
-                append("question_id: ")
+                append(if (question.isRequired) "Required" else "Optional")
+                append(" · ID: ")
                 append(question.questionId)
-                if (!question.isRequired) {
-                    append(" (optional)")
-                }
             },
         )
-        TextTitleMedium(text = question.questionText)
         if (question.choices.isNotEmpty()) {
             PendingQuestionChoices(choices = question.choices)
         } else {
@@ -68,7 +66,7 @@ private fun PendingQuestionChoices(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         choices.forEach { choice ->
-            TaskStatusBadge(text = choice.value)
+            TaskStatusBadge(text = choice.label)
         }
     }
 
@@ -77,9 +75,9 @@ private fun PendingQuestionChoices(
         TextBodyMedium(
             text = labeledChoices.joinToString(
                 separator = " | ",
-                prefix = "Accepted labels: ",
+                prefix = "Accepted values: ",
             ) { choice ->
-                "${choice.value} = ${choice.label}"
+                "${choice.label} = ${choice.value}"
             },
         )
     }

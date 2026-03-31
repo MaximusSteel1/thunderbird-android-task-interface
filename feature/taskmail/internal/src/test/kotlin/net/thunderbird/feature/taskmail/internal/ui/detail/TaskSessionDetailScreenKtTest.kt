@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -79,6 +80,21 @@ class TaskSessionDetailScreenKtTest {
                                     plainText = "Parser layer is complete. Waiting for the next step.",
                                 ),
                             ),
+                            processSection = TaskProcessSectionUi(
+                                title = "Process",
+                                visibleItems = persistentListOf(
+                                    TaskTimelineItemUi(
+                                        id = "timeline_001",
+                                        timestamp = 1L,
+                                        direction = "Assistant",
+                                        statusLabel = "Completed",
+                                        plainText = "Parser layer is complete. Waiting for the next step.",
+                                    ),
+                                ),
+                                rawItemCount = 1,
+                                previewText = "Need confirmation",
+                                defaultExpanded = false,
+                            ),
                         ),
                     ),
                     onEvent = {},
@@ -91,7 +107,7 @@ class TaskSessionDetailScreenKtTest {
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Should I proceed?"))
 
-        composeTestRule.onNodeWithText("Should I proceed?").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Should I proceed?").assertCountEquals(1)
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("yes"))
@@ -122,14 +138,15 @@ class TaskSessionDetailScreenKtTest {
                             ),
                             resultSummary = TaskResultSummaryUi(
                                 headline = "Waiting for your reply",
-                                supportingText = "Cleanup finished · 1 file",
+                                supportingText = "Cleanup finished",
                                 statusLabel = "WaitingUser",
                             ),
                             artifacts = persistentListOf(
-                                TaskSessionArtifactUi(
+                                TaskTimelineAttachmentUi(
                                     id = "artifact_001",
-                                    title = "cleanup_report.md",
-                                    supportingText = "text/markdown · 4096 B",
+                                    displayName = "cleanup_report.md",
+                                    contentType = "text/markdown",
+                                    sizeBytes = 4_096L,
                                 ),
                             ),
                         ),
@@ -145,11 +162,184 @@ class TaskSessionDetailScreenKtTest {
             .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
         composeTestRule.onNodeWithTag("TaskSessionDetailResultSummary").assertIsDisplayed()
         composeTestRule.onNodeWithText("Waiting for your reply").assertIsDisplayed()
+        composeTestRule.onNodeWithText("cleanup_report.md").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should normalize markdown code reference in latest session output and reveal it on tap`() {
+        val reference = "[README.md#L34](/E:/projects/mail_based_task_manager/README.md#L34)"
+
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail().copy(
+                            status = "Running",
+                            pageMode = TaskSessionPageMode.ActiveRun,
+                            processSection = TaskProcessSectionUi(
+                                title = "Process",
+                                visibleItems = persistentListOf(
+                                    TaskTimelineItemUi(
+                                        id = "process_reference_001",
+                                        timestamp = 1L,
+                                        direction = "Assistant",
+                                        statusLabel = "Streaming",
+                                        plainText = reference,
+                                    ),
+                                ),
+                                rawItemCount = 1,
+                                previewText = null,
+                                defaultExpanded = true,
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailArtifacts"))
-        composeTestRule.onNodeWithTag("TaskSessionDetailArtifacts").assertIsDisplayed()
-        composeTestRule.onNodeWithText("cleanup_report.md").assertIsDisplayed()
+            .performScrollToNode(hasTestTag("TaskProcessSection:Process"))
+        composeTestRule.onAllNodesWithText("README.md#L34", substring = true).assertCountEquals(2)
+        composeTestRule.onAllNodesWithText(reference, substring = true).assertCountEquals(0)
+
+        composeTestRule.onNodeWithTag("TaskCodeLocatorToken:$reference").performClick()
+
+        composeTestRule.onNodeWithText(reference, substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should render latest result body when preserved assistant output is available`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail().copy(
+                            resultSummary = TaskResultSummaryUi(
+                                headline = "Latest run completed",
+                                supportingText = "Cleanup finished.",
+                                statusLabel = "Done",
+                            ),
+                            resultBody = TaskTimelineItemUi(
+                                id = "result_body_001",
+                                timestamp = 2L,
+                                direction = "System",
+                                statusLabel = "Done",
+                                summary = "Cleanup finished.",
+                                plainText = "Cleanup finished.\n\nChanged files:\n- TaskNewTaskViewModel.kt",
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailResultBody"))
+        composeTestRule.onNodeWithTag("TaskSessionDetailResultBody").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailResultConclusion"))
+        composeTestRule.onNodeWithTag("TaskSessionDetailResultConclusion").assertIsDisplayed()
+    }
+
+    @Test
+    fun `content should render current round input and assistant context without duplicating outgoing text`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(status = "Running").copy(
+                            recentContext = TaskRecentContextUi(
+                                latestUserMessage = "Please continue with the cleanup.",
+                            ),
+                            processSection = TaskProcessSectionUi(
+                                title = "Process",
+                                visibleItems = persistentListOf(
+                                    TaskTimelineItemUi(
+                                        id = "process_cleanup_001",
+                                        timestamp = 2L,
+                                        direction = "Assistant",
+                                        statusLabel = "Streaming",
+                                        plainText = "Cleanup is running on the Android branch.",
+                                    ),
+                                ),
+                                rawItemCount = 1,
+                                previewText = "Cleanup is running on the Android branch.",
+                                defaultExpanded = true,
+                            ),
+                            resultSummary = TaskResultSummaryUi(
+                                headline = "Run in progress",
+                                supportingText = "Previous stable result · 1 file",
+                                statusLabel = "Running",
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Current round"))
+        composeTestRule.onNodeWithText("Current round").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Please continue with the cleanup.").assertCountEquals(1)
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskProcessSection:Process"))
+        composeTestRule.onAllNodesWithText("Cleanup is running on the Android branch.").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("You last said").assertCountEquals(0)
+    }
+
+    @Test
+    fun `content should prefer live output over stale recent assistant context in active run`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskSessionDetailContent(
+                    state = TaskSessionDetailContract.State(
+                        detail = replyCapableDetail(status = "Running").copy(
+                            processSection = TaskProcessSectionUi(
+                                title = "Process",
+                                visibleItems = persistentListOf(
+                                    TaskTimelineItemUi(
+                                        id = "process_streaming_001",
+                                        timestamp = 2L,
+                                        direction = "Assistant",
+                                        statusLabel = "Streaming",
+                                        plainText = "Streaming assistant output.",
+                                    ),
+                                ),
+                                rawItemCount = 1,
+                                previewText = "Streaming assistant output.",
+                                defaultExpanded = true,
+                            ),
+                            recentContext = TaskRecentContextUi(
+                                latestUserMessage = "Please continue with the cleanup.",
+                                latestAssistantMessage = "Older assistant output.",
+                            ),
+                        ),
+                    ),
+                    onEvent = {},
+                    onPickAttachments = {},
+                )
+            }
+        }
+
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskSessionDetailStatusCard"))
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskProcessSection:Process"))
+        composeTestRule.onAllNodesWithText("Streaming assistant output.").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("Older assistant output.").assertCountEquals(0)
     }
 
     @Test
@@ -284,20 +474,14 @@ class TaskSessionDetailScreenKtTest {
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
-        composeTestRule.onNodeWithText(
+        composeTestRule.onAllNodesWithText(
             "Completed the Android VPS-first readiness slice.",
             substring = true,
-        ).assertIsDisplayed()
+        ).assertCountEquals(1)
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasTestTag("TaskSessionDetailResultSummary"))
         composeTestRule.onNodeWithText("Done").assertIsDisplayed()
-        composeTestRule.onNodeWithText(
-            "backend=codex · profile=strong · permission=highest · transport=sdk · model=gpt-5-codex",
-        ).assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskSessionDetailArtifacts"))
         composeTestRule.onNodeWithText("summary.md").assertIsDisplayed()
     }
 
@@ -441,10 +625,13 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("question_id: question_002"))
-
-        composeTestRule.onNodeWithText("question_id: question_001").assertIsDisplayed()
-        composeTestRule.onNodeWithText("question_id: question_002").assertIsDisplayed()
+            .performScrollToNode(hasTestTag("TaskReplyComposerStructuredInput_question_001"))
+        composeTestRule.onNodeWithTag("TaskReplyComposerStructuredInput_question_001").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskReplyComposerStructuredInput_question_002"))
+        composeTestRule.onNodeWithTag("TaskReplyComposerStructuredInput_question_002").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("TaskReplyComposerInput").assertCountEquals(0)
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText("Send answers"))
@@ -507,8 +694,8 @@ class TaskSessionDetailScreenKtTest {
             .assertIsDisplayed()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasTestTag("TaskReplyComposerStatusButton"))
-        composeTestRule.onNodeWithTag("TaskReplyComposerStatusButton").assertIsDisplayed()
+            .performScrollToNode(hasText("View status"))
+        composeTestRule.onNodeWithText("View status").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Send reply").assertCountEquals(0)
     }
 
@@ -604,11 +791,10 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onAllNodesWithText("TaskMail update failed").assertCountEquals(1)
         composeTestRule.onAllNodesWithText("Failed to refresh TaskMail session detail.").assertCountEquals(1)
-        expandProcessRecords()
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
-            .performScrollToNode(hasText("Parser layer is complete. Waiting for the next step."))
-        composeTestRule.onAllNodesWithText("Parser layer is complete. Waiting for the next step.").assertCountEquals(1)
+            .performScrollToNode(hasText("Should I proceed?"))
+        composeTestRule.onNodeWithText("Should I proceed?").assertIsDisplayed()
     }
 
     @Test
@@ -743,7 +929,7 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onNodeWithText("final_report.md").assertIsDisplayed()
         composeTestRule.onNodeWithText("Remove").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("TaskReplyComposerStatusButton").assertIsNotEnabled()
+        composeTestRule.onAllNodesWithText("View status").assertCountEquals(0)
     }
 
     @Test
@@ -793,12 +979,15 @@ class TaskSessionDetailScreenKtTest {
 
         composeTestRule.onNodeWithText("Ship it").assertIsDisplayed()
         composeTestRule.onNodeWithText("Not yet").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasTestTag("TaskReplyComposerChoice_approve"))
         composeTestRule.onNodeWithTag("TaskReplyComposerChoice_approve").assertIsDisplayed()
         composeTestRule.onNodeWithTag("TaskReplyComposerChoice_decline").assertIsDisplayed()
     }
 
     @Test
-    fun `content should not advertise resume and send when paused reply is unavailable`() {
+    fun `content should show resume action when paused reply is unavailable`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskSessionDetailContent(
@@ -824,6 +1013,10 @@ class TaskSessionDetailScreenKtTest {
             .performScrollToNode(hasText("Plain-text reply is unavailable while the session is paused."))
 
         composeTestRule.onNodeWithText("Plain-text reply is unavailable while the session is paused.").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag("TaskSessionDetailList")
+            .performScrollToNode(hasText("Resume"))
+        composeTestRule.onNodeWithText("Resume").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("Resume and send").assertCountEquals(0)
     }
 
@@ -944,11 +1137,33 @@ class TaskSessionDetailScreenKtTest {
                 plainText = "Parser layer is complete. Waiting for the next step.",
             ),
         ),
+        processSection: TaskProcessSectionUi? = null,
     ): TaskSessionDetailUiState {
+        val effectiveProcessSection = processSection ?: timeline
+            .takeIf { it.isNotEmpty() }
+            ?.let { processTimeline ->
+                TaskProcessSectionUi(
+                    title = "Process",
+                    visibleItems = processTimeline,
+                    rawItemCount = processTimeline.size,
+                    previewText = processTimeline.firstOrNull()
+                        ?.summary
+                        ?.takeIf { summary ->
+                            summary.trim() != processTimeline.firstOrNull()?.plainText?.trim()
+                        },
+                    defaultExpanded = status == "Queued" || status == "Running",
+                )
+            }
+
         return TaskSessionDetailUiState(
             sessionName = "Build TaskMail Phase 1",
             backend = "Codex",
             status = status,
+            pageMode = when (status) {
+                "Queued", "Running" -> TaskSessionPageMode.ActiveRun
+                "WaitingUser", "Paused" -> TaskSessionPageMode.AwaitingReply
+                else -> TaskSessionPageMode.Terminal
+            },
             repoPath = "E:/projects/android_task_manager",
             workdir = "feature/taskmail",
             lastSummary = "Parser layer is complete.",
@@ -962,11 +1177,12 @@ class TaskSessionDetailScreenKtTest {
             canReply = canReply,
             canQueryStatus = canQueryStatus,
             replyUnavailableReason = replyUnavailableReason,
+            processSection = effectiveProcessSection,
             timeline = timeline,
         )
     }
 
-    private fun expandProcessRecords(sectionTitle: String = "Run records") {
+    private fun expandProcessRecords(sectionTitle: String = "Process") {
         composeTestRule
             .onNodeWithTag("TaskSessionDetailList")
             .performScrollToNode(hasText(sectionTitle))
@@ -975,5 +1191,4 @@ class TaskSessionDetailScreenKtTest {
 }
 
 private const val MULTI_QUESTION_REPLY_SUPPORTING_TEXT =
-    "Use one line per question in the form question_id: value. " +
-        "The draft is prefilled with a copy-ready template, and you can attach files if needed."
+    "Answer each pending question below. Your answers will be sent as a structured TaskMail payload."

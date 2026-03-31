@@ -37,17 +37,16 @@ import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBan
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
 import kotlinx.collections.immutable.ImmutableList
 import net.thunderbird.core.ui.compose.theme2.MainTheme
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorText
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorTextStyle
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskStatusBadge
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailContract
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailUiState
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
-import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineItemUi
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.ProcessFoldCard
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.SessionEnvironmentCard
+import net.thunderbird.feature.taskmail.internal.ui.detail.component.TaskProcessSection
 import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineAttachments
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCard
-import net.thunderbird.feature.taskmail.internal.ui.detail.component.TimelineMessageCardStyle
 
 @Composable
 internal fun TaskSessionHistoryContent(
@@ -152,8 +151,15 @@ private fun TaskSessionHistoryLoadedContent(
     var expandedRoundIds by rememberSaveable(detail.sessionId) {
         mutableStateOf(listOfNotNull(rounds.firstOrNull()?.id))
     }
-    var expandedProcessRoundIds by rememberSaveable(detail.sessionId) {
-        mutableStateOf(emptyList<String>())
+    var expandedProcessRoundIds by rememberSaveable(
+        detail.sessionId,
+        rounds.map { round -> "${round.id}:${round.processSection?.defaultExpanded}" },
+    ) {
+        mutableStateOf(
+            rounds
+                .filter { round -> round.processSection?.defaultExpanded == true }
+                .map(TaskSessionHistoryRoundUi::id),
+        )
     }
 
     PullToRefreshBox(
@@ -248,44 +254,49 @@ private fun HistoryReviewRoundCard(
     modifier: Modifier = Modifier,
 ) {
     CardOutlined(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggleExpanded)
-            .testTag("TaskSessionHistoryRoundCard:${round.id}"),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpanded)
+                    .testTag("TaskSessionHistoryRoundCard:${round.id}"),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    TextTitleMedium(text = "#${round.roundNumber}")
-                    TextLabelMedium(
-                        text = round.timestampLabel,
-                        color = MainTheme.colors.onSurfaceVariant,
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        TextTitleMedium(text = "#${round.roundNumber}")
+                        TextLabelMedium(
+                            text = round.timestampLabel,
+                            color = MainTheme.colors.onSurfaceVariant,
+                        )
+                    }
+                    TaskStatusBadge(text = round.statusLabel)
+                }
+
+                HistoryRoundPreview(
+                    inputPreview = round.inputPreview,
+                    resultPreview = round.resultPreview,
+                )
+
+                if (round.previewAttachments.isNotEmpty()) {
+                    HistoryAttachmentPreviewRow(
+                        attachments = round.previewAttachments,
+                        hiddenCount = round.totalAttachmentCount - round.previewAttachments.size,
+                        onOpenAttachment = onOpenAttachment,
                     )
                 }
-                TaskStatusBadge(text = round.statusLabel)
-            }
-
-            HistoryRoundPreview(
-                inputPreview = round.inputPreview,
-                resultPreview = round.resultPreview,
-            )
-
-            if (round.previewAttachments.isNotEmpty()) {
-                HistoryAttachmentPreviewRow(
-                    attachments = round.previewAttachments,
-                    hiddenCount = round.totalAttachmentCount - round.previewAttachments.size,
-                    onOpenAttachment = onOpenAttachment,
-                )
             }
 
             if (isExpanded) {
@@ -293,31 +304,21 @@ private fun HistoryReviewRoundCard(
                 HistoryRoundSection(
                     title = "Input",
                     body = round.inputText ?: "No preserved input is available for this round.",
+                    enableLocatorCollapse = false,
                 )
-                ProcessFoldCard(
-                    timelineCount = round.processItems.size,
-                    isExpanded = isProcessExpanded,
-                    onToggle = onToggleProcess,
-                    title = "Round records",
-                    supportingText = "Open the preserved records for this round when you need detail.",
-                    emptyText = "No preserved round records are available yet.",
-                    countText = { count -> "$count preserved record(s) captured for this round." },
-                )
-                if (isProcessExpanded) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        round.processItems.forEach { item ->
-                            TimelineMessageCard(
-                                item = item,
-                                style = TimelineMessageCardStyle.ProcessRecord,
-                                onOpenAttachment = onOpenAttachment,
-                                onSaveAttachment = onSaveAttachment,
-                            )
-                        }
-                    }
+                round.processSection?.let { processSection ->
+                    TaskProcessSection(
+                        section = processSection,
+                        isExpanded = isProcessExpanded,
+                        onToggle = onToggleProcess,
+                        onOpenAttachment = onOpenAttachment,
+                        onSaveAttachment = onSaveAttachment,
+                    )
                 }
                 HistoryRoundSection(
                     title = "${round.speakerLabel} result",
                     body = round.resultText,
+                    enableLocatorCollapse = true,
                 )
                 HistoryRoundAttachmentsSection(
                     inputAttachments = round.inputAttachments,
@@ -358,6 +359,7 @@ private fun HistoryRoundPreview(
 private fun HistoryRoundSection(
     title: String,
     body: String,
+    enableLocatorCollapse: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -365,7 +367,14 @@ private fun HistoryRoundSection(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         TaskSectionHeader(title = title)
-        TextBodyMedium(text = body)
+        if (enableLocatorCollapse) {
+            TaskCodeLocatorText(
+                text = body,
+                style = TaskCodeLocatorTextStyle.BodyMedium,
+            )
+        } else {
+            TextBodyMedium(text = body)
+        }
     }
 }
 

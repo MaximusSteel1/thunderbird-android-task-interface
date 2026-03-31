@@ -77,6 +77,7 @@
 TaskMail 优先级：
 
 - 优先推进主线设计或解除主线阻塞；优先直接靠近主线设计，不优先服务旁路、兼容路径、临时 staging layer；不主动进入支线、纯打磨工作、并行子线，除非用户明确要求。
+- TaskMail 联调默认目标不是“先临时好用”，而是让代码以最小可验证增量逐步贴近长期最优解；除非用户明确要求止血、绕行或短期兼容，否则优先收口正式 contract、淘汰旧链路、减少过渡逻辑。
 
 TaskMail 验证：
 
@@ -99,9 +100,20 @@ TaskMail 交接：
 
 - 本仓库 Gradle 需要 Java 21+。
 - Windows 下优先使用 `.\gradlew.bat ...`。
+- 当前环境已验证可用的 Java 21 路径：`C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot`。
+- 在 PowerShell 里执行 Gradle 前，默认先显式设置：
+  `$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"`
+- 若是单次执行，默认直接使用这一种写法，避免先用错 Java 再重试：
+  `$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; .\gradlew.bat <task>`
 - PowerShell 读取仓库文本默认走 UTF-8：设置 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`，并显式使用 `Get-Content -Raw -Encoding utf8 <path>`。
 - 不要先判断“文件是不是中文”再决定编码；默认按 UTF-8 读取，只有结果仍异常时再排查其他编码。
-- 如果 Gradle 选到了 Java 11，先修正 `JAVA_HOME` / `PATH`，不要盲目重试。
+- 如果 Gradle 选到了 Java 11 或其他非 21+ 版本，先按上面的固定路径修正 `JAVA_HOME` / `PATH`，不要盲目重试。
+
+## Subagent
+
+- 若使用 subagent，默认直接使用当前可用最强模型；不要为了省时或省资源默认降到 mini、spark 或其他较弱模型，除非用户明确要求。
+- subagent 的思考强度默认至少为 `medium`；复杂、耦合高、风险高或需要跨模块判断的任务，优先使用 `high` 或更高。
+- 不因“只是并行 side task”或“边界较小”就默认降低 subagent 的模型档位或思考强度。
 
 ## 决策
 

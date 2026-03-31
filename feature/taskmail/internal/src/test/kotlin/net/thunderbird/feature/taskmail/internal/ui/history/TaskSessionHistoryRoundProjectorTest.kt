@@ -107,7 +107,8 @@ class TaskSessionHistoryRoundProjectorTest {
         assertThat(rounds.first().resultText).isEqualTo(
             "Added the tree-based homepage draft and updated the history card layout.",
         )
-        assertThat(rounds.first().processItems.map { it.id }).containsExactly("system_progress_2")
+        assertThat(rounds.first().processSection?.visibleItems?.size).isEqualTo(0)
+        assertThat(rounds.first().processSection?.rawItemCount).isEqualTo(1)
         assertThat(rounds.first().inputAttachments.map { it.id }).containsExactly("input_doc_2")
         assertThat(rounds.first().resultAttachments.map { it.id }).containsExactly("result_image_2", "result_doc_2")
         assertThat(rounds.first().previewAttachments.map { it.attachmentId })
@@ -156,7 +157,7 @@ class TaskSessionHistoryRoundProjectorTest {
         assertThat(rounds.first().roundNumber).isEqualTo(2)
         assertThat(rounds.first().inputText).isEqualTo("Continue on the homepage tree branch.")
         assertThat(rounds.first().resultText).isEqualTo("Compressing the tree gutter and refreshing the session chips.")
-        assertThat(rounds.first().processItems).hasSize(0)
+        assertThat(rounds.first().processSection).isNull()
         assertThat(rounds.last().roundNumber).isEqualTo(1)
         assertThat(rounds.last().inputText).isNull()
         assertThat(rounds.last().resultText).isEqualTo(

@@ -7,9 +7,11 @@ import java.util.Locale
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import net.thunderbird.feature.taskmail.internal.ui.detail.TaskProcessSectionUi
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskSessionDetailUiState
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineItemUi
+import net.thunderbird.feature.taskmail.internal.ui.detail.toLocalProcessSectionUi
 
 @Immutable
 internal data class TaskSessionHistoryRoundUi(
@@ -21,7 +23,7 @@ internal data class TaskSessionHistoryRoundUi(
     val resultPreview: String,
     val inputText: String?,
     val resultText: String,
-    val processItems: ImmutableList<TaskTimelineItemUi> = persistentListOf(),
+    val processSection: TaskProcessSectionUi? = null,
     val inputAttachments: ImmutableList<TaskTimelineAttachmentUi> = persistentListOf(),
     val resultAttachments: ImmutableList<TaskTimelineAttachmentUi> = persistentListOf(),
     val previewAttachments: ImmutableList<TaskSessionHistoryAttachmentPreviewUi> = persistentListOf(),
@@ -40,13 +42,19 @@ internal object TaskSessionHistoryRoundProjector {
     fun project(detail: TaskSessionDetailUiState): ImmutableList<TaskSessionHistoryRoundUi> {
         val chronologicalTimeline = detail.timeline.asReversed()
         if (chronologicalTimeline.isEmpty()) return persistentListOf()
+        val groupedRounds = chronologicalTimeline.splitIntoRoundGroups()
+        val latestRoundIndex = groupedRounds.lastIndex
 
-        return chronologicalTimeline
-            .splitIntoRoundGroups()
+        return groupedRounds
             .mapIndexed { index, group ->
                 group.toHistoryRound(
                     roundNumber = index + 1,
                     speakerLabel = detail.backend,
+                    supplementalResultAttachments = if (index == latestRoundIndex) {
+                        detail.artifacts
+                    } else {
+                        persistentListOf()
+                    },
                 )
             }
             .asReversed()
@@ -77,13 +85,14 @@ private fun List<TaskTimelineItemUi>.splitIntoRoundGroups(): List<List<TaskTimel
 private fun List<TaskTimelineItemUi>.toHistoryRound(
     roundNumber: Int,
     speakerLabel: String,
+    supplementalResultAttachments: ImmutableList<TaskTimelineAttachmentUi> = persistentListOf(),
 ): TaskSessionHistoryRoundUi {
     val inputItem = firstOrNull(TaskTimelineItemUi::isOutgoing)
     val itemsAfterInput = inputItem
         ?.let { input -> dropWhile { it.id != input.id }.drop(1) }
         ?: this
     val resultItem = itemsAfterInput.lastOrNull() ?: inputItem ?: last()
-    val processItems = itemsAfterInput
+    val rawProcessItems = itemsAfterInput
         .dropLast(1)
         .toImmutableList()
 
@@ -98,6 +107,7 @@ private fun List<TaskTimelineItemUi>.toHistoryRound(
         ?: persistentListOf()
     val resultAttachments = itemsAfterInput
         .flatMap(TaskTimelineItemUi::attachments)
+        .plus(supplementalResultAttachments)
         .distinctBy(TaskTimelineAttachmentUi::id)
         .toImmutableList()
     val allAttachments = (inputAttachments + resultAttachments)
@@ -123,7 +133,11 @@ private fun List<TaskTimelineItemUi>.toHistoryRound(
             ?: resultText,
         inputText = inputText,
         resultText = resultText,
-        processItems = processItems,
+        processSection = rawProcessItems.toLocalProcessSectionUi(
+            title = "Process",
+            supportingText = processSupportingText(resultItem.statusLabel),
+            defaultExpanded = resultItem.statusLabel.isRunningLikeStatus(),
+        ),
         inputAttachments = inputAttachments,
         resultAttachments = resultAttachments,
         previewAttachments = previewAttachments,
@@ -168,4 +182,17 @@ private fun TaskTimelineAttachmentUi.previewLabel(): String {
 private fun formatHistoryTimestamp(timestamp: Long): String {
     if (timestamp <= 0L) return "Unknown time"
     return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+}
+
+private fun processSupportingText(statusLabel: String?): String {
+    return if (statusLabel.isRunningLikeStatus()) {
+        "Assistant output is shown in order while this round is still running."
+    } else {
+        "Open the preserved assistant process behind this round when you need more detail."
+    }
+}
+
+private fun String?.isRunningLikeStatus(): Boolean {
+    return this?.trim()?.equals("Running", ignoreCase = true) == true ||
+        this?.trim()?.equals("Queued", ignoreCase = true) == true
 }

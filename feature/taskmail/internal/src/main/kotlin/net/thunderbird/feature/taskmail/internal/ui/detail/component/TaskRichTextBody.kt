@@ -43,6 +43,8 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorText
+import net.thunderbird.feature.taskmail.internal.ui.component.TaskCodeLocatorTextStyle
 
 @Composable
 internal fun TaskRichTextBody(
@@ -230,8 +232,9 @@ private fun RichCodeBlock(
                     color = MainTheme.colors.onSurfaceVariant,
                 )
             }
-            TextBodySmall(
+            TaskCodeLocatorText(
                 text = text,
+                style = TaskCodeLocatorTextStyle.BodySmall,
                 color = MainTheme.colors.onSurface,
             )
         }

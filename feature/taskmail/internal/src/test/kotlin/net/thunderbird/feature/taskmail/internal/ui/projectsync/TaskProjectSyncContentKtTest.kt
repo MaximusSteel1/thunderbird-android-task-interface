@@ -1,10 +1,12 @@
 package net.thunderbird.feature.taskmail.internal.ui.projectsync
 
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import assertk.assertThat
 import assertk.assertions.isEqualTo
@@ -54,6 +56,23 @@ class TaskProjectSyncContentKtTest {
         composeTestRule.onNodeWithTag("TaskProjectSyncUseRepoButton").performClick()
 
         assertThat(selectedRepoPath).isEqualTo("E:/projects/android_task_manager")
+    }
+
+    @Test
+    fun `content should not show sender field for single account project sync`() {
+        composeTestRule.setContent {
+            K9MailTheme2 {
+                TaskProjectSyncContent(
+                    state = TaskProjectSyncContract.State(
+                        senderAccounts = listOf(projectSyncSenderAccount).toImmutableList(),
+                        selectedSenderAccountId = projectSyncSenderAccount.accountUuid,
+                    ),
+                    onEvent = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithText("Send from").assertCountEquals(0)
     }
 
     @Test

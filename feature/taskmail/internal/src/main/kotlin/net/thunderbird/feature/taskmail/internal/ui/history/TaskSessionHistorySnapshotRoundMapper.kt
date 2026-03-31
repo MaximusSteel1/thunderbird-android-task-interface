@@ -11,10 +11,12 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotAttachment
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotProcessItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotRound
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineAttachmentUi
 import net.thunderbird.feature.taskmail.internal.ui.detail.TaskTimelineItemUi
+import net.thunderbird.feature.taskmail.internal.ui.detail.toTimelineAttachmentUi
+import net.thunderbird.feature.taskmail.internal.ui.detail.toProcessSectionUi
 
 internal object TaskSessionHistorySnapshotRoundMapper {
     fun merge(
@@ -48,10 +50,14 @@ private fun TaskSessionHistorySnapshotRound.toUiRound(
         snapshotAttachments = resultAttachments,
         localAttachments = localFallback?.resultAttachments ?: persistentListOf(),
     )
-    val processTimelineItems = if (processItems.isNotEmpty()) {
-        processItems.map(TaskSessionHistorySnapshotProcessItem::toUiTimelineItem).toImmutableList()
+    val processSection = if (processItems.isNotEmpty()) {
+        processItems.toProcessSectionUi(
+            title = "Process",
+            supportingText = processSupportingText(status),
+            defaultExpanded = status.isRunningLikeStatus(),
+        )
     } else {
-        localFallback?.processItems ?: persistentListOf()
+        localFallback?.processSection
     }
     val previewAttachments = (inputAttachmentItems + resultAttachmentItems)
         .distinctBy(TaskTimelineAttachmentUi::id)
@@ -80,7 +86,7 @@ private fun TaskSessionHistorySnapshotRound.toUiRound(
         resultPreview = effectiveResultText.take(160),
         inputText = effectiveInputText,
         resultText = effectiveResultText,
-        processItems = processTimelineItems,
+        processSection = processSection,
         inputAttachments = inputAttachmentItems,
         resultAttachments = resultAttachmentItems,
         previewAttachments = previewAttachments,
@@ -97,31 +103,9 @@ private fun preferredAttachmentItems(
         localAttachments
     } else {
         snapshotAttachments
-            .map(TaskSessionHistorySnapshotAttachment::toUiAttachment)
+            .map(TaskSessionHistorySnapshotAttachment::toTimelineAttachmentUi)
             .toImmutableList()
     }
-}
-
-private fun TaskSessionHistorySnapshotAttachment.toUiAttachment(): TaskTimelineAttachmentUi {
-    return TaskTimelineAttachmentUi(
-        id = attachmentId,
-        displayName = displayName,
-        contentType = contentType,
-        sizeBytes = sizeBytes,
-        isImage = isImage,
-        isActionAvailable = false,
-    )
-}
-
-private fun TaskSessionHistorySnapshotProcessItem.toUiTimelineItem(): TaskTimelineItemUi {
-    return TaskTimelineItemUi(
-        id = itemId,
-        timestamp = createdAt.toEpochMillis(),
-        direction = "Process",
-        statusLabel = status?.toStatusLabel(),
-        summary = text,
-        plainText = text,
-    )
 }
 
 private fun TaskTimelineAttachmentUi.toPreviewUi(): TaskSessionHistoryAttachmentPreviewUi {
@@ -177,4 +161,16 @@ private fun String.toStatusLabel(fallback: String? = null): String {
         "killed" -> "Killed"
         else -> fallback ?: trim().ifBlank { "Unknown" }
     }
+}
+
+private fun processSupportingText(status: String): String {
+    return if (status.isRunningLikeStatus()) {
+        "Assistant output is shown in order while this round is still running."
+    } else {
+        "Open the preserved assistant process behind this round when you need more detail."
+    }
+}
+
+private fun String.isRunningLikeStatus(): Boolean {
+    return trim().lowercase(Locale.getDefault()) in setOf("queued", "running")
 }

@@ -22,19 +22,14 @@ import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodyLarge
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextBodySmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextHeadlineSmall
 import app.k9mail.core.ui.compose.designsystem.atom.text.TextLabelMedium
-import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlined
-import app.k9mail.core.ui.compose.designsystem.atom.textfield.TextFieldOutlinedSelect
-import app.k9mail.core.ui.compose.designsystem.molecule.input.InputLayout
 import app.k9mail.core.ui.compose.designsystem.organism.TopAppBarWithBackButton
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.ErrorBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.InfoBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.organism.banner.inline.WarningBannerInlineNotificationCard
 import app.k9mail.core.ui.compose.designsystem.template.Scaffold
-import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.core.ui.compose.theme2.MainTheme
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailProjectSyncResult
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailProjectSyncRoot
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSenderAccount
 import net.thunderbird.feature.taskmail.internal.ui.component.TaskSectionHeader
 
 @Composable
@@ -55,8 +50,8 @@ internal fun TaskProjectSyncContent(
         when {
             state.isLoading -> {
                 ProjectSyncCenteredMessage(
-                    title = "Loading sender accounts",
-                    message = "Checking which mailbox accounts can request the TaskMail project list.",
+                    title = "Checking mailbox account",
+                    message = "Resolving the mailbox account that can request the TaskMail project list.",
                     modifier = Modifier.padding(innerPadding),
                 )
             }
@@ -96,11 +91,6 @@ private fun ProjectSyncBody(
         item {
             TextBodyLarge(text = PROJECT_SYNC_INTRO_TEXT)
         }
-
-        senderAccountItems(
-            state = state,
-            onEvent = onEvent,
-        )
 
         syncActionItems(
             state = state,
@@ -230,38 +220,6 @@ private fun LazyListScope.resultItems(
     }
 }
 
-private fun LazyListScope.senderAccountItems(
-    state: TaskProjectSyncContract.State,
-    onEvent: (TaskProjectSyncContract.Event) -> Unit,
-) {
-    when {
-        state.senderAccounts.size == 1 -> {
-            item {
-                InputLayout(contentPadding = PaddingValues(0.dp)) {
-                    TextFieldOutlined(
-                        value = (state.selectedSenderAccount ?: state.senderAccounts.single()).displayLabel,
-                        onValueChange = {},
-                        label = "Send from",
-                        isReadOnly = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        }
-
-        state.requiresSenderAccountSelection -> {
-            item {
-                SenderAccountSelector(
-                    state = state,
-                    onAccountSelected = {
-                        onEvent(TaskProjectSyncContract.Event.SenderAccountSelected(it))
-                    },
-                )
-            }
-        }
-    }
-}
-
 private fun LazyListScope.latestResultItems(
     result: TaskMailProjectSyncResult,
     onEvent: (TaskProjectSyncContract.Event) -> Unit,
@@ -284,47 +242,6 @@ private fun LazyListScope.latestResultItems(
                 },
             )
         }
-    }
-}
-
-@Composable
-private fun SenderAccountSelector(
-    state: TaskProjectSyncContract.State,
-    onAccountSelected: (String?) -> Unit,
-) {
-    val options = buildList<ProjectSyncSenderAccountOption> {
-        add(ProjectSyncSenderAccountOption.Placeholder)
-        addAll(state.senderAccounts.map(ProjectSyncSenderAccountOption::Account))
-    }.toImmutableList()
-    val selectedOption = state.selectedSenderAccount
-        ?.let(ProjectSyncSenderAccountOption::Account)
-        ?: ProjectSyncSenderAccountOption.Placeholder
-
-    InputLayout(
-        errorMessage = state.senderAccountError,
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        TextFieldOutlinedSelect(
-            options = options,
-            selectedOption = selectedOption,
-            onValueChange = { option ->
-                onAccountSelected(
-                    when (option) {
-                        ProjectSyncSenderAccountOption.Placeholder -> null
-                        is ProjectSyncSenderAccountOption.Account -> option.account.accountUuid
-                    },
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-            optionToStringTransformation = { option ->
-                when (option) {
-                    ProjectSyncSenderAccountOption.Placeholder -> "Select an account"
-                    is ProjectSyncSenderAccountOption.Account -> option.account.displayLabel
-                }
-            },
-            label = "Send from",
-            hasError = state.senderAccountError != null,
-        )
     }
 }
 
@@ -435,11 +352,6 @@ private fun TaskProjectSyncContract.State.awaitingResultSupportingText(): String
                 "This page keeps checking mail for a short time."
         }
     }
-}
-
-private sealed interface ProjectSyncSenderAccountOption {
-    data object Placeholder : ProjectSyncSenderAccountOption
-    data class Account(val account: TaskMailSenderAccount) : ProjectSyncSenderAccountOption
 }
 
 private const val PROJECT_SYNC_INTRO_TEXT =

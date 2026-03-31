@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import kotlinx.collections.immutable.toImmutableList
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneArtifactManifest
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneEvent
@@ -34,6 +35,9 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocume
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLiveProcess
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItemKind
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProjectionDataSource
@@ -78,6 +82,9 @@ private fun TaskSessionDetail.toJsonObject(json: Json): JsonObject {
         putNullable("pausedFromStatus", pausedFromStatus?.name)
         putNullable("lastActiveAt", lastActiveAt)
         putNullable("lastProgressAt", lastProgressAt)
+        liveProcess?.let { liveProcess ->
+            put("liveProcess", liveProcess.toJsonObject())
+        }
         put(
             "pendingQuestions",
             JsonArray(pendingQuestions.map(TaskQuestionCapsule::toJsonObject)),
@@ -204,6 +211,28 @@ private fun TaskSessionPendingSubmission.toJsonObject(): JsonObject {
         put("submittedAt", submittedAt)
         put("ackStatus", ackStatus.wireValue)
         put("targetIdentity", targetIdentity.toJsonObject())
+    }
+}
+
+private fun TaskSessionLiveProcess.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("status", status)
+        put("updatedAt", updatedAt)
+        put(
+            "items",
+            JsonArray(items.map(TaskSessionProcessItem::toJsonObject)),
+        )
+    }
+}
+
+private fun TaskSessionProcessItem.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("itemId", itemId)
+        putNullable("kind", kind.toJsonValue())
+        put("createdAt", createdAt)
+        put("updatedAt", updatedAt)
+        putNullable("status", status)
+        put("text", text)
     }
 }
 
@@ -416,6 +445,7 @@ private fun JsonObject.toTaskSessionDetail(json: Json): TaskSessionDetail {
         },
         lastActiveAt = optionalString("lastActiveAt"),
         lastProgressAt = optionalString("lastProgressAt"),
+        liveProcess = objectValue("liveProcess")?.toTaskSessionLiveProcess(),
         question = pendingQuestions.lastOrNull(),
         pendingQuestions = pendingQuestions,
         replyContext = objectValue("replyContext")?.toTaskSessionReplyContext(),
@@ -502,6 +532,34 @@ private fun JsonObject.toTaskSessionPendingSubmission(): TaskSessionPendingSubmi
         targetIdentity = objectValue("targetIdentity")?.toTaskMailSessionActionTargetIdentity()
             ?: error("Missing targetIdentity"),
     )
+}
+
+private fun JsonObject.toTaskSessionLiveProcess(): TaskSessionLiveProcess {
+    return TaskSessionLiveProcess(
+        status = string("status"),
+        updatedAt = string("updatedAt"),
+        items = arrayObjects("items").map(JsonObject::toTaskSessionProcessItem).toImmutableList(),
+    )
+}
+
+private fun JsonObject.toTaskSessionProcessItem(): TaskSessionProcessItem {
+    return TaskSessionProcessItem(
+        itemId = string("itemId"),
+        kind = TaskSessionProcessItemKind.fromWireValue(optionalString("kind")),
+        createdAt = string("createdAt"),
+        updatedAt = string("updatedAt"),
+        status = optionalString("status"),
+        text = string("text"),
+    )
+}
+
+private fun TaskSessionProcessItemKind.toJsonValue(): String? {
+    return when (this) {
+        TaskSessionProcessItemKind.Assistant -> "assistant"
+        TaskSessionProcessItemKind.Tool -> "tool"
+        TaskSessionProcessItemKind.System -> "system"
+        TaskSessionProcessItemKind.Unknown -> null
+    }
 }
 
 private fun JsonObject.toTaskMailSessionActionTargetIdentity(): TaskMailSessionActionTargetIdentity {

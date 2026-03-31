@@ -37,6 +37,7 @@ internal fun TaskMailDirectSessionProjection.toTaskSessionDetail(
         pausedFromStatus = pausedFromStatus,
         lastActiveAt = lastActiveAt,
         lastProgressAt = lastProgressAt,
+        liveProcess = existingDetail?.liveProcess,
         question = pendingQuestions.lastOrNull(),
         pendingQuestions = pendingQuestions,
         replyContext = existingDetail?.replyContext,

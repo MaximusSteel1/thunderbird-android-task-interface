@@ -13,10 +13,11 @@ internal class RecordTaskMailNewTaskSendRecord(
         draft: TaskMailNewTaskDraft,
         evidence: TaskMailDirectSendEvidence,
     ) {
+        val senderAccountId = draft.senderAccountId ?: return
         repository.saveRecord(
             TaskMailNewTaskSendRecord(
                 recordedAt = clock(),
-                senderAccountId = draft.senderAccountId,
+                senderAccountId = senderAccountId,
                 backend = draft.backend,
                 repoPath = draft.repoPath,
                 workdir = draft.workdir,

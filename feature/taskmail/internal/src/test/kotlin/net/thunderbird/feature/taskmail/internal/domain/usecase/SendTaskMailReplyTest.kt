@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionReplyContext
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyMode
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyRequest
 import net.thunderbird.feature.taskmail.internal.domain.reply.TaskMailReplyResult
@@ -174,6 +175,24 @@ class SendTaskMailReplyTest {
         // Assert
         assertThat(result).isEqualTo(TaskMailReplyResult.success())
         assertThat(sender.requests.single().attachments).isEqualTo(attachments)
+    }
+
+    @Test
+    fun `sendFreeText should serialize selected permission header`() = runTest {
+        // Arrange
+        val sender = FakeTaskMailReplySender()
+        val testSubject = SendTaskMailReply(sender)
+
+        // Act
+        val result = testSubject.sendFreeText(
+            context = replyContext(),
+            draftText = "Please continue.",
+            permission = TaskMailNewTaskPermission.Highest,
+        )
+
+        // Assert
+        assertThat(result).isEqualTo(TaskMailReplyResult.success())
+        assertThat(sender.requests.single().body).isEqualTo("Permission: highest\nPlease continue.")
     }
 }
 

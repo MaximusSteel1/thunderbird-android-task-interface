@@ -10,13 +10,26 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import net.thunderbird.core.logging.Logger
+import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneDownloadRef
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestion
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayQuestionState
+import net.thunderbird.feature.taskmail.internal.data.relay.protocol.RelayTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailBackend
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionLifecycle
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskMailSessionStatus
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshot
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotAttachment
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotHeader
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotLocator
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotProcessItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotRound
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionHistorySnapshotTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLatestActionSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLiveProcess
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItemKind
+import net.thunderbird.feature.taskmail.internal.domain.model.buildRelayArtifactActionTarget
+import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskSessionHistorySnapshotRepository
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -25,6 +38,12 @@ import okhttp3.Request
 
 private const val TAG = "TaskSessionHistorySnapshot"
 private const val CONFIG_REQUIRED_MESSAGE = "Relay host, port, and Android app token are required."
+
+internal class SessionSnapshotRequestException(
+    val errorCode: String? = null,
+    override val message: String,
+    val retryable: Boolean = false,
+) : IllegalStateException(message)
 
 internal class OkHttpTaskSessionHistorySnapshotFacadeRepository(
     private val transportConfigRepository: TaskTransportConfigRepository,
@@ -84,7 +103,11 @@ internal class OkHttpTaskSessionHistorySnapshotFacadeRepository(
             val body = response.body.string()
             if (!response.isSuccessful) {
                 val errorPayload = parseErrorPayload(body)
-                error(errorPayload.toUserMessage(response.code))
+                throw SessionSnapshotRequestException(
+                    errorCode = errorPayload.errorCode?.trim()?.takeIf(String::isNotEmpty),
+                    message = errorPayload.toUserMessage(response.code),
+                    retryable = errorPayload.retryable == true,
+                )
             }
 
             return json.decodeFromString<SessionSnapshotResponsePayload>(body).toDomain()
@@ -105,9 +128,50 @@ internal class OkHttpTaskSessionHistorySnapshotFacadeRepository(
         return TaskSessionHistorySnapshot(
             snapshotId = snapshotId,
             generatedAt = generatedAt,
+            sessionHeader = sessionSnapshot.toDomainHeader(locator),
             latestSessionAction = sessionSnapshot.latestSessionAction?.toDomain(),
             rounds = sessionSnapshot.historyRounds.map { it.toDomain() }.toImmutableList(),
         )
+    }
+
+    private fun SessionSnapshotPayload.toDomainHeader(
+        locator: SessionSnapshotLocatorPayload?,
+    ): TaskSessionHistorySnapshotHeader? {
+        return TaskSessionHistorySnapshotHeader(
+            workspaceId = locator?.workspaceId?.trim()?.takeIf(String::isNotEmpty),
+            sessionId = locator?.sessionId?.trim()?.takeIf(String::isNotEmpty),
+            threadId = locator?.threadId?.trim()?.takeIf(String::isNotEmpty),
+            sessionName = sessionName?.trim()?.takeIf(String::isNotEmpty),
+            backend = TaskMailBackend.fromWireValue(backend),
+            repoPath = repoPath?.trim()?.takeIf(String::isNotEmpty),
+            workdir = workdir?.trim()?.takeIf(String::isNotEmpty),
+            status = TaskMailSessionStatus.fromWireValue(status),
+            lifecycle = TaskMailSessionLifecycle.fromWireValue(lifecycle),
+            lastSummary = lastSummary?.trim()?.takeIf(String::isNotEmpty),
+            lastActiveAt = lastActiveAt?.trim()?.takeIf(String::isNotEmpty),
+            lastProgressAt = lastProgressAt?.trim()?.takeIf(String::isNotEmpty),
+            pausedFromStatus = TaskMailSessionStatus.fromWireValue(pausedFromStatus),
+            liveProcess = liveProcess?.toDomain(),
+            pendingQuestions = questionState.toQuestionCapsules().toImmutableList(),
+            timelineItems = timelineItems.map { timelineItem -> timelineItem.toDomain() }.toImmutableList(),
+        ).takeIf { header ->
+            header.workspaceId != null ||
+                header.sessionId != null ||
+                header.threadId != null ||
+                header.sessionName != null ||
+                header.backend != null ||
+                header.repoPath != null ||
+                header.workdir != null ||
+                header.status != null ||
+                header.lifecycle != null ||
+                header.lastSummary != null ||
+                header.lastActiveAt != null ||
+                header.lastProgressAt != null ||
+                header.pausedFromStatus != null ||
+                header.liveProcess != null ||
+                header.pendingQuestions.isNotEmpty() ||
+                header.timelineItems.isNotEmpty()
+        }
     }
 
     private fun SessionSnapshotLatestActionPayload.toDomain(): TaskSessionLatestActionSnapshot {
@@ -144,15 +208,51 @@ internal class OkHttpTaskSessionHistorySnapshotFacadeRepository(
             contentType = contentType,
             sizeBytes = sizeBytes,
             isImage = isImage,
+            actionTarget = downloadRef?.let { downloadRef ->
+                buildRelayArtifactActionTarget(
+                    attachmentId = attachmentId,
+                    displayName = displayName,
+                    contentType = contentType,
+                    kind = downloadRef.kind,
+                    fileId = downloadRef.fileId,
+                    metadataUrl = downloadRef.metadataUrl,
+                    contentUrl = downloadRef.contentUrl,
+                    url = downloadRef.url,
+                    relayContentType = downloadRef.contentType,
+                    encoding = downloadRef.encoding,
+                    data = downloadRef.data,
+                )
+            },
         )
     }
 
-    private fun SessionSnapshotProcessItemPayload.toDomain(): TaskSessionHistorySnapshotProcessItem {
-        return TaskSessionHistorySnapshotProcessItem(
+    private fun SessionSnapshotProcessItemPayload.toDomain(): TaskSessionProcessItem {
+        return TaskSessionProcessItem(
             itemId = itemId,
+            kind = TaskSessionProcessItemKind.fromWireValue(kind),
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+            status = status,
+            text = text,
+        )
+    }
+
+    private fun RelayTimelineItem.toDomain(): TaskSessionHistorySnapshotTimelineItem {
+        return TaskSessionHistorySnapshotTimelineItem(
+            itemId = itemId,
+            businessEventKey = businessEventKey,
+            itemType = itemType,
             createdAt = createdAt,
             status = status,
             text = text,
+        )
+    }
+
+    private fun SessionSnapshotLiveProcessPayload.toDomain(): TaskSessionLiveProcess {
+        return TaskSessionLiveProcess(
+            status = status.trim(),
+            updatedAt = updatedAt.trim(),
+            items = items.map { item -> item.toDomain() }.toImmutableList(),
         )
     }
 
@@ -173,16 +273,57 @@ private data class SessionSnapshotResponsePayload(
     val snapshotId: String,
     @SerialName("generated_at")
     val generatedAt: String,
+    val locator: SessionSnapshotLocatorPayload? = null,
     @SerialName("session_snapshot")
     val sessionSnapshot: SessionSnapshotPayload = SessionSnapshotPayload(),
 )
 
 @Serializable
 private data class SessionSnapshotPayload(
+    @SerialName("session_name")
+    val sessionName: String? = null,
+    val backend: String? = null,
+    @SerialName("repo_path")
+    val repoPath: String? = null,
+    val workdir: String? = null,
+    val status: String? = null,
+    val lifecycle: String? = null,
+    @SerialName("last_summary")
+    val lastSummary: String? = null,
+    @SerialName("last_active_at")
+    val lastActiveAt: String? = null,
+    @SerialName("last_progress_at")
+    val lastProgressAt: String? = null,
+    @SerialName("paused_from_status")
+    val pausedFromStatus: String? = null,
+    @SerialName("live_process")
+    val liveProcess: SessionSnapshotLiveProcessPayload? = null,
+    @SerialName("question_state")
+    val questionState: RelayQuestionState? = null,
+    @SerialName("timeline_items")
+    val timelineItems: List<RelayTimelineItem> = emptyList(),
     @SerialName("latest_session_action")
     val latestSessionAction: SessionSnapshotLatestActionPayload? = null,
     @SerialName("history_rounds")
     val historyRounds: List<SessionSnapshotRoundPayload> = emptyList(),
+)
+
+@Serializable
+private data class SessionSnapshotLiveProcessPayload(
+    val status: String,
+    @SerialName("updated_at")
+    val updatedAt: String,
+    val items: List<SessionSnapshotProcessItemPayload> = emptyList(),
+)
+
+@Serializable
+private data class SessionSnapshotLocatorPayload(
+    @SerialName("workspace_id")
+    val workspaceId: String? = null,
+    @SerialName("session_id")
+    val sessionId: String? = null,
+    @SerialName("thread_id")
+    val threadId: String? = null,
 )
 
 @Serializable
@@ -254,14 +395,19 @@ private data class SessionSnapshotAttachmentPayload(
     val sizeBytes: Long? = null,
     @SerialName("is_image")
     val isImage: Boolean = false,
+    @SerialName("download_ref")
+    val downloadRef: ControlPlaneDownloadRef? = null,
 )
 
 @Serializable
 private data class SessionSnapshotProcessItemPayload(
     @SerialName("item_id")
     val itemId: String,
+    val kind: String? = null,
     @SerialName("created_at")
     val createdAt: String,
+    @SerialName("updated_at")
+    val updatedAt: String,
     val status: String? = null,
     val text: String,
 )
@@ -275,3 +421,21 @@ private data class SessionSnapshotErrorPayload(
     val errorMessage: String? = null,
     val retryable: Boolean? = null,
 )
+
+private fun RelayQuestionState?.toQuestionCapsules(): List<TaskQuestionCapsule> {
+    return this?.questions
+        ?.map { question -> question.toTaskQuestionCapsule(questionSetId) }
+        .orEmpty()
+}
+
+private fun RelayQuestion.toTaskQuestionCapsule(questionSetId: String?): TaskQuestionCapsule {
+    return TaskQuestionCapsule(
+        questionId = questionId,
+        questionText = questionText,
+        choices = choices,
+        questionSetId = questionSetId,
+        questionType = questionType,
+        required = required,
+        choiceLabels = choiceLabels,
+    )
+}

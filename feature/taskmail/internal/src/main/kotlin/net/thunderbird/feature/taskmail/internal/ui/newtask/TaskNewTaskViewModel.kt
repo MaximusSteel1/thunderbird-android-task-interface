@@ -37,11 +37,6 @@ import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.Event
 import net.thunderbird.feature.taskmail.internal.ui.newtask.TaskNewTaskContract.State
 
-private const val NO_SENDER_ACCOUNT_MESSAGE =
-    "Set up a mailbox account before sending TaskMail requests."
-private const val LOAD_SENDER_ACCOUNTS_ERROR =
-    "Unable to load mailbox accounts for TaskMail sending."
-private const val SENDER_ACCOUNT_REQUIRED_ERROR = "Select the sending account."
 private const val PC_REQUIRED_ERROR = "Select a target PC."
 private const val WORKSPACE_REQUIRED_ERROR = "Select a workspace."
 private const val BACKEND_REQUIRED_ERROR = "Select a backend."
@@ -71,7 +66,7 @@ internal class TaskNewTaskViewModel(
 
     override fun event(event: Event) {
         when (event) {
-            Event.LoadData -> handleOneTimeEvent(event, ::loadSenderAccounts)
+            Event.LoadData -> handleOneTimeEvent(event, ::loadInitialData)
             Event.BackClicked -> emitEffect(Effect.NavigateBack)
             Event.ChooseRepoClicked -> emitEffect(Effect.OpenProjectSync)
             Event.SendClicked -> sendTask()
@@ -81,7 +76,6 @@ internal class TaskNewTaskViewModel(
                 )
             }
 
-            is Event.SenderAccountSelected,
             is Event.PcChanged,
             is Event.WorkspaceChanged,
             is Event.BackendSelected,
@@ -103,7 +97,6 @@ internal class TaskNewTaskViewModel(
 
     private fun handleInputEvent(event: Event) {
         when (event) {
-            is Event.SenderAccountSelected,
             is Event.PcChanged,
             is Event.WorkspaceChanged,
             is Event.BackendSelected,
@@ -129,8 +122,6 @@ internal class TaskNewTaskViewModel(
 
     private fun handleRequiredFieldEvent(event: Event) {
         when (event) {
-            is Event.SenderAccountSelected -> handleSenderAccountSelected(event.accountUuid)
-
             is Event.PcChanged -> updateState {
                 it.copy(
                     pcSelection = it.pcSelection.copy(selectedPcId = event.value),
@@ -283,12 +274,10 @@ internal class TaskNewTaskViewModel(
         }
     }
 
-    private fun loadSenderAccounts() {
+    private fun loadInitialData() {
         updateState {
             it.copy(
                 isLoading = true,
-                senderAccountBlockingError = null,
-                validationErrors = it.validationErrors.copy(senderAccountError = null),
                 submitState = it.submitState.copy(
                     isSending = false,
                     sendError = null,
@@ -298,40 +287,27 @@ internal class TaskNewTaskViewModel(
         }
 
         viewModelScope.launch {
-            runCatching {
+            val senderAccountsResult = runCatching {
                 getTaskMailSenderAccounts()
-            }.onSuccess { accounts ->
-                val inventorySnapshot = getTaskEnvironmentInventory()
-                    .getOrNull()
-                    ?.takeIf { snapshot -> snapshot.pcs.isNotEmpty() }
-                environmentInventorySnapshot = inventorySnapshot
-                val selectedSenderAccountId = resolveSelectedSenderAccountId(
-                    existingSelection = state.value.selectedSenderAccountId,
-                    accounts = accounts,
-                )
-                updateState { current ->
-                    current.copy(
-                        isLoading = false,
-                        senderAccountBlockingError = accounts.blockingErrorOrNull(),
-                        senderAccounts = accounts.toImmutableList(),
-                        selectedSenderAccountId = selectedSenderAccountId,
-                        validationErrors = current.validationErrors.copy(senderAccountError = null),
-                    ).withEnvironmentInventory(inventorySnapshot)
-                }
-                if (selectedSenderAccountId != null) {
-                    loadLatestSendEvidence(selectedSenderAccountId)
-                }
-            }.onFailure {
-                updateState {
-                    it.copy(
-                        isLoading = false,
-                        senderAccountBlockingError = LOAD_SENDER_ACCOUNTS_ERROR,
-                        senderAccounts = persistentListOf(),
-                        selectedSenderAccountId = null,
-                        validationErrors = it.validationErrors.copy(senderAccountError = null),
-                        lastDirectSendEvidence = null,
-                    )
-                }
+            }
+            val inventorySnapshot = getTaskEnvironmentInventory()
+                .getOrNull()
+                ?.takeIf { snapshot -> snapshot.pcs.isNotEmpty() }
+            environmentInventorySnapshot = inventorySnapshot
+            val senderAccounts = senderAccountsResult.getOrDefault(emptyList())
+            val evidenceSenderAccountId = resolveEvidenceSenderAccountId(senderAccounts)
+
+            updateState { current ->
+                current.copy(
+                    isLoading = false,
+                    senderAccounts = senderAccounts.toImmutableList(),
+                    selectedSenderAccountId = evidenceSenderAccountId,
+                    lastDirectSendEvidence = null,
+                ).withEnvironmentInventory(inventorySnapshot)
+            }
+
+            if (evidenceSenderAccountId != null) {
+                loadLatestSendEvidence(evidenceSenderAccountId)
             }
         }
     }
@@ -493,7 +469,6 @@ internal class TaskNewTaskViewModel(
         updateState {
             it.copy(
                 validationErrors = TaskNewTaskValidationErrors(
-                    senderAccountError = validation.senderAccountError,
                     pcError = validation.pcError,
                     workspaceError = validation.workspaceError,
                     backendError = validation.backendError,
@@ -508,10 +483,6 @@ internal class TaskNewTaskViewModel(
     }
 
     private fun validate(state: State): ValidationResult {
-        val selectedSenderAccountId = state.selectedSenderAccountId
-            ?.takeIf { accountUuid ->
-                state.senderAccounts.any { it.accountUuid == accountUuid }
-            }
         val pcId = state.pcSelection.selectedPcId.trim()
         val workspaceId = state.workspaceSelection.selectedWorkspaceId.trim()
         val repoPath = state.resolvedRepoBridgePath.orEmpty().trim()
@@ -524,11 +495,6 @@ internal class TaskNewTaskViewModel(
             ?.takeIf { it > 0 }
 
         return ValidationResult(
-            senderAccountError = if (state.requiresSenderAccountSelection && selectedSenderAccountId == null) {
-                SENDER_ACCOUNT_REQUIRED_ERROR
-            } else {
-                null
-            },
             pcError = if (pcId.isEmpty()) PC_REQUIRED_ERROR else null,
             workspaceError = if (workspaceId.isEmpty()) WORKSPACE_REQUIRED_ERROR else null,
             backendError = if (state.executionPolicyEditor.backend == null) BACKEND_REQUIRED_ERROR else null,
@@ -536,7 +502,7 @@ internal class TaskNewTaskViewModel(
             taskError = if (taskText.isEmpty()) TASK_REQUIRED_ERROR else null,
             titleError = if (subjectTitle.isEmpty()) TITLE_REQUIRED_ERROR else null,
             timeoutError = validateTimeoutText(timeoutText),
-            normalizedSenderAccountId = selectedSenderAccountId,
+            evidenceSenderAccountId = state.selectedSenderAccountId,
             normalizedPcId = pcId.takeIf(String::isNotEmpty),
             normalizedWorkspaceId = workspaceId.takeIf(String::isNotEmpty),
             normalizedRepoPath = repoPath,
@@ -544,21 +510,6 @@ internal class TaskNewTaskViewModel(
             normalizedSubjectTitle = subjectTitle,
             normalizedTimeoutMinutes = timeoutMinutes,
         )
-    }
-
-    private fun handleSenderAccountSelected(accountUuid: String?) {
-        updateState {
-            it.copy(
-                selectedSenderAccountId = accountUuid,
-                validationErrors = it.validationErrors.copy(senderAccountError = null),
-                submitState = it.submitState.copy(sendError = null),
-                lastDirectSendEvidence = null,
-            )
-        }
-
-        if (accountUuid != null) {
-            loadLatestSendEvidence(accountUuid)
-        }
     }
 
     private fun addInputAttachments(uriStrings: List<String>) {
@@ -618,14 +569,6 @@ private fun deriveSubjectTitle(taskText: String): String {
         .orEmpty()
 }
 
-private fun List<TaskMailSenderAccount>.blockingErrorOrNull(): String? {
-    return if (isEmpty()) {
-        NO_SENDER_ACCOUNT_MESSAGE
-    } else {
-        null
-    }
-}
-
 private fun validateTimeoutText(value: String): String? {
     val trimmedValue = value.trim()
     if (trimmedValue.isEmpty()) return null
@@ -638,16 +581,10 @@ private fun validateTimeoutText(value: String): String? {
     }
 }
 
-private fun resolveSelectedSenderAccountId(
-    existingSelection: String?,
+private fun resolveEvidenceSenderAccountId(
     accounts: List<TaskMailSenderAccount>,
 ): String? {
-    return when {
-        accounts.isEmpty() -> null
-        accounts.size == 1 -> accounts.single().accountUuid
-        existingSelection != null && accounts.any { it.accountUuid == existingSelection } -> existingSelection
-        else -> null
-    }
+    return accounts.singleOrNull()?.accountUuid
 }
 
 private fun TaskNewTaskContract.State.withEnvironmentInventory(
@@ -765,7 +702,6 @@ private fun toTaskMailPermission(value: String): TaskMailNewTaskPermission? {
 }
 
 private data class ValidationResult(
-    val senderAccountError: String?,
     val pcError: String?,
     val workspaceError: String?,
     val backendError: String?,
@@ -773,7 +709,7 @@ private data class ValidationResult(
     val taskError: String?,
     val titleError: String?,
     val timeoutError: String?,
-    val normalizedSenderAccountId: String?,
+    val evidenceSenderAccountId: String?,
     val normalizedPcId: String?,
     val normalizedWorkspaceId: String?,
     val normalizedRepoPath: String,
@@ -782,8 +718,7 @@ private data class ValidationResult(
     val normalizedTimeoutMinutes: Int?,
 ) {
     fun hasNoErrors(): Boolean {
-        return senderAccountError == null &&
-            pcError == null &&
+        return pcError == null &&
             workspaceError == null &&
             backendError == null &&
             repoError == null &&
@@ -794,14 +729,13 @@ private data class ValidationResult(
 
     fun buildDraft(state: State): TaskMailNewTaskDraft? {
         if (!hasNoErrors()) return null
-        val senderAccountId = normalizedSenderAccountId
         val pcId = normalizedPcId
         val workspaceId = normalizedWorkspaceId
         val backend = state.executionPolicyEditor.backend
 
-        return if (senderAccountId != null && backend != null && pcId != null && workspaceId != null) {
+        return if (backend != null && pcId != null && workspaceId != null) {
             TaskMailNewTaskDraft(
-                senderAccountId = senderAccountId,
+                senderAccountId = evidenceSenderAccountId,
                 backend = backend,
                 repoPath = normalizedRepoPath,
                 taskText = normalizedTaskText,

@@ -7,6 +7,93 @@ import kotlin.test.Test
 internal class TaskSessionDetailUiStateStructuredReplyValidationTest {
 
     @Test
+    fun `extractStructuredReplyDraftValues reads canonical single line answers`() {
+        val pendingQuestions = listOf(
+            requiredChoiceQuestion(
+                questionId = "phase2_entry_position",
+                choices = listOf("top", "below", "section"),
+            ),
+            requiredChoiceQuestion(
+                questionId = "phase2_icon_strings",
+                choices = listOf("provide", "reuse", "placeholder"),
+            ),
+        )
+
+        val result = extractStructuredReplyDraftValues(
+            draftText = """
+                Answers:
+                phase2_entry_position: below
+                phase2_icon_strings: provide
+                unknown_question: ignore
+            """.trimIndent(),
+            pendingQuestions = pendingQuestions,
+        )
+
+        assertThat(result).isEqualTo(
+            mapOf(
+                "phase2_entry_position" to "below",
+                "phase2_icon_strings" to "provide",
+            ),
+        )
+    }
+
+    @Test
+    fun `extractStructuredReplyDraftValues keeps two line structured answer format compatible`() {
+        val pendingQuestions = listOf(
+            requiredChoiceQuestion(
+                questionId = "phase2_entry_position",
+                choices = listOf("top", "below", "section"),
+            ),
+            requiredChoiceQuestion(
+                questionId = "phase2_icon_strings",
+                choices = listOf("provide", "reuse", "placeholder"),
+            ),
+        )
+
+        val result = extractStructuredReplyDraftValues(
+            draftText = """
+                Answers:
+                question_id: phase2_entry_position
+                below
+                question_id: phase2_icon_strings
+                provide
+            """.trimIndent(),
+            pendingQuestions = pendingQuestions,
+        )
+
+        assertThat(result).isEqualTo(
+            mapOf(
+                "phase2_entry_position" to "below",
+                "phase2_icon_strings" to "provide",
+            ),
+        )
+    }
+
+    @Test
+    fun `buildStructuredReplyDraft keeps question order and omits blank answers`() {
+        val result = buildStructuredReplyDraft(
+            questionIdsInOrder = listOf(
+                "phase2_entry_position",
+                "phase2_icon_strings",
+                "phase2_follow_up",
+            ),
+            answersByQuestionId = mapOf(
+                "phase2_icon_strings" to "provide",
+                "phase2_entry_position" to " below ",
+                "phase2_follow_up" to "   ",
+            ),
+        )
+
+        assertThat(result).isEqualTo(
+            """
+                Answers:
+                phase2_entry_position: below
+                phase2_icon_strings: provide
+            """.trimIndent(),
+        )
+    }
+
+    @Test
     fun `canSendReply returns false when a required multi question answer is missing`() {
         val testSubject = structuredReplyUiState(
             pendingQuestions = listOf(

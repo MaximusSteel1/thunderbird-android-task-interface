@@ -21,7 +21,7 @@ import net.thunderbird.feature.taskmail.internal.data.TaskMailReplyAttachmentRes
 import net.thunderbird.feature.taskmail.internal.data.TaskMailStoreChangeObserver
 import net.thunderbird.feature.taskmail.internal.data.TaskMailSyncRequester
 import net.thunderbird.feature.taskmail.internal.data.TaskMailTimelineAttachmentHandler
-import net.thunderbird.feature.taskmail.internal.domain.model.TaskMessageAttachment
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskAttachmentActionTarget
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionDetail
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionKey
@@ -110,12 +110,12 @@ private object NoOpTaskMailReplyAttachmentResolver : TaskMailReplyAttachmentReso
 }
 
 private object NoOpTaskMailTimelineAttachmentHandler : TaskMailTimelineAttachmentHandler {
-    override suspend fun createOpenIntent(attachment: TaskMessageAttachment): Result<Intent> {
+    override suspend fun createOpenIntent(attachment: TaskAttachmentActionTarget): Result<Intent> {
         return Result.failure(IllegalStateException("Not used in this test"))
     }
 
     override suspend fun saveAttachmentTo(
-        attachment: TaskMessageAttachment,
+        attachment: TaskAttachmentActionTarget,
         destinationUriString: String,
     ): Result<Unit> {
         return Result.failure(IllegalStateException("Not used in this test"))

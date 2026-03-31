@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.collections.immutable.ImmutableMap
@@ -41,6 +42,7 @@ fun TextBodySmall(
     overflow: TextOverflow = TextOverflow.Clip,
     maxLines: Int = Int.MAX_VALUE,
     inlineContent: ImmutableMap<String, InlineTextContent> = persistentMapOf(),
+    onTextLayout: (TextLayoutResult) -> Unit = {},
 ) {
     Material3Text(
         text = text,
@@ -51,5 +53,6 @@ fun TextBodySmall(
         maxLines = maxLines,
         style = MainTheme.typography.bodySmall,
         inlineContent = inlineContent,
+        onTextLayout = onTextLayout,
     )
 }

@@ -22,6 +22,7 @@ internal fun ProcessFoldCard(
     onToggle: () -> Unit,
     title: String = "Run records",
     supportingText: String? = null,
+    previewText: String? = null,
     emptyText: String = "No preserved records available yet.",
     countText: (Int) -> String = { count -> "$count preserved record(s) available." },
     modifier: Modifier = Modifier,
@@ -47,6 +48,12 @@ internal fun ProcessFoldCard(
                     },
                     color = MainTheme.colors.onSurfaceVariant,
                 )
+                previewText?.takeIf(String::isNotBlank)?.let { preview ->
+                    TextBodySmall(
+                        text = preview,
+                        color = MainTheme.colors.onSurfaceVariant,
+                    )
+                }
             }
 
             ButtonText(

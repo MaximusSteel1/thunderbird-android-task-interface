@@ -16,6 +16,7 @@ import net.thunderbird.feature.taskmail.internal.data.relay.RelayFakeLogger
 import net.thunderbird.feature.taskmail.internal.domain.model.RelayTransportConfig
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskReplyAttachment
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.newtask.TaskMailNewTaskPermission
 import net.thunderbird.feature.taskmail.internal.domain.repository.TaskTransportConfigRepository
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionRequest
 import net.thunderbird.feature.taskmail.internal.domain.sessionaction.TaskMailDirectSessionActionResult
@@ -61,6 +62,7 @@ class OkHttpTaskMailSessionActionFacadeSenderTest {
         val request = TaskMailDirectSessionActionRequest.Reply(
             target = sampleTarget(),
             replyText = "Please continue.",
+            permission = TaskMailNewTaskPermission.Highest,
         )
         val testSubject = createTestSubject(requestId = "req_test_001")
 
@@ -80,6 +82,8 @@ class OkHttpTaskMailSessionActionFacadeSenderTest {
             .isEqualTo("session_001")
         assertThat(requestBody["reply"]?.jsonObject?.get("reply_text")?.jsonPrimitive?.content)
             .isEqualTo("Please continue.")
+        assertThat(requestBody["reply"]?.jsonObject?.get("permission")?.jsonPrimitive?.content)
+            .isEqualTo("highest")
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.Accepted(
                 actionType = request.actionType,
@@ -217,6 +221,8 @@ class OkHttpTaskMailSessionActionFacadeSenderTest {
             .isEqualTo("phase2_icon_strings")
         assertThat(questionAnswers[1].jsonObject["value"]?.jsonPrimitive?.content)
             .isEqualTo("provide")
+        assertThat(requestBody["answers"]?.jsonObject?.get("permission")?.jsonPrimitive?.content)
+            .isEqualTo("default")
     }
 
     @Test
@@ -278,6 +284,7 @@ class OkHttpTaskMailSessionActionFacadeSenderTest {
         assertThat(requestBody["action"]?.jsonPrimitive?.content).isEqualTo("attachment_continuation")
         assertThat(attachmentContinuation["reply_text"]?.jsonPrimitive?.content)
             .isEqualTo("Please review the attached file.")
+        assertThat(attachmentContinuation["permission"]?.jsonPrimitive?.content).isEqualTo("default")
         assertThat(attachmentPayload["name"]?.jsonPrimitive?.content).isEqualTo("final_report.md")
         assertThat(attachmentPayload["content_type"]?.jsonPrimitive?.content).isEqualTo("text/markdown")
         assertThat(attachmentPayload["size_bytes"]?.jsonPrimitive?.content?.toLong()).isEqualTo(17L)
@@ -315,8 +322,44 @@ class OkHttpTaskMailSessionActionFacadeSenderTest {
         assertThat(result).isEqualTo(
             TaskMailDirectSessionActionResult.Rejected(
                 errorMessage = "workspace_unavailable",
+                errorCode = "workspace_unavailable",
                 requestId = "req_test_002",
                 receiptId = "cmd_002",
+            ),
+        )
+    }
+
+    @Test
+    fun `send should surface rejected http error code for recipient unresolved`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(409).setBody(
+                """
+                    {
+                      "status": "error",
+                      "error_code": "session_recipient_unresolved",
+                      "error_message": "could not resolve a durable canonical reply recipient for the requested session action",
+                      "command_id": "cmd_409"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        server.start()
+        val testSubject = createTestSubject(requestId = "req_test_409")
+
+        val result = testSubject.send(
+            TaskMailDirectSessionActionRequest.Reply(
+                target = sampleTarget(),
+                replyText = "Please continue.",
+            ),
+        )
+
+        assertThat(result).isEqualTo(
+            TaskMailDirectSessionActionResult.Rejected(
+                errorMessage = "could not resolve a durable canonical reply recipient for the requested session action " +
+                    "(command_id=cmd_409)",
+                errorCode = "session_recipient_unresolved",
+                requestId = "req_test_409",
+                receiptId = "cmd_409",
             ),
         )
     }

@@ -37,44 +37,37 @@ class TaskNewTaskScreenKtTest {
     val composeTestRule = createComposeRule()
 
     @Test
-    fun `content should show blocking state when sender account is unavailable`() {
+    fun `content should keep form available when sender account is unavailable`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskNewTaskContent(
-                    state = TaskNewTaskContract.State(
-                        senderAccountBlockingError = "Set up a mailbox account before sending TaskMail requests.",
-                    ),
+                    state = formState(senderAccounts = emptyList()),
                     onEvent = {},
                 )
             }
         }
 
-        composeTestRule.onNodeWithText("Cannot send TaskMail yet").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Set up a mailbox account before sending TaskMail requests.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Target environment").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("TaskNewTaskFormList").assertIsDisplayed()
     }
 
     @Test
-    fun `content should show sender account selector when multiple accounts exist`() {
+    fun `content should not show sender selector when multiple accounts exist`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskNewTaskContent(
-                    state = formState(
-                        senderAccounts = listOf(screenPrimarySenderAccount, screenSecondarySenderAccount),
-                        selectedSenderAccountId = null,
-                    ),
+                    state = formState(senderAccounts = listOf(screenPrimarySenderAccount, screenSecondarySenderAccount)),
                     onEvent = {},
                 )
             }
         }
 
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Select an account"))
-        composeTestRule.onNodeWithText("Select an account").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Send from").assertCountEquals(0)
+        composeTestRule.onAllNodesWithText("Select an account").assertCountEquals(0)
     }
 
     @Test
-    fun `content should show read only sender account row when only one account exists`() {
+    fun `content should not show sender row when only one account exists`() {
         composeTestRule.setContent {
             K9MailTheme2 {
                 TaskNewTaskContent(
@@ -84,10 +77,8 @@ class TaskNewTaskScreenKtTest {
             }
         }
 
-        composeTestRule
-            .onNodeWithTag("TaskNewTaskFormList")
-            .performScrollToNode(hasText("Primary <primary@example.com>"))
-        composeTestRule.onNodeWithText("Primary <primary@example.com>").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Send from").assertCountEquals(0)
+        composeTestRule.onAllNodesWithText("Primary <primary@example.com>").assertCountEquals(0)
     }
 
     @Test
@@ -298,11 +289,10 @@ class TaskNewTaskScreenKtTest {
 
 private fun formState(
     senderAccounts: List<TaskMailSenderAccount> = listOf(screenPrimarySenderAccount),
-    selectedSenderAccountId: String? = screenPrimarySenderAccount.accountUuid,
 ): TaskNewTaskContract.State {
     return TaskNewTaskContract.State(
         senderAccounts = senderAccounts.toImmutableList(),
-        selectedSenderAccountId = selectedSenderAccountId,
+        selectedSenderAccountId = senderAccounts.singleOrNull()?.accountUuid,
     )
 }
 

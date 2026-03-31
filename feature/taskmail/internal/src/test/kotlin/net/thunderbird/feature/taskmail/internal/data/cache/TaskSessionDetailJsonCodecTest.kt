@@ -3,6 +3,7 @@ package net.thunderbird.feature.taskmail.internal.data.cache
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import kotlin.test.Test
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.thunderbird.feature.taskmail.internal.data.controlplane.protocol.ControlPlaneCommandAck
@@ -18,7 +19,10 @@ import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextBlock
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextDocument
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskRichTextInline
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionControlPlaneSnapshot
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionLiveProcess
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionPendingSubmission
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItem
+import net.thunderbird.feature.taskmail.internal.domain.model.TaskSessionProcessItemKind
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineDirection
 import net.thunderbird.feature.taskmail.internal.domain.model.TaskTimelineItem
 import net.thunderbird.feature.taskmail.internal.domain.parser.TaskQuestionCapsule
@@ -174,6 +178,20 @@ class TaskSessionDetailJsonCodecTest {
                         workspaceId = "workspace_001",
                         sessionId = "session_001",
                         threadId = "thread_001",
+                    ),
+                ),
+            ),
+            liveProcess = TaskSessionLiveProcess(
+                status = "streaming",
+                updatedAt = "2026-03-29T18:31:30Z",
+                items = persistentListOf(
+                    TaskSessionProcessItem(
+                        itemId = "live_assistant_001",
+                        kind = TaskSessionProcessItemKind.Assistant,
+                        createdAt = "2026-03-29T18:31:10Z",
+                        updatedAt = "2026-03-29T18:31:30Z",
+                        status = "streaming",
+                        text = "Streaming assistant output.",
                     ),
                 ),
             ),

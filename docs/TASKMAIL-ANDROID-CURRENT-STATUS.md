@@ -40,10 +40,10 @@
 
 - TaskMail 真实邮件读取、聚合和协议感知解析已经存在
 - `workspace_id + session_id` 是当前 TaskMail 会话主键读法
-- `thread_id` 现在只保留在 cache / direct-subscribe 之类的内部兼容边界，不再作为公开 route/key 的主匹配键
+- `thread_id` 现在只保留在 cache / 兼容恢复之类的内部边界，不再作为公开 route/key 的主匹配键
 - `TaskSessionDetail` 本地缓存现在会持久化 `projectionSyncState`，包括 `lastSequence` / `lastEventId` / `lastResultId` / `subscriptionStatus`
 - `create-session` accepted + `session_binding` 现在会先 seed 一个 provisional `Queued` session detail 到本地 cache，再进入 detail
-- direct session projection 现在可在只有 `workspace_id + session_id`、还没有 `thread_id` 时启动订阅，并把结果持久化回共享 detail store
+- `VPS-native` detail 观察当前可在只有 `workspace_id + session_id`、还没有 `thread_id` 时启动，并把 `session-updates/session-snapshot` 结果持久化回共享 detail store
 - workspace/detail 只要命中 `VPS-native` detail cache，就会优先渲染该 cache，并跳过默认 mail sync
 - `[SYNC]` bootstrap 邮件仍保持在 TaskMail session/detail 投影之外
 - rich-text detail、attachment timeline、refresh/live-update、draft/attachment 保持都已在仓库内落地
@@ -102,7 +102,7 @@
 
 - Batch D 第一轮已经把 `workspace/detail` 主读链推进到 `VPS-native projection cache when available`
 - `FileBackedTaskSessionDetailRepository` 现在会持久化 projection state，并在 upsert 后对 workspace 发出 store change
-- detail 收到 direct projection 后，不再只做内存 overlay；它会把 projection 映射成 `TaskSessionDetail` 并写回共享 detail store
+- detail 收到 Android-facing `session-updates` 或 `session-snapshot` 后，不再只做内存 overlay；它会把 projection 映射成 `TaskSessionDetail` 并写回共享 detail store
 - workspace 现在会监听 detail store 变化；detail direct update、provisional create-session binding、mail compatibility repair 都会推动 workspace reload
 - `SyncTaskMailCache` 现在不会再用 mail rebuild 覆盖 `VPS-native` detail：
   - status / summary / pending questions / timeline 主读法继续保留 VPS projection
@@ -168,7 +168,7 @@
 - Batch C 的 workbench/public-surface 收口与 legacy 删除已经补过 fresh focused regression
 - Batch D 第一轮 `VPS-native cache/projection` 已有 focused automated coverage：
   - provisional session detail seeding
-  - no-thread-id direct subscribe
+  - no-thread-id `session-updates + session-snapshot` recovery
   - workspace/detail 命中 VPS cache 后跳过默认 mail sync
   - mail compatibility repair 不再覆盖 VPS-native detail
 - `new_task` 当前仍缺 fresh Android / VPS / PC live smoke；因此不能把它误写成 raw `pc-control` websocket 已经在设备侧跑通
